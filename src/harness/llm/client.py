@@ -31,22 +31,7 @@ TRANSIENT_LLM_ERRORS = (
 )
 
 
-@dataclass(frozen=True)
-class ToolCall:
-    """Neutral representation of a structured tool invocation requested by the LLM."""
-
-    id: str
-    name: str
-    arguments: dict[str, object]
-
-
-@dataclass(frozen=True)
-class LLMResponse:
-    """Neutral container for LLM output, containing text content, tool calls, and optional token usage."""
-
-    content: str | None
-    tool_calls: list[ToolCall] = field(default_factory=list)
-    usage: dict[str, int] | None = None
+from harness.llm.base import LLMResponse, ToolCall
 
 
 def tool_spec_to_openai(spec: ToolSpec) -> dict[str, object]:
