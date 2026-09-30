@@ -13,6 +13,16 @@ from harness.config import (
 
 
 class TestConfigLoading(unittest.TestCase):
+    def setUp(self) -> None:
+        self._orig_env = dict(os.environ)
+        for key in list(os.environ.keys()):
+            if key.startswith("LLM_") or key.startswith("AGENT_HARNESS_"):
+                del os.environ[key]
+
+    def tearDown(self) -> None:
+        os.environ.clear()
+        os.environ.update(self._orig_env)
+
     def _create_temp_yaml(self, content: str) -> Path:
         """Helper to create a temporary YAML file and register cleanup."""
         temp = tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False)

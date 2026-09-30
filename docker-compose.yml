@@ -1,4 +1,4 @@
-name: agent-harness
+name: jackverse-agent-runtime
 
 services:
   transport-mcp:
