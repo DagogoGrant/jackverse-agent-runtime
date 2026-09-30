@@ -1,0 +1,149 @@
+# agent-harness configuration
+
+agent:
+  max_steps: 10
+
+llm:
+  base_url: "https://llms.innkube.fim.uni-passau.de"
+  model: "qwen-agentworld-35b-a3b"
+  temperature: 0.0
+  timeout: 30.0
+  max_retries: 2
+  retry_backoff: 0.5
+
+tools:
+  workspace_root: "./workspace"
+
+# Configured external MCP servers
+mcp_servers:
+  - name: "transport_service"
+    command: "python"
+    args: ["-m", "harness.mcp.servers.transport_server"]
+
+  - name: "filesystem_server"
+    command: "mcp-server-filesystem"
+    args: ["./workspace/mcp_external_demo"]
+    prefix: "mcpfs"
+
+# Transport provider configuration
+transport:
+  provider: "synthetic"
+  live:
+    base_url: "https://v6.db.transport.rest"
+    timeout_seconds: 8.0
+    fallback_to_synthetic: false
+# Persistent long-term memory configuration
+memory:
+  enabled: true
+  storage_path: ".agent_memory/memory.db"
+  max_entry_chars: 4000
+  max_retrieved: 3
+  max_context_chars: 2000
+  retrieval_strategy: "hybrid"
+  candidate_limit: null
+
+  embedding:
+    model: "Snowflake/snowflake-arctic-embed-s"
+    revision: "e596f507467533e48a2e17c007f0e1dacc837b33"
+    dimension: 384
+    query_prompt_name: "query"
+    threshold: 0.55
+    missing_embedding: "skip"
+    index_readiness: "incremental"
+
+  sparse:
+    min_coverage: 0.35
+    bm25_cutoff: -2.5
+    stopword_policy: "v1-standard-english-34"
+
+  hybrid:
+    candidate_pool: 10
+    rrf_k: 10
+    sparse_weight: 1.0
+    dense_weight: 1.0
+    relevance_gate: true
+
+# Runtime observability configuration
+observability:
+  metrics:
+    enabled: true
+    host: "127.0.0.1"
+    port: 9101
+    required: true
+  tracing:
+    enabled: false
+    endpoint: "http://127.0.0.1:4318/v1/traces"
+    service_name: "agent-harness"
+    environment: "development"
+  logging:
+    structured_enabled: false
+
+# Action authorization & permissions configuration
+permissions:
+  default_stance: "deny"
+  confirmation_handler: "console"
+  rules:
+    - name: "allow_filesystem_reads"
+      decision: "allow"
+      priority: 100
+      tool_pattern: "read_file"
+      source: "builtin"
+      risk_level: "read_only"
+
+    - name: "allow_filesystem_list"
+      decision: "allow"
+      priority: 100
+      tool_pattern: "list_directory"
+      source: "builtin"
+      risk_level: "read_only"
+
+    - name: "allow_filesystem_search"
+      decision: "allow"
+      priority: 100
+      tool_pattern: "search_files"
+      source: "builtin"
+      risk_level: "read_only"
+
+    - name: "confirm_filesystem_modifications"
+      decision: "require_confirmation"
+      priority: 100
+      tool_pattern: "modify_file"
+      source: "builtin"
+      risk_level: "mutating"
+
+    - name: "confirm_filesystem_create_file"
+      decision: "require_confirmation"
+      priority: 100
+      tool_pattern: "create_file"
+      source: "builtin"
+      risk_level: "mutating"
+
+    - name: "confirm_filesystem_create_dir"
+      decision: "require_confirmation"
+      priority: 100
+      tool_pattern: "create_directory"
+      source: "builtin"
+      risk_level: "mutating"
+
+    - name: "allow_delegate_task"
+      decision: "allow"
+      priority: 100
+      tool_pattern: "delegate_task"
+      source: "builtin"
+      risk_level: "read_only"
+
+    - name: "allow_transport_find_connection"
+      decision: "allow"
+      priority: 100
+      tool_pattern: "mcp:transport_service:find_connection"
+      source: "mcp"
+      server_name: "transport_service"
+      risk_level: "read_only"
+
+    - name: "allow_transport_get_station_info"
+      decision: "allow"
+      priority: 100
+      tool_pattern: "mcp:transport_service:get_station_info"
+      source: "mcp"
+      server_name: "transport_service"
+      risk_level: "read_only"
