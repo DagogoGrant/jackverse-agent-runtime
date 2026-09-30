@@ -95,7 +95,23 @@ flowchart TD
 
 ---
 
-## 3. Core Capabilities
+## 3. JackVerse Caseworker (Governed Case Management)
+
+> *"Give it a goal or a problem. JackVerse manages the case."*
+
+**JackVerse Caseworker** is the governed, long-running case-management layer built on top of the generic JackVerse Agent Runtime. It bridges open-ended goals (such as landing a job, finding housing, or disputing charges) with deterministic execution:
+
+- **Missions & Cases**: Multi-week objectives partitioned into discrete trackable cases with rigorous state machines.
+- **Opportunity Deduplication**: Content-hash fingerprinting (`opp_v1`) to track external leads without duplicate processing.
+- **Tamper-Proof Approvals**: Cryptographically binds human authorizations to the canonical SHA-256 fingerprint (`act_fp_v1`) of the action's type and parameters.
+- **Personal Context Vault**: Stores user facts with explicit provenance, confidence scoring, sensitivity boundaries, and purpose gating.
+- **Event-Sourced Persistence**: Atomic domain mutations and `DomainEvents` committed in a single Unit-of-Work boundary over SQLite.
+
+See the complete [Caseworker Architecture Specification](docs/CASEWORKER_ARCHITECTURE.md) for full details.
+
+---
+
+## 4. Core Capabilities
 
 - **Deterministic ReAct Execution**: Autonomous reasoning loop with fail-closed bounds and step control.
 - **Fail-Safe Filesystem Containment**: Bounded workspace directory jail preventing path traversal escapes.
@@ -111,7 +127,7 @@ flowchart TD
 
 ---
 
-## 4. Execution & Tool Governance
+## 5. Execution & Tool Governance
 
 The core execution engine implements an augmented ReAct (Reasoning + Acting) loop bounded by an `ExecutionBudget`. Every iteration strictly enforces:
 - **Maximum Reasoning Turns**: Enforces finite loop guarantees.
@@ -127,7 +143,7 @@ The `Workspace` abstraction provides guaranteed directory isolation:
 
 ---
 
-## 5. Persistent Memory
+## 6. Persistent Memory
 
 JackVerse maintains state across independent agent invocations through a persistent SQLite-backed memory store.
 
@@ -149,7 +165,7 @@ To defend against indirect prompt injection via retrieved web observations or ex
 
 ---
 
-## 6. MCP Integration
+## 7. MCP Integration
 
 JackVerse supports external tool integrations via the open **Model Context Protocol (MCP)**:
 - **Transports**: Supports both standard process `stdio` and network `Streamable HTTP` transports.
@@ -163,7 +179,7 @@ To prevent distributed cascade failures when communicating with external MCP ser
 
 ---
 
-## 7. Multi-Agent Delegation
+## 8. Multi-Agent Delegation
 
 Complex workflows require specialized capabilities without privilege escalation. JackVerse provides hierarchical multi-agent delegation:
 - **Role Profiles**: Sub-agents operate under specialized profiles (e.g., `transport_specialist`, `workspace_analyst`) with restricted tool subsets.
@@ -172,7 +188,7 @@ Complex workflows require specialized capabilities without privilege escalation.
 
 ---
 
-## 8. Permissions & Human Confirmation
+## 9. Permissions & Human Confirmation
 
 Actions within JackVerse are evaluated against a declarative, priority-based `PolicyEngine`:
 - **Deterministic Evaluation**: Rules evaluate by explicit priority (highest to lowest) to reach a deterministic decision: `ALLOW`, `DENY`, or `REQUIRE_CONFIRMATION`.
@@ -181,7 +197,7 @@ Actions within JackVerse are evaluated against a declarative, priority-based `Po
 
 ---
 
-## 9. Observability
+## 10. Observability
 
 JackVerse provides comprehensive observability out of the box:
 
@@ -192,7 +208,7 @@ JackVerse provides comprehensive observability out of the box:
 
 ---
 
-## 10. Terminal Operator Console
+## 11. Terminal Operator Console
 
 JackVerse includes a high-performance terminal UI built with Textual:
 
@@ -210,7 +226,7 @@ python -m harness --tui
 
 ---
 
-## 11. Connect Your LLM
+## 12. Connect Your LLM
 
 JackVerse features a pluggable, provider-agnostic LLM interface. You can connect any OpenAI-compatible provider simply by setting environment variables in `.env` or via your shell—no code changes required.
 
@@ -327,7 +343,7 @@ Check Mode     : Live Provider Verification
 
 ---
 
-## 12. Running Locally
+## 13. Running Locally
 
 ### Prerequisites
 - Python 3.12+
@@ -366,7 +382,7 @@ Check Mode     : Live Provider Verification
 
 ---
 
-## 13. Docker / Observability Stack
+## 14. Docker / Observability Stack
 
 The canonical way to run JackVerse with full distributed tracing, metrics, and Grafana dashboards is via Docker Compose.
 
@@ -400,7 +416,7 @@ make test       # Run regression test suite inside container
 
 ---
 
-## 14. Tests
+## 15. Tests
 
 JackVerse includes an extensive test suite verifying deterministic execution, memory firewalls, multi-agent delegation, and resilience:
 
@@ -419,7 +435,7 @@ The test suite covers:
 
 ---
 
-## 15. Project Structure
+## 16. Project Structure
 
 ```text
 jackverse-agent-runtime/
@@ -432,6 +448,10 @@ jackverse-agent-runtime/
 │   ├── permissions/                   # Contextual policy engine & confirmation tokens
 │   ├── tools/                         # Filesystem containment & tool registry
 │   └── tui/                           # Textual terminal operator console
+├── src/caseworker/                    # JackVerse Caseworker product layer
+│   ├── domain/                        # Mission, Case, Opportunity, Action, Approval, Vault
+│   ├── persistence/                   # Unit-of-Work, SQLite repositories, EventStore
+│   └── services/                      # Application services (MissionService, CaseService)
 ├── tests/                             # Test suite (unit, integration, e2e)
 │   ├── unit/                          # Deterministic unit tests
 │   ├── integration/                   # Subsystem integration tests
@@ -457,7 +477,7 @@ jackverse-agent-runtime/
 
 ---
 
-## 16. Authors & Contributors
+## 17. Authors & Contributors
 
 JackVerse Agent Runtime is maintained by Grant Dagogo Jack and evolved from collaborative work on the original agent-harness implementation.
 
