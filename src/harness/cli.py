@@ -17,8 +17,9 @@ from harness.agent import (
     build_tool_catalog,
     get_standard_specialist_specs,
 )
+import dataclasses
 from harness.config import AppConfig, MCPServerConfig, load_config
-from harness.llm.client import LLMClient
+from harness.llm import LLMClient, LLMProvider, create_llm_provider, run_llm_diagnostics
 from harness.mcp import MCPClient, MCPToolAdapter
 from harness.memory import (
     BaselineAdmissionPolicy,
@@ -68,10 +69,11 @@ from harness.tools.workspace import Workspace
 
 def build_controller(
     config: AppConfig,
-    api_key: str,
+    api_key: str | None = None,
     event_bus: LifecycleEventBus | None = None,
     enable_delegation: bool = False,
     confirmation_handler: ConfirmationHandler | None = None,
+    provider: LLMProvider | None = None,
 ) -> tuple[ReActController, Workspace, ToolRegistry]:
     """Compose the production ReActController with all registered capabilities."""
     bus = event_bus if event_bus is not None else LifecycleEventBus()
@@ -116,16 +118,12 @@ def build_controller(
             adapter = MCPToolAdapter(spec, mcp_client, prefix=server_cfg.prefix)
             registry.register(adapter)
 
-    llm_client = LLMClient(
-        api_key=api_key,
-        base_url=config.llm.base_url,
-        model=config.llm.model,
-        temperature=config.llm.temperature,
-        timeout=config.llm.timeout,
-        max_retries=config.llm.max_retries,
-        retry_backoff=config.llm.retry_backoff,
-        event_bus=bus,
-    )
+    if provider is not None:
+        llm_client = provider
+    else:
+        effective_key = api_key if (api_key is not None) else config.llm.api_key
+        effective_llm_config = dataclasses.replace(config.llm, api_key=effective_key)
+        llm_client = create_llm_provider(effective_llm_config, event_bus=bus)
 
     budget = ExecutionBudget(
         max_steps=config.agent.max_steps,
@@ -297,6 +295,9 @@ def print_banner(
     print("             JACKVERSE AGENT RUNTIME")
     print("==================================================")
     print(f"Model       : {config.llm.model}")
+    print(f"LLM Provider: {config.llm.provider}")
+    print(f"LLM Base URL: {config.llm.base_url}")
+    print(f"Auth Status : {'configured (redacted)' if config.llm.api_key else 'anonymous / not required'}")
     print(f"Workspace   : {workspace.root}")
     print(f"Memory      : {mem_status}")
     if mem_enabled:
@@ -489,6 +490,9 @@ def print_config(config: AppConfig, workspace: Workspace) -> None:
 
     print("Runtime configuration:")
     print(f"  Model         : {config.llm.model}")
+    print(f"  LLM Provider  : {config.llm.provider}")
+    print(f"  LLM Base URL  : {config.llm.base_url}")
+    print(f"  Authentication: {'configured (redacted)' if config.llm.api_key else 'anonymous / not required'}")
     print(f"  Workspace     : {workspace.root}")
     print(f"  Max Steps     : {config.agent.max_steps}")
     print(f"  Memory        : {mem_status}")
@@ -527,6 +531,7 @@ def main() -> None:
         print("Usage: python -m harness [OPTIONS]")
         print("")
         print("Options:")
+        print("  doctor           Run LLM provider diagnostic and connectivity checks")
         print("  --tui, tui       Launch the Live Operator Console (Textual TUI)")
         print("  --help, -h       Show this help message and exit")
         print("")
@@ -539,23 +544,37 @@ def main() -> None:
         print("  exit             Exit the harness")
         sys.exit(0)
 
-    use_tui = any(arg in ("--tui", "tui") for arg in sys.argv[1:])
-
     load_dotenv()
-    api_key = os.environ.get("INNKUBE_API_KEY")
-    if not api_key:
-        print("Error: INNKUBE_API_KEY environment variable is not set.", file=sys.stderr)
-        print("Set it before running: export INNKUBE_API_KEY='your-key-here'", file=sys.stderr)
-        sys.exit(1)
-
     config_path = Path(
         os.environ.get("AGENT_HARNESS_CONFIG", "config/config.yaml")
     )
+
+    if any(arg == "doctor" for arg in sys.argv[1:]):
+        try:
+            config = load_config(config_path)
+        except Exception as e:
+            print(f"Error loading configuration from '{config_path}': {e}", file=sys.stderr)
+            sys.exit(1)
+        report = run_llm_diagnostics(config.llm)
+        print(report.render())
+        sys.exit(0 if report.all_passed else 1)
+
+    use_tui = any(arg in ("--tui", "tui") for arg in sys.argv[1:])
 
     try:
         config = load_config(config_path)
     except Exception as e:
         print(f"Error loading configuration from '{config_path}': {e}", file=sys.stderr)
+        sys.exit(1)
+
+    api_key = config.llm.api_key or os.environ.get("LLM_API_KEY") or os.environ.get("INNKUBE_API_KEY")
+    is_local_endpoint = any(
+        h in (config.llm.base_url or "").lower()
+        for h in ("localhost", "127.0.0.1", "::1", "host.docker.internal", "ollama")
+    )
+    if not api_key and not is_local_endpoint:
+        print("Error: LLM_API_KEY environment variable is not set.", file=sys.stderr)
+        print("Set it before running: export LLM_API_KEY='your-key-here'", file=sys.stderr)
         sys.exit(1)
 
     # Process-level observability runtime composition root

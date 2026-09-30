@@ -148,14 +148,18 @@ class HomeScreen(Container):
     def refresh_system_status(self) -> None:
         """Derive evidence-sensitive statuses without optimistic hardcoding."""
         # 1. LLM Status
-        api_key = os.environ.get("INNKUBE_API_KEY", "")
+        api_key = self.config.llm.api_key or os.environ.get("LLM_API_KEY", "") or os.environ.get("INNKUBE_API_KEY", "")
         has_runs = len(self.store.runs) > 0
         has_errors = any(r.status == "FAILED" for r in self.store.runs.values())
+        is_local = any(
+            h in (self.config.llm.base_url or "").lower()
+            for h in ("localhost", "127.0.0.1", "::1", "host.docker.internal", "ollama")
+        )
         if has_runs and not has_errors:
             llm_text = "[bold green]LLM ● READY[/bold green]"
-        elif api_key and self.config.llm.model:
+        elif self.config.llm.model and (api_key or is_local):
             llm_text = "[bold cyan]LLM ○ CONFIGURED[/bold cyan]"
-        elif not api_key:
+        elif not api_key and not is_local:
             llm_text = "[bold red]LLM ● NO_KEY[/bold red]"
         else:
             llm_text = "[bold red]LLM ● ERROR[/bold red]"

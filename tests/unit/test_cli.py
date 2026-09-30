@@ -74,7 +74,7 @@ class TestCLIAndComposition(unittest.TestCase):
                 with self.assertRaises(SystemExit) as ctx:
                     main()
             self.assertEqual(ctx.exception.code, 1)
-            self.assertIn("INNKUBE_API_KEY", stderr_capture.getvalue())
+            self.assertIn("LLM_API_KEY", stderr_capture.getvalue())
 
     def test_main_config_loading_error_exits(self) -> None:
         with patch.dict(os.environ, {"INNKUBE_API_KEY": "fake_key", "AGENT_HARNESS_CONFIG": "nonexistent_config.yaml"}):
