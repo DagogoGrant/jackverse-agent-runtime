@@ -4,6 +4,7 @@
 """
 
 from caseworker.domain import (
+    AccessDecision,
     Action,
     ActionStatus,
     ActionType,
@@ -14,7 +15,15 @@ from caseworker.domain import (
     CaseStatus,
     CaseType,
     CaseworkerError,
+    Claim,
+    ClaimStatus,
+    ClaimVerificationPolicy,
+    CompletenessResult,
+    ContextAccessPolicy,
     ContextFact,
+    ContextPackage,
+    ContextPackageBuilder,
+    ContextSource,
     DomainEvent,
     DomainValidationError,
     EntityNotFoundError,
@@ -27,6 +36,9 @@ from caseworker.domain import (
     OpportunityType,
     OptimisticLockError,
     PersistenceError,
+    ProfileCompletenessEvaluator,
+    ProfileRequirement,
+    RequirementSet,
     RiskLevel,
     SensitivityLevel,
     SourceType,
@@ -37,16 +49,33 @@ from caseworker.persistence import (
     ApprovalRepository,
     CaseRepository,
     CaseworkerUnitOfWork,
+    ClaimRepository,
     ContextRepository,
+    ContextSourceRepository,
     EventStore,
     MissionRepository,
     OpportunityRepository,
+    SQLiteActionRepository,
+    SQLiteApprovalRepository,
+    SQLiteCaseRepository,
     SQLiteCaseworkerStorage,
     SQLiteCaseworkerUnitOfWork,
+    SQLiteClaimRepository,
+    SQLiteContextRepository,
+    SQLiteContextSourceRepository,
+    SQLiteEventStore,
+    SQLiteMigrator,
+    SQLiteMissionRepository,
+    SQLiteOpportunityRepository,
 )
-from caseworker.services import CaseService, MissionService
+from caseworker.services import (
+    CaseService,
+    ClaimLedgerService,
+    ContextVaultService,
+    MissionService,
+)
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 
 __all__ = [
     # Domain entities & aggregates
@@ -55,7 +84,10 @@ __all__ = [
     "Opportunity",
     "Action",
     "Approval",
+    "ContextSource",
     "ContextFact",
+    "Claim",
+    "ContextPackage",
     "DomainEvent",
     # Enums
     "MissionStatus",
@@ -71,6 +103,16 @@ __all__ = [
     "SourceType",
     "VerificationStatus",
     "SensitivityLevel",
+    "ClaimStatus",
+    # Policies & Evaluators
+    "ContextAccessPolicy",
+    "AccessDecision",
+    "ClaimVerificationPolicy",
+    "ContextPackageBuilder",
+    "ProfileRequirement",
+    "RequirementSet",
+    "CompletenessResult",
+    "ProfileCompletenessEvaluator",
     # Errors
     "CaseworkerError",
     "EntityNotFoundError",
@@ -79,18 +121,34 @@ __all__ = [
     "DomainValidationError",
     "ApprovalValidationError",
     "PersistenceError",
-    # Persistence
+    # Persistence Protocols
     "MissionRepository",
     "CaseRepository",
     "OpportunityRepository",
     "ActionRepository",
     "ApprovalRepository",
+    "ContextSourceRepository",
     "ContextRepository",
+    "ClaimRepository",
     "EventStore",
     "CaseworkerUnitOfWork",
+    # Migration & Storage
+    "SQLiteMigrator",
     "SQLiteCaseworkerStorage",
     "SQLiteCaseworkerUnitOfWork",
+    "SQLiteMissionRepository",
+    "SQLiteCaseRepository",
+    "SQLiteOpportunityRepository",
+    "SQLiteActionRepository",
+    "SQLiteApprovalRepository",
+    "SQLiteContextSourceRepository",
+    "SQLiteContextRepository",
+    "SQLiteClaimRepository",
+    "SQLiteEventStore",
     # Services
     "MissionService",
     "CaseService",
+    "ContextVaultService",
+    "ClaimLedgerService",
 ]
+
