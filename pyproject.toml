@@ -1,0 +1,32 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "agent-harness"
+version = "0.1.0"
+description = "AI Agent Evaluation Harness"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "openai",
+    "PyYAML",
+    "python-dotenv",
+    "mcp==2.1.1",
+    "httpx",
+    "httpx2>=2.12.0",
+    "torch",
+    "sentence-transformers",
+    "prometheus-client==0.26.0",
+    "opentelemetry-api==1.44.0",
+    "opentelemetry-sdk==1.44.0",
+    "opentelemetry-exporter-otlp-proto-http==1.44.0",
+    "rich>=14.0.0",
+    "textual>=8.0.0",
+]
+
+[project.scripts]
+agent-harness = "harness.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/harness"]
