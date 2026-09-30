@@ -304,7 +304,7 @@ The test suite covers:
 ## 14. Project Structure
 
 ```text
-agent-harness/
+jackverse-agent-runtime/
 ├── src/harness/                       # Core JackVerse Agent Runtime package
 │   ├── agent/                         # ReAct controller, delegation, budgets
 │   ├── engine/                        # LLM client & tool argument parsing
@@ -343,7 +343,7 @@ agent-harness/
 
 JackVerse Agent Runtime is maintained by Grant Dagogo Jack and evolved from collaborative work on the original agent-harness implementation.
 
-- **Grant Dagogo Jack** — Lead Architecture, Multi-Agent Runtime & Observability ([GitHub](https://github.com/grantjackdagogo))
+- **Grant Dagogo Jack** — Lead Architecture, Multi-Agent Runtime & Observability ([GitHub](https://github.com/DagogoGrant))
 
 For detailed operational walkthroughs and architecture specifications, consult:
 - [`docs/OPERATOR_GUIDE.md`](docs/OPERATOR_GUIDE.md) — Operational runbook and screen walkthrough.
