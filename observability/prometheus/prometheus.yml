@@ -1,0 +1,13 @@
+global:
+  scrape_interval: 1s
+  scrape_timeout: 500ms
+  evaluation_interval: 5s
+
+scrape_configs:
+  - job_name: "agent-harness"
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["harness:9101"]
+        labels:
+          app: "agent-harness"
+          env: "lab"
