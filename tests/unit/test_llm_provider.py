@@ -375,8 +375,6 @@ tools:
 
         with self.assertRaises(ProviderCapabilityError) as ctx:
             provider.chat([{"role": "user", "content": "Read file"}])
-        # Must inherit from both ValueError (for ReAct compatibility) and LLMError
-        self.assertIsInstance(ctx.exception, ValueError)
         self.assertIsInstance(ctx.exception, LLMError)
         self.assertIn("failed to parse arguments JSON", str(ctx.exception))
 

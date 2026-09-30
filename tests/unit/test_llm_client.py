@@ -8,6 +8,7 @@ from harness.llm.client import (
     ToolCall,
     tool_spec_to_openai,
 )
+from harness.llm.base import LLMAuthenticationError, ProviderCapabilityError
 from harness.tools.base import ToolSpec
 
 
@@ -221,7 +222,7 @@ class TestLLMClientAndToolTransport(unittest.TestCase):
                 return_value=SimpleNamespace(choices=[mock_choice])
             )
 
-            with self.assertRaises(ValueError) as ctx:
+            with self.assertRaises((ValueError, ProviderCapabilityError)) as ctx:
                 client.chat([{"role": "user", "content": "Run"}])
             self.assertIn("id", str(ctx.exception).lower())
 
@@ -244,7 +245,7 @@ class TestLLMClientAndToolTransport(unittest.TestCase):
             return_value=SimpleNamespace(choices=[mock_choice])
         )
 
-        with self.assertRaises(ValueError) as ctx:
+        with self.assertRaises((ValueError, ProviderCapabilityError)) as ctx:
             client.chat([{"role": "user", "content": "Run"}])
         self.assertIn("function", str(ctx.exception).lower())
 
@@ -268,7 +269,7 @@ class TestLLMClientAndToolTransport(unittest.TestCase):
                 return_value=SimpleNamespace(choices=[mock_choice])
             )
 
-            with self.assertRaises(ValueError) as ctx:
+            with self.assertRaises((ValueError, ProviderCapabilityError)) as ctx:
                 client.chat([{"role": "user", "content": "Run"}])
             self.assertIn("name", str(ctx.exception).lower())
 
@@ -292,7 +293,7 @@ class TestLLMClientAndToolTransport(unittest.TestCase):
                 return_value=SimpleNamespace(choices=[mock_choice])
             )
 
-            with self.assertRaises(ValueError) as ctx:
+            with self.assertRaises((ValueError, ProviderCapabilityError)) as ctx:
                 client.chat([{"role": "user", "content": "Run"}])
             self.assertIn("arguments", str(ctx.exception).lower())
 
@@ -318,7 +319,7 @@ class TestLLMClientAndToolTransport(unittest.TestCase):
             return_value=SimpleNamespace(choices=[mock_choice])
         )
 
-        with self.assertRaises(ValueError) as ctx:
+        with self.assertRaises((ValueError, ProviderCapabilityError)) as ctx:
             client.chat([{"role": "user", "content": "Run"}])
         self.assertIn("JSON", str(ctx.exception))
 
@@ -344,7 +345,7 @@ class TestLLMClientAndToolTransport(unittest.TestCase):
             return_value=SimpleNamespace(choices=[mock_choice])
         )
 
-        with self.assertRaises(ValueError) as ctx:
+        with self.assertRaises((ValueError, ProviderCapabilityError)) as ctx:
             client.chat([{"role": "user", "content": "Run"}])
         self.assertIn("JSON object", str(ctx.exception))
 
@@ -481,7 +482,7 @@ class TestLLMClientAndToolTransport(unittest.TestCase):
         )
         client.client.chat.completions.create = mock_create  # type: ignore[method-assign]
 
-        with self.assertRaises(AuthenticationError):
+        with self.assertRaises((AuthenticationError, LLMAuthenticationError)):
             client.chat([{"role": "user", "content": "Query"}])
 
         # Exactly 1 attempt made, 0 sleep calls

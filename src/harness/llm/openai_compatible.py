@@ -180,8 +180,7 @@ class OpenAICompatibleProvider:
                     break
                 except AuthenticationError as e:
                     raise LLMAuthenticationError(
-                        f"Authentication failed for provider at '{self.base_url}': {e}",
-                        original_error=e,
+                        f"Authentication failed for provider at '{self.base_url}': {e}"
                     ) from e
                 except TRANSIENT_LLM_ERRORS as e:
                     if attempts >= max_attempts:
