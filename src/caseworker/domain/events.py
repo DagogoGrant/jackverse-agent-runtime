@@ -288,3 +288,154 @@ def make_context_fact_updated_event(
         user_id=user_id,
         payload=payload,
     )
+
+
+def make_context_source_registered_event(
+    source_id: str,
+    user_id: str,
+    aggregate_version: int,
+    source_type: str,
+    title: str,
+) -> DomainEvent:
+    return DomainEvent(
+        event_type="context.source_registered",
+        aggregate_type="context_source",
+        aggregate_id=source_id,
+        aggregate_version=aggregate_version,
+        user_id=user_id,
+        payload={"source_id": source_id, "source_type": source_type, "title": title},
+    )
+
+
+def make_context_fact_verified_event(
+    fact_id: str,
+    user_id: str,
+    aggregate_version: int,
+    status: str,
+) -> DomainEvent:
+    return DomainEvent(
+        event_type="context.fact_verified",
+        aggregate_type="context_fact",
+        aggregate_id=fact_id,
+        aggregate_version=aggregate_version,
+        user_id=user_id,
+        payload={"fact_id": fact_id, "verification_status": status},
+    )
+
+
+def make_context_fact_superseded_event(
+    fact_id: str,
+    user_id: str,
+    aggregate_version: int,
+    superseded_by_fact_id: str,
+) -> DomainEvent:
+    return DomainEvent(
+        event_type="context.fact_superseded",
+        aggregate_type="context_fact",
+        aggregate_id=fact_id,
+        aggregate_version=aggregate_version,
+        user_id=user_id,
+        payload={"fact_id": fact_id, "superseded_by_fact_id": superseded_by_fact_id},
+    )
+
+
+def make_context_fact_rejected_event(
+    fact_id: str,
+    user_id: str,
+    aggregate_version: int,
+    reason: str | None = None,
+) -> DomainEvent:
+    return DomainEvent(
+        event_type="context.fact_rejected",
+        aggregate_type="context_fact",
+        aggregate_id=fact_id,
+        aggregate_version=aggregate_version,
+        user_id=user_id,
+        payload={"fact_id": fact_id, "reason": reason},
+    )
+
+
+def make_context_access_granted_event(
+    user_id: str,
+    purpose: str,
+    fact_ids: list[str],
+    namespaces: list[str],
+) -> DomainEvent:
+    return DomainEvent(
+        event_type="context.access_granted",
+        aggregate_type="context_vault",
+        aggregate_id=user_id,
+        aggregate_version=1,
+        user_id=user_id,
+        payload={
+            "purpose": purpose,
+            "accessed_fact_ids": fact_ids,
+            "namespaces": namespaces,
+        },
+    )
+
+
+def make_context_access_denied_event(
+    user_id: str,
+    purpose: str,
+    fact_id: str,
+    reason: str,
+) -> DomainEvent:
+    return DomainEvent(
+        event_type="context.access_denied",
+        aggregate_type="context_vault",
+        aggregate_id=user_id,
+        aggregate_version=1,
+        user_id=user_id,
+        payload={"purpose": purpose, "fact_id": fact_id, "reason": reason},
+    )
+
+
+def make_claim_proposed_event(
+    claim_id: str,
+    user_id: str,
+    aggregate_version: int,
+    purpose: str,
+    text: str,
+    supporting_fact_ids: list[str],
+    case_id: str | None = None,
+    mission_id: str | None = None,
+) -> DomainEvent:
+    return DomainEvent(
+        event_type="claim.proposed",
+        aggregate_type="claim",
+        aggregate_id=claim_id,
+        aggregate_version=aggregate_version,
+        user_id=user_id,
+        payload={
+            "claim_id": claim_id,
+            "purpose": purpose,
+            "text": text,
+            "supporting_fact_ids": supporting_fact_ids,
+            "case_id": case_id,
+            "mission_id": mission_id,
+        },
+    )
+
+
+def make_claim_status_changed_event(
+    claim_id: str,
+    user_id: str,
+    aggregate_version: int,
+    old_status: str,
+    new_status: str,
+    reason: str | None = None,
+) -> DomainEvent:
+    return DomainEvent(
+        event_type=f"claim.{new_status}",
+        aggregate_type="claim",
+        aggregate_id=claim_id,
+        aggregate_version=aggregate_version,
+        user_id=user_id,
+        payload={
+            "claim_id": claim_id,
+            "old_status": old_status,
+            "new_status": new_status,
+            "reason": reason,
+        },
+    )

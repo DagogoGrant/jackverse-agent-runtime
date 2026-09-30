@@ -165,14 +165,33 @@ class ApprovalStatus(StrEnum):
         )
 
 
+class ClaimStatus(StrEnum):
+    """Lifecycle states for factual claims in the Claim Ledger."""
+
+    PROPOSED = "proposed"
+    SUPPORTED = "supported"
+    UNSUPPORTED = "unsupported"
+    CONFLICTED = "conflicted"
+    REJECTED = "rejected"
+    EXPIRED = "expired"
+
+    @property
+    def is_terminal(self) -> bool:
+        return self in (ClaimStatus.REJECTED, ClaimStatus.EXPIRED)
+
+
 class SourceType(StrEnum):
-    """Provenance origin of personal context facts."""
+    """Provenance origin of personal context facts and sources."""
 
     USER_INPUT = "user_input"
-    USER_UPLOAD = "user_upload"
     DOCUMENT = "document"
-    THIRD_PARTY_VERIFIER = "third_party_verifier"
+    PROFILE_IMPORT = "profile_import"
+    SYSTEM_DERIVED = "system_derived"
     AGENT_INFERENCE = "agent_inference"
+    THIRD_PARTY = "third_party"
+    # Backwards-compatible aliases with Milestone 1
+    USER_UPLOAD = "user_upload"
+    THIRD_PARTY_VERIFIER = "third_party_verifier"
     SYSTEM = "system"
 
 

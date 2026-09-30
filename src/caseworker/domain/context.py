@@ -16,12 +16,13 @@ from caseworker.domain.types import ensure_utc, from_iso_utc, now_utc, to_iso_ut
 class ContextFact:
     """A durable item of personal context (e.g. bio, education, preferences, constraints).
 
-    Addenda Invariants:
-    - Provenance: explicit `source_type` (SourceType enum) and optional `source_reference`.
+    Milestone 2 Invariants:
+    - Provenance: explicit `source_type` (SourceType enum), optional `source_reference`, and optional `source_id` referencing a ContextSource.
     - Confidence: float (0.0 to 1.0), decoupled from `verification_status`.
-    - Verification: `verification_status` (VerificationStatus enum: UNVERIFIED, USER_VERIFIED, etc.).
+    - Verification: `verification_status` (VerificationStatus enum: UNVERIFIED, USER_VERIFIED, SOURCE_VERIFIED, REJECTED).
     - Privacy & Gating: `sensitivity` (SensitivityLevel enum) and `allowed_purposes` list.
     - Historical Lineage: When superseded, facts are preserved with `superseded_by_fact_id` and `superseded_at`.
+    - Safe Display: Values marked SENSITIVE are redacted from `__repr__` and `to_safe_dict()` to prevent credential or PII leaks in logs.
     """
 
     user_id: str
@@ -31,8 +32,10 @@ class ContextFact:
     fact_id: str = field(default_factory=lambda: str(uuid.uuid4()))
     source_type: SourceType = SourceType.USER_INPUT
     source_reference: str = ""
+    source_id: str | None = None
     confidence: float = 1.0
     verification_status: VerificationStatus = VerificationStatus.UNVERIFIED
+    rejection_reason: str | None = None
     sensitivity: SensitivityLevel = SensitivityLevel.PERSONAL
     allowed_purposes: list[str] = field(default_factory=list)
     created_at: datetime = field(default_factory=now_utc)
@@ -74,29 +77,59 @@ class ContextFact:
 
     @property
     def is_active(self) -> bool:
-        """Check whether the fact is currently active (not superseded and not expired)."""
-        if self.superseded_by_fact_id is not None:
+        """Check whether the fact is currently active (not superseded, not expired, and not rejected)."""
+        if self.is_superseded:
             return False
-        if self.expires_at is not None and now_utc() > self.expires_at:
+        if self.is_rejected:
+            return False
+        if self.is_expired:
             return False
         return True
+
+    @property
+    def is_expired(self) -> bool:
+        """Check whether the fact has expired."""
+        return self.expires_at is not None and now_utc() > self.expires_at
+
+    @property
+    def is_superseded(self) -> bool:
+        """Check whether the fact has been superseded by a newer fact."""
+        return self.superseded_by_fact_id is not None
+
+    @property
+    def is_rejected(self) -> bool:
+        """Check whether the fact has been explicitly rejected."""
+        return self.verification_status == VerificationStatus.REJECTED
 
     def is_valid_for_purpose(self, purpose: str) -> bool:
         """Evaluate purpose-based access gating."""
         if not purpose or not purpose.strip():
             return False
+        if not self.is_active:
+            return False
         if self.sensitivity == SensitivityLevel.PUBLIC:
             return True
         if not self.allowed_purposes:
-            # Empty list means unrestricted within user boundary
-            return True
+            # If not explicitly restricted, allowed within user domain unless SENSITIVE
+            return self.sensitivity != SensitivityLevel.SENSITIVE
         return purpose.strip().lower() in [p.strip().lower() for p in self.allowed_purposes]
 
     def verify(self, status: VerificationStatus = VerificationStatus.USER_VERIFIED) -> None:
         """Update verification status with timestamp update and version bump."""
         if isinstance(status, str) and not isinstance(status, VerificationStatus):
             status = VerificationStatus(status)
+        if status == VerificationStatus.REJECTED:
+            self.reject("Verified as rejected.")
+            return
         self.verification_status = status
+        self.rejection_reason = None
+        self.updated_at = now_utc()
+        self.version += 1
+
+    def reject(self, reason: str | None = None) -> None:
+        """Mark this fact as rejected with an optional explanation."""
+        self.verification_status = VerificationStatus.REJECTED
+        self.rejection_reason = reason
         self.updated_at = now_utc()
         self.version += 1
 
@@ -114,7 +147,7 @@ class ContextFact:
         self.version += 1
 
     def to_dict(self) -> dict[str, Any]:
-        """Serialize ContextFact to a JSON-compatible dictionary."""
+        """Serialize ContextFact to a JSON-compatible dictionary for internal storage."""
         return {
             "fact_id": self.fact_id,
             "user_id": self.user_id,
@@ -123,8 +156,10 @@ class ContextFact:
             "value": self.value,
             "source_type": self.source_type.value,
             "source_reference": self.source_reference,
+            "source_id": self.source_id,
             "confidence": self.confidence,
             "verification_status": self.verification_status.value,
+            "rejection_reason": self.rejection_reason,
             "sensitivity": self.sensitivity.value,
             "allowed_purposes": list(self.allowed_purposes),
             "created_at": to_iso_utc(self.created_at),
@@ -135,9 +170,26 @@ class ContextFact:
             "version": self.version,
         }
 
+    def to_safe_dict(self) -> dict[str, Any]:
+        """Serialize ContextFact for safe display/logging, redacting sensitive values."""
+        d = self.to_dict()
+        if self.sensitivity == SensitivityLevel.SENSITIVE:
+            d["value"] = "[REDACTED]"
+            d["source_reference"] = "[REDACTED]"
+        return d
+
+    def __repr__(self) -> str:
+        val_display = "[REDACTED]" if self.sensitivity == SensitivityLevel.SENSITIVE else repr(self.value)
+        return (
+            f"ContextFact(fact_id={self.fact_id!r}, user_id={self.user_id!r}, "
+            f"namespace={self.namespace!r}, key={self.key!r}, value={val_display}, "
+            f"status={self.verification_status.value!r}, sensitivity={self.sensitivity.value!r}, "
+            f"active={self.is_active}, version={self.version})"
+        )
+
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> ContextFact:
-        """Reconstruct ContextFact from serialized dictionary."""
+        """Reconstruct ContextFact from serialized dictionary with backwards compatibility."""
         return cls(
             fact_id=data["fact_id"],
             user_id=data["user_id"],
@@ -146,8 +198,10 @@ class ContextFact:
             value=data["value"],
             source_type=SourceType(data["source_type"]),
             source_reference=data.get("source_reference", ""),
+            source_id=data.get("source_id"),
             confidence=float(data.get("confidence", 1.0)),
             verification_status=VerificationStatus(data["verification_status"]),
+            rejection_reason=data.get("rejection_reason"),
             sensitivity=SensitivityLevel(data["sensitivity"]),
             allowed_purposes=list(data.get("allowed_purposes") or []),
             created_at=from_iso_utc(data["created_at"]) or now_utc(),
