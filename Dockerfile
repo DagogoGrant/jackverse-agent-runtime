@@ -31,9 +31,8 @@ COPY config/ ./config
 COPY tests/ ./tests
 COPY scripts/ ./scripts
 
-# Copy documentation and daily reports
+# Copy documentation
 COPY docs/ ./docs
-COPY daily_reports/ ./daily_reports/
 
 # Create workspace and sandbox directory
 RUN mkdir -p /app/workspace/mcp_external_demo
