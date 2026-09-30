@@ -1,10 +1,15 @@
 from collections.abc import Mapping
 from dataclasses import dataclass, field
+import json
 import os
 from pathlib import Path
 from typing import Any
 import urllib.parse
 import yaml
+
+
+class ConfigurationError(ValueError):
+    """Raised when application or subsystem configuration is invalid or missing."""
 
 
 @dataclass(frozen=True)
@@ -49,14 +54,17 @@ class AgentConfig:
 
 @dataclass(frozen=True)
 class LLMConfig:
-    """Configuration for LLM client communication."""
+    """Configuration for LLM client/provider communication."""
 
     base_url: str
     model: str
     temperature: float
+    provider: str = "openai_compatible"
+    api_key: str | None = None
     timeout: float = 30.0
     max_retries: int = 2
     retry_backoff: float = 0.5
+    extra_headers: dict[str, str] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -434,49 +442,108 @@ def load_config(path: str | Path) -> AppConfig:
 
     # Validate LLM section
     if "llm" not in data or not isinstance(data["llm"], dict):
-        raise ValueError(f"Missing or invalid required section 'llm' in configuration file '{config_path}'.")
+        raise ConfigurationError(f"Missing or invalid required section 'llm' in configuration file '{config_path}'.")
 
     llm_data = data["llm"]
-    for field in ("base_url", "model", "temperature"):
-        if field not in llm_data:
-            raise ValueError(f"Missing required field '{field}' in 'llm' configuration section.")
 
-    base_url = str(llm_data["base_url"]).strip()
-    if not base_url:
-        raise ValueError("Field 'llm.base_url' cannot be empty.")
+    # Provider (environment variable > config YAML > default: openai_compatible)
+    raw_provider = os.environ.get("LLM_PROVIDER", llm_data.get("provider", "openai_compatible"))
+    if not isinstance(raw_provider, str) or not raw_provider.strip():
+        raise ConfigurationError("Field 'llm.provider' cannot be empty.")
+    llm_provider = raw_provider.strip().lower()
 
-    model = str(llm_data["model"]).strip()
-    if not model:
-        raise ValueError("Field 'llm.model' cannot be empty.")
+    # Base URL (environment variable > config YAML)
+    raw_base_url = os.environ.get("LLM_BASE_URL", llm_data.get("base_url"))
+    if raw_base_url is None or not str(raw_base_url).strip():
+        raise ConfigurationError("Missing required field 'base_url' in 'llm' configuration section. Set LLM_BASE_URL in .env or config.")
+    base_url = str(raw_base_url).strip()
+    parsed_base = urllib.parse.urlsplit(base_url)
+    if parsed_base.scheme not in ("http", "https"):
+        raise ConfigurationError(f"Field 'llm.base_url' must start with 'http://' or 'https://', got '{base_url}'.")
 
-    try:
-        temperature = float(llm_data["temperature"])
-    except (ValueError, TypeError) as e:
-        raise ValueError(f"Invalid temperature value '{llm_data['temperature']}', must be a valid float.") from e
+    # Model (environment variable > config YAML)
+    raw_model = os.environ.get("LLM_MODEL", llm_data.get("model"))
+    if raw_model is None or not str(raw_model).strip():
+        raise ConfigurationError("Missing required field 'model' in 'llm' configuration section. Set LLM_MODEL in .env or config.")
+    model = str(raw_model).strip()
 
-    # Timeout validation (optional with default 30.0)
-    raw_timeout = llm_data.get("timeout", 30.0)
+    # Temperature (environment variable > config YAML)
+    raw_temp = os.environ.get("LLM_TEMPERATURE")
+    if raw_temp is not None:
+        try:
+            temperature = float(raw_temp)
+        except (ValueError, TypeError) as e:
+            raise ConfigurationError(f"Invalid temperature value '{raw_temp}', must be a valid float.") from e
+    else:
+        if "temperature" not in llm_data:
+            raise ConfigurationError("Missing required field 'temperature' in 'llm' configuration section.")
+        try:
+            temperature = float(llm_data["temperature"])
+        except (ValueError, TypeError) as e:
+            raise ConfigurationError(f"Invalid temperature value '{llm_data['temperature']}', must be a valid float.") from e
+
+    # API key (optional at type level: environment variable > api_key_env > INNKUBE_API_KEY fallback > config YAML)
+    api_key_env_var = str(llm_data.get("api_key_env", "LLM_API_KEY")).strip()
+    api_key: str | None = (
+        os.environ.get("LLM_API_KEY")
+        or (os.environ.get(api_key_env_var) if api_key_env_var else None)
+        or os.environ.get("INNKUBE_API_KEY")
+        or llm_data.get("api_key")
+    )
+    if api_key is not None:
+        api_key = str(api_key).strip()
+
+    # Timeout (environment variable > config YAML > default 30.0)
+    raw_timeout = os.environ.get(
+        "LLM_TIMEOUT_SECONDS",
+        os.environ.get("LLM_TIMEOUT", llm_data.get("timeout_seconds", llm_data.get("timeout", 30.0))),
+    )
     try:
         timeout = float(raw_timeout)
         if timeout <= 0.0:
-            raise ValueError("Field 'llm.timeout' must be a positive number (> 0).")
+            raise ConfigurationError("Field 'llm.timeout' must be a positive number (> 0).")
     except (ValueError, TypeError) as e:
-        raise ValueError(f"Invalid timeout value '{raw_timeout}': {e}") from e
+        raise ConfigurationError(f"Invalid timeout value '{raw_timeout}': {e}") from e
 
-    # Max retries validation (optional with default 2)
-    raw_max_retries = llm_data.get("max_retries", 2)
-    if isinstance(raw_max_retries, bool) or not isinstance(raw_max_retries, int) or raw_max_retries < 0:
-        raise ValueError("Field 'llm.max_retries' must be a non-negative integer (>= 0).")
-    max_retries = raw_max_retries
+    # Max retries (environment variable > config YAML > default 2)
+    raw_max_retries = os.environ.get("LLM_MAX_RETRIES", llm_data.get("max_retries", 2))
+    if isinstance(raw_max_retries, bool):
+        raise ConfigurationError("Field 'llm.max_retries' must be a non-negative integer (>= 0).")
+    try:
+        max_retries = int(raw_max_retries)
+        if max_retries < 0:
+            raise ConfigurationError("Field 'llm.max_retries' must be a non-negative integer (>= 0).")
+    except (ValueError, TypeError) as e:
+        raise ConfigurationError(f"Invalid max_retries value '{raw_max_retries}': {e}") from e
 
-    # Retry backoff validation (optional with default 0.5)
-    raw_retry_backoff = llm_data.get("retry_backoff", 0.5)
+    # Retry backoff (environment variable > config YAML > default 0.5)
+    raw_retry_backoff = os.environ.get("LLM_RETRY_BACKOFF", llm_data.get("retry_backoff", 0.5))
     try:
         retry_backoff = float(raw_retry_backoff)
         if retry_backoff < 0.0:
-            raise ValueError("Field 'llm.retry_backoff' must be a non-negative number (>= 0).")
+            raise ConfigurationError("Field 'llm.retry_backoff' must be a non-negative number (>= 0).")
     except (ValueError, TypeError) as e:
-        raise ValueError(f"Invalid retry_backoff value '{raw_retry_backoff}': {e}") from e
+        raise ConfigurationError(f"Invalid retry_backoff value '{raw_retry_backoff}': {e}") from e
+
+    # Extra headers (config YAML merged with LLM_EXTRA_HEADERS JSON env var)
+    extra_headers: dict[str, str] = {}
+    yaml_headers = llm_data.get("extra_headers", {})
+    if isinstance(yaml_headers, dict):
+        extra_headers.update({str(k): str(v) for k, v in yaml_headers.items()})
+    elif yaml_headers is not None:
+        raise ConfigurationError("Field 'llm.extra_headers' must be a dictionary in configuration.")
+
+    env_headers = os.environ.get("LLM_EXTRA_HEADERS")
+    if env_headers:
+        try:
+            parsed_headers = json.loads(env_headers)
+            if not isinstance(parsed_headers, dict):
+                raise ConfigurationError(
+                    f"Field 'LLM_EXTRA_HEADERS' must be a valid JSON dictionary, got {type(parsed_headers).__name__}."
+                )
+            extra_headers.update({str(k): str(v) for k, v in parsed_headers.items()})
+        except json.JSONDecodeError as e:
+            raise ConfigurationError(f"Invalid JSON in LLM_EXTRA_HEADERS: {e}") from e
 
     # Validate Tools section
     if "tools" not in data or not isinstance(data["tools"], dict):
@@ -1070,12 +1137,15 @@ def load_config(path: str | Path) -> AppConfig:
             max_observation_chars=max_observation_chars,
         ),
         llm=LLMConfig(
+            provider=llm_provider,
             base_url=base_url,
             model=model,
             temperature=temperature,
+            api_key=api_key,
             timeout=timeout,
             max_retries=max_retries,
             retry_backoff=retry_backoff,
+            extra_headers=extra_headers,
         ),
         tools=ToolsConfig(
             workspace_root=workspace_root,

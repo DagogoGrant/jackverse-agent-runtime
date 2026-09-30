@@ -1,12 +1,14 @@
-# agent-harness configuration for Docker Compose deployment
+# JackVerse Agent Runtime configuration for Docker Compose deployment
 # Uses Streamable HTTP for transport_service container and stdio for filesystem_server
 
 agent:
   max_steps: 10
 
 llm:
-  base_url: "https://llms.innkube.fim.uni-passau.de"
-  model: "qwen-agentworld-35b-a3b"
+  provider: "openai_compatible"
+  base_url: "https://api.openai.com/v1"
+  api_key_env: "LLM_API_KEY"
+  model: "gpt-4.1-mini"
   temperature: 0.0
   timeout: 30.0
   max_retries: 2
