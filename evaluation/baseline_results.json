@@ -1,0 +1,218 @@
+[
+  {
+    "task_id": 1,
+    "name": "create_directory_and_create_file",
+    "success": true,
+    "steps": 2,
+    "tool_calls": 2,
+    "invalid_tool_calls": 0,
+    "duration_seconds": 0.0008,
+    "termination_reason": "FINAL_ANSWER",
+    "error_classification": null,
+    "filesystem_state": {
+      "docs_exists": true,
+      "file_exists": true
+    },
+    "notes": "Standard 2-step directory and file creation."
+  },
+  {
+    "task_id": 2,
+    "name": "list_directory_and_read_file",
+    "success": true,
+    "steps": 2,
+    "tool_calls": 2,
+    "invalid_tool_calls": 0,
+    "duration_seconds": 0.0005,
+    "termination_reason": "FINAL_ANSWER",
+    "error_classification": null,
+    "filesystem_state": {
+      "file_intact": true
+    },
+    "notes": "Read-only multi-tool discovery and inspection."
+  },
+  {
+    "task_id": 3,
+    "name": "search_file_and_create_output",
+    "success": true,
+    "steps": 2,
+    "tool_calls": 2,
+    "invalid_tool_calls": 0,
+    "duration_seconds": 0.001,
+    "termination_reason": "FINAL_ANSWER",
+    "error_classification": null,
+    "filesystem_state": {
+      "output_created": true
+    },
+    "notes": "E2E extraction scenario requested by TA."
+  },
+  {
+    "task_id": 4,
+    "name": "modify_file_unique_match",
+    "success": true,
+    "steps": 1,
+    "tool_calls": 1,
+    "invalid_tool_calls": 0,
+    "duration_seconds": 0.0004,
+    "termination_reason": "FINAL_ANSWER",
+    "error_classification": null,
+    "filesystem_state": {
+      "modified_correctly": true
+    },
+    "notes": "Standard single-occurrence substitution."
+  },
+  {
+    "task_id": 5,
+    "name": "modify_file_zero_matches",
+    "success": true,
+    "steps": 1,
+    "tool_calls": 1,
+    "invalid_tool_calls": 0,
+    "duration_seconds": 0.0003,
+    "termination_reason": "FINAL_ANSWER",
+    "error_classification": "NOT_FOUND (string only)",
+    "filesystem_state": {
+      "unmodified": true
+    },
+    "notes": "Rejection of non-existent target text."
+  },
+  {
+    "task_id": 6,
+    "name": "modify_file_ambiguous_matches",
+    "success": true,
+    "steps": 1,
+    "tool_calls": 1,
+    "invalid_tool_calls": 0,
+    "duration_seconds": 0.0003,
+    "termination_reason": "FINAL_ANSWER",
+    "error_classification": "AMBIGUOUS (string only)",
+    "filesystem_state": {
+      "file_unaltered": true
+    },
+    "notes": "Ambiguity rejection due to non-unique match."
+  },
+  {
+    "task_id": 7,
+    "name": "invalid_path_traversal_blocked",
+    "success": true,
+    "steps": 1,
+    "tool_calls": 1,
+    "invalid_tool_calls": 0,
+    "duration_seconds": 0.0002,
+    "termination_reason": "FINAL_ANSWER",
+    "error_classification": "BOUNDARY_VIOLATION (string only)",
+    "filesystem_state": {},
+    "notes": "Strict workspace containment prevents directory traversal."
+  },
+  {
+    "task_id": 8,
+    "name": "symlink_escape_blocked",
+    "success": true,
+    "steps": 1,
+    "tool_calls": 1,
+    "invalid_tool_calls": 0,
+    "duration_seconds": 0.0003,
+    "termination_reason": "FINAL_ANSWER",
+    "error_classification": "BOUNDARY_VIOLATION (string only)",
+    "filesystem_state": {},
+    "notes": "Symlinks escaping workspace root are detected and denied."
+  },
+  {
+    "task_id": 9,
+    "name": "direct_file_search",
+    "success": true,
+    "steps": 1,
+    "tool_calls": 1,
+    "invalid_tool_calls": 0,
+    "duration_seconds": 0.0004,
+    "termination_reason": "FINAL_ANSWER",
+    "error_classification": null,
+    "filesystem_state": {},
+    "notes": "Search executed directly on an individual file target."
+  },
+  {
+    "task_id": 10,
+    "name": "recursive_directory_search",
+    "success": true,
+    "steps": 1,
+    "tool_calls": 1,
+    "invalid_tool_calls": 0,
+    "duration_seconds": 0.0006,
+    "termination_reason": "FINAL_ANSWER",
+    "error_classification": null,
+    "filesystem_state": {},
+    "notes": "Recursive traversal locates nested files matching query."
+  },
+  {
+    "task_id": 11,
+    "name": "multi_tool_chained_workflow",
+    "success": true,
+    "steps": 4,
+    "tool_calls": 4,
+    "invalid_tool_calls": 0,
+    "duration_seconds": 0.0013,
+    "termination_reason": "FINAL_ANSWER",
+    "error_classification": null,
+    "filesystem_state": {
+      "final_content": "x = 42\n"
+    },
+    "notes": "Chains create_directory -> create_file -> modify_file -> read_file."
+  },
+  {
+    "task_id": 12,
+    "name": "step_limit_budget_exhaustion",
+    "success": true,
+    "steps": 10,
+    "tool_calls": 10,
+    "invalid_tool_calls": 0,
+    "duration_seconds": 0.0044,
+    "termination_reason": "STEP_BUDGET_EXCEEDED (unhandled RuntimeError)",
+    "error_classification": "STEP_LIMIT_EXCEEDED",
+    "filesystem_state": {
+      "files_created": 10
+    },
+    "notes": "Exposes baseline limitation: raises RuntimeError when exceeding max_steps=10."
+  },
+  {
+    "task_id": 13,
+    "name": "large_search_context_stress",
+    "success": true,
+    "steps": 1,
+    "tool_calls": 1,
+    "invalid_tool_calls": 0,
+    "duration_seconds": 0.0005,
+    "termination_reason": "FINAL_ANSWER",
+    "error_classification": null,
+    "filesystem_state": {
+      "char_count": 2440,
+      "line_count": 50,
+      "has_truncation_notice": false
+    },
+    "notes": "Baseline silently cuts at 50 results without truncation flag or token budget."
+  },
+  {
+    "task_id": 14,
+    "name": "malformed_argument_type_rejected",
+    "success": true,
+    "steps": 1,
+    "tool_calls": 1,
+    "invalid_tool_calls": 1,
+    "duration_seconds": 0.0,
+    "termination_reason": "FINAL_ANSWER",
+    "error_classification": "INVALID_ARGUMENT (tool-level only)",
+    "filesystem_state": {},
+    "notes": "Rejected by tool helper _extract_str, not by ToolExecutor schema boundary."
+  },
+  {
+    "task_id": 15,
+    "name": "unexpected_arguments_schema_check",
+    "success": false,
+    "steps": 1,
+    "tool_calls": 1,
+    "invalid_tool_calls": 0,
+    "duration_seconds": 0.0003,
+    "termination_reason": "FINAL_ANSWER",
+    "error_classification": "NONE (silently ignored in baseline)",
+    "filesystem_state": {},
+    "notes": "Baseline defect: ToolExecutor does not enforce additionalProperties: False, silently executing."
+  }
+]

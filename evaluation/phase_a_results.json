@@ -1,0 +1,232 @@
+[
+  {
+    "task_id": 1,
+    "name": "create_directory_and_create_file",
+    "success": true,
+    "system_behavior": "EXPECTED-SAFE",
+    "steps": 3,
+    "tool_calls": 2,
+    "invalid_tool_calls": 0,
+    "duration_seconds": 0.0007,
+    "termination_reason": "FINAL_ANSWER",
+    "error_classification": null,
+    "filesystem_state": {
+      "docs_exists": true,
+      "file_exists": true
+    },
+    "notes": "Standard 2-step directory and file creation."
+  },
+  {
+    "task_id": 2,
+    "name": "list_directory_and_read_file",
+    "success": true,
+    "system_behavior": "EXPECTED-SAFE",
+    "steps": 3,
+    "tool_calls": 2,
+    "invalid_tool_calls": 0,
+    "duration_seconds": 0.0005,
+    "termination_reason": "FINAL_ANSWER",
+    "error_classification": null,
+    "filesystem_state": {
+      "file_intact": true
+    },
+    "notes": "Read-only multi-tool discovery and inspection."
+  },
+  {
+    "task_id": 3,
+    "name": "search_file_and_create_output",
+    "success": true,
+    "system_behavior": "EXPECTED-SAFE",
+    "steps": 3,
+    "tool_calls": 2,
+    "invalid_tool_calls": 0,
+    "duration_seconds": 0.0009,
+    "termination_reason": "FINAL_ANSWER",
+    "error_classification": null,
+    "filesystem_state": {
+      "output_created": true
+    },
+    "notes": "E2E extraction scenario requested by TA."
+  },
+  {
+    "task_id": 4,
+    "name": "modify_file_unique_match",
+    "success": true,
+    "system_behavior": "EXPECTED-SAFE",
+    "steps": 2,
+    "tool_calls": 1,
+    "invalid_tool_calls": 0,
+    "duration_seconds": 0.0004,
+    "termination_reason": "FINAL_ANSWER",
+    "error_classification": null,
+    "filesystem_state": {
+      "modified_correctly": true
+    },
+    "notes": "Standard single-occurrence substitution."
+  },
+  {
+    "task_id": 5,
+    "name": "modify_file_zero_matches",
+    "success": true,
+    "system_behavior": "EXPECTED-SAFE",
+    "steps": 2,
+    "tool_calls": 1,
+    "invalid_tool_calls": 0,
+    "duration_seconds": 0.0003,
+    "termination_reason": "FINAL_ANSWER",
+    "error_classification": "NOT_FOUND",
+    "filesystem_state": {
+      "unmodified": true
+    },
+    "notes": "Rejection of non-existent target text categorized as NOT_FOUND."
+  },
+  {
+    "task_id": 6,
+    "name": "modify_file_ambiguous_matches",
+    "success": true,
+    "system_behavior": "EXPECTED-SAFE",
+    "steps": 2,
+    "tool_calls": 1,
+    "invalid_tool_calls": 0,
+    "duration_seconds": 0.0003,
+    "termination_reason": "FINAL_ANSWER",
+    "error_classification": "AMBIGUOUS",
+    "filesystem_state": {
+      "file_unaltered": true
+    },
+    "notes": "Ambiguity rejection due to non-unique match categorized as AMBIGUOUS."
+  },
+  {
+    "task_id": 7,
+    "name": "invalid_path_traversal_blocked",
+    "success": true,
+    "system_behavior": "EXPECTED-SAFE",
+    "steps": 2,
+    "tool_calls": 1,
+    "invalid_tool_calls": 0,
+    "duration_seconds": 0.0002,
+    "termination_reason": "FINAL_ANSWER",
+    "error_classification": "BOUNDARY_VIOLATION",
+    "filesystem_state": {},
+    "notes": "Strict workspace containment prevents directory traversal."
+  },
+  {
+    "task_id": 8,
+    "name": "symlink_escape_blocked",
+    "success": true,
+    "system_behavior": "EXPECTED-SAFE",
+    "steps": 2,
+    "tool_calls": 1,
+    "invalid_tool_calls": 0,
+    "duration_seconds": 0.0003,
+    "termination_reason": "FINAL_ANSWER",
+    "error_classification": "BOUNDARY_VIOLATION",
+    "filesystem_state": {},
+    "notes": "Symlinks escaping workspace root are detected and denied."
+  },
+  {
+    "task_id": 9,
+    "name": "direct_file_search",
+    "success": true,
+    "system_behavior": "EXPECTED-SAFE",
+    "steps": 2,
+    "tool_calls": 1,
+    "invalid_tool_calls": 0,
+    "duration_seconds": 0.0004,
+    "termination_reason": "FINAL_ANSWER",
+    "error_classification": null,
+    "filesystem_state": {},
+    "notes": "Search executed directly on an individual file target."
+  },
+  {
+    "task_id": 10,
+    "name": "recursive_directory_search",
+    "success": true,
+    "system_behavior": "EXPECTED-SAFE",
+    "steps": 2,
+    "tool_calls": 1,
+    "invalid_tool_calls": 0,
+    "duration_seconds": 0.0006,
+    "termination_reason": "FINAL_ANSWER",
+    "error_classification": null,
+    "filesystem_state": {},
+    "notes": "Recursive traversal locates nested files matching query."
+  },
+  {
+    "task_id": 11,
+    "name": "multi_tool_chained_workflow",
+    "success": true,
+    "system_behavior": "EXPECTED-SAFE",
+    "steps": 5,
+    "tool_calls": 4,
+    "invalid_tool_calls": 0,
+    "duration_seconds": 0.0014,
+    "termination_reason": "FINAL_ANSWER",
+    "error_classification": null,
+    "filesystem_state": {
+      "final_content": "x = 42\n"
+    },
+    "notes": "Chains create_directory -> create_file -> modify_file -> read_file."
+  },
+  {
+    "task_id": 12,
+    "name": "step_limit_budget_exhaustion",
+    "success": true,
+    "system_behavior": "EXPECTED-SAFE",
+    "steps": 10,
+    "tool_calls": 10,
+    "invalid_tool_calls": 0,
+    "duration_seconds": 0.0039,
+    "termination_reason": "STEP_BUDGET_EXCEEDED",
+    "error_classification": null,
+    "filesystem_state": {
+      "files_created": 10
+    },
+    "notes": "Phase A enhancement: terminates with clean STEP_BUDGET_EXCEEDED in RunResult."
+  },
+  {
+    "task_id": 13,
+    "name": "large_search_context_stress",
+    "success": true,
+    "system_behavior": "UNDER-SPECIFIED",
+    "steps": 2,
+    "tool_calls": 1,
+    "invalid_tool_calls": 0,
+    "duration_seconds": 0.0004,
+    "termination_reason": "FINAL_ANSWER",
+    "error_classification": null,
+    "filesystem_state": {
+      "char_count": 2440,
+      "line_count": 50
+    },
+    "notes": "Under-specified in Phase A; targeted for structured budgeting in Phase D (H8)."
+  },
+  {
+    "task_id": 14,
+    "name": "malformed_argument_type_rejected",
+    "success": true,
+    "system_behavior": "EXPECTED-SAFE",
+    "steps": 2,
+    "tool_calls": 1,
+    "invalid_tool_calls": 1,
+    "duration_seconds": 0.0,
+    "termination_reason": "FINAL_ANSWER",
+    "error_classification": "INVALID_ARGUMENT",
+    "filesystem_state": {},
+    "notes": "Enforced at ToolExecutor boundary via ToolContractValidator."
+  },
+  {
+    "task_id": 15,
+    "name": "unexpected_arguments_schema_check",
+    "success": true,
+    "system_behavior": "EXPECTED-SAFE",
+    "steps": 2,
+    "tool_calls": 1,
+    "invalid_tool_calls": 1,
+    "duration_seconds": 0.0,
+    "termination_reason": "FINAL_ANSWER",
+    "error_classification": "INVALID_ARGUMENT",
+    "filesystem_state": {},
+    "notes": "Phase A fix: ToolContractValidator rejects unexpected properties, enforcing ToolSpec."
+  }
+]

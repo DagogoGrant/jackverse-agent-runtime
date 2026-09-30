@@ -1,0 +1,95 @@
+[
+  {
+    "scenario_id": 1,
+    "name": "atomic_modify_crash_preservation",
+    "hypothesis": "H5 (Atomic Writes)",
+    "success": true,
+    "system_behavior": "EXPECTED-SAFE",
+    "steps": 2,
+    "tool_calls": 1,
+    "duration_seconds": 0.0014,
+    "termination_reason": "FINAL_ANSWER",
+    "expected_error_classification": "TRANSIENT_ERROR",
+    "actual_error_classification": "TRANSIENT_ERROR",
+    "filesystem_state": {
+      "initial_content": "max_connections=100\nport=5432\nstatus=active\n",
+      "final_content": "max_connections=100\nport=5432\nstatus=active\n",
+      "content_preserved": true,
+      "partial_write_called_twice": true,
+      "temp_files_count": 0
+    },
+    "notes": "Pre-existing file remained 100% intact after partial write and subsequent failure; empirically verified as TRANSIENT_ERROR."
+  },
+  {
+    "scenario_id": 2,
+    "name": "create_collision_no_overwrite",
+    "hypothesis": "H5 (Atomic Writes)",
+    "success": true,
+    "system_behavior": "EXPECTED-SAFE",
+    "steps": 2,
+    "tool_calls": 1,
+    "duration_seconds": 0.0017,
+    "termination_reason": "FINAL_ANSWER",
+    "expected_error_classification": "ALREADY_EXISTS",
+    "actual_error_classification": "ALREADY_EXISTS",
+    "filesystem_state": {
+      "final_content": "concurrent_writer_payload\n",
+      "content_preserved": true,
+      "temp_files_count": 0
+    },
+    "notes": "os.link atomically rejected overwrite; collision empirically returned ALREADY_EXISTS."
+  },
+  {
+    "scenario_id": 3,
+    "name": "postcondition_mismatch_detected",
+    "hypothesis": "H4 (Postcondition Verification)",
+    "success": true,
+    "system_behavior": "EXPECTED-SAFE",
+    "steps": 2,
+    "tool_calls": 1,
+    "duration_seconds": 0.001,
+    "termination_reason": "FINAL_ANSWER",
+    "expected_error_classification": "INTERNAL_ERROR",
+    "actual_error_classification": "INTERNAL_ERROR",
+    "filesystem_state": {
+      "postcondition_detected": true
+    },
+    "notes": "H4 postcondition read-back caught data divergence; empirically verified as INTERNAL_ERROR."
+  },
+  {
+    "scenario_id": 4,
+    "name": "stale_observation_conflict_rejected",
+    "hypothesis": "H6 (Conflict Detection)",
+    "success": true,
+    "system_behavior": "EXPECTED-SAFE",
+    "steps": 2,
+    "tool_calls": 1,
+    "duration_seconds": 0.0003,
+    "termination_reason": "FINAL_ANSWER",
+    "expected_error_classification": "CONFLICT",
+    "actual_error_classification": "CONFLICT",
+    "filesystem_state": {
+      "final_content": "port=80\ntimeout=60\nlog_level=debug\n",
+      "stale_mutation_rejected": true
+    },
+    "notes": "Pre-mutation hash mismatch identified external changes; empirically returned CONFLICT."
+  },
+  {
+    "scenario_id": 5,
+    "name": "versioned_mutation_clean_path",
+    "hypothesis": "H6 (Conflict Detection)",
+    "success": true,
+    "system_behavior": "EXPECTED-SAFE",
+    "steps": 3,
+    "tool_calls": 2,
+    "duration_seconds": 0.0013,
+    "termination_reason": "FINAL_ANSWER",
+    "expected_error_classification": null,
+    "actual_error_classification": null,
+    "filesystem_state": {
+      "final_content": "GET /index\nPOST /auth/login\n",
+      "succeeded": true
+    },
+    "notes": "Versioned read and atomic modification executed with full verification and zero error."
+  }
+]
