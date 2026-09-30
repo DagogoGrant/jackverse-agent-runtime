@@ -154,36 +154,93 @@ flowchart TD
    - Maintains in-memory short-term context (`self.context`).
    - Evaluates resource limits via cooperative checks against `ExecutionBudget` and `HierarchicalBudgetLedger`.
    - Directly dispatches tool requests exclusively through `ToolExecutor`.
-2. **`ToolExecutor`** (`src/harness/tools/executor.py`):
+3. **`ToolExecutor`** (`src/harness/tools/executor.py`):
    - **Authoritative, common enforcement boundary** for all tool calls across all principals (built-in filesystem tools, external MCP tools, and `DelegateTaskTool`).
    - **Per-Agent Instances with Shared Enforcement**: Every agent controller (the root orchestrator and each dynamically instantiated child specialist via `AgentFactory.create_agent()`) receives its own dedicated `ToolExecutor` object instance. Each instance maintains its own observation ceiling and execution state while delegating authorization checks to the shared `PermissionManager` and `PolicyEngine`.
    - Evaluates action authorizations through `PermissionManager` before dispatch.
    - Enforces schema validation against `ToolSpec` definitions.
    - Contains unhandled exceptions into structured `ToolResult(is_error=True)` representations.
    - Enforces the authoritative observation ceiling (`max_observation_chars`).
-3. **`PermissionManager` & `PolicyEngine`** (`src/harness/permissions/`):
+4. **`PermissionManager` & `PolicyEngine`** (`src/harness/permissions/`):
    - Evaluates permission requests under a **closed-default stance** (`ALLOW`, `DENY`, `REQUIRE_CONFIRMATION`).
    - Enforces deterministic rule precedence (priority descending, stance tie-break, declaration order).
    - Issues and validates single-use, 6-tuple digest-bound confirmation tokens (`run_id`, `call_id`, `agent_role`, `canonical_tool_identity`, `arguments_fingerprint`, `created_at`).
-4. **`SubAgentManager` & `AgentFactory`** (`src/harness/agent/delegation.py`):
+5. **`SubAgentManager` & `AgentFactory`** (`src/harness/agent/delegation.py`):
    - Manages the lifecycle, budget allocation, and context isolation for specialized sub-agents.
    - Constructs fresh, isolated `ReActController` instances with role-specific `ToolRegistry` subsets.
    - Enforces complete conversational context isolation: children receive only their system prompt and delegated task; zero parent turns or observations leak.
    - Intercepts child completion and packages only terminal text into a `ToolResult` for the parent.
-5. **`HierarchicalBudgetLedger`** (`src/harness/agent/ledger.py`):
+6. **`HierarchicalBudgetLedger`** (`src/harness/agent/ledger.py`):
    - Enforces strict capacity conservation and anti-multiplication guarantees.
    - Pre-allocates clamped budget slices to children and atomically reconciles actual consumption upon return.
-6. **Cross-Cutting Observability** (`src/harness/observability/`):
+7. **Cross-Cutting Observability** (`src/harness/observability/`):
    - Subscribes `PrometheusObserver`, `OpenTelemetryObserver`, and `StructuredLogObserver` to `LifecycleEventBus`.
    - Exposes Prometheus metrics via `/metrics` on port `9101` for scraping by Prometheus and visualization in Grafana.
    - Exports distributed traces with exact parent-child span hierarchy to Grafana Tempo on port `3200`.
    - Emits structured JSON logs correlated by `trace_id`, `run_id`, and `root_run_id` without sensitive data leakage.
-7. **`MemoryManager`** (`src/harness/memory/manager.py`):
+8. **`MemoryManager`** (`src/harness/memory/manager.py`):
    - Mediates access to SQLite persistent storage with atomic supersession and time-bounded validity.
 
 ---
 
-## 3. Execution & Containment Foundation
+## 3. Pluggable LLM Provider Architecture
+
+JackVerse decouples the cognitive reasoning loop (`ReActController`) from any proprietary vendor SDK or specific endpoint through an extensible, provider-agnostic abstraction layer.
+
+### Architectural Hierarchy
+
+```mermaid
+flowchart TD
+    subgraph CoreEngine["Agent Orchestration"]
+        ReAct["ReActController<br/>(Depends strictly on LLMProvider Protocol)"]
+    end
+
+    subgraph ProviderLayer["LLM Provider Abstraction (harness.llm)"]
+        Interface["LLMProvider (Protocol Contract)<br/>• chat(messages, tools) -> LLMResponse<br/>• model: str property"]
+        Factory["Provider Factory<br/>(create_llm_provider / PROVIDER_REGISTRY)"]
+    end
+
+    subgraph ConcreteAdapters["Provider Implementations"]
+        OpenAIComp["OpenAICompatibleProvider<br/>(OpenAI, OpenRouter, Ollama, vLLM, LM Studio, Groq, Together)"]
+        AnthropicAdapt["[Future Adapter] AnthropicProvider<br/>(Messages API)"]
+        AzureAdapt["[Future Adapter] AzureOpenAIProvider<br/>(Resource & Deployment Scoped)"]
+        CustomAdapt["[Future Adapter] Custom In-House Adapters"]
+    end
+
+    ReAct -->|Invokes Protocol| Interface
+    Factory -->|Instantiates| Interface
+    Interface <|.. OpenAIComp
+    Interface <|.. AnthropicAdapt
+    Interface <|.. AzureAdapt
+    Interface <|.. CustomAdapt
+```
+
+```text
+JackVerse
+   ↓
+LLM Provider Interface (LLMProvider Protocol)
+   ↓
+Provider Factory
+   ├── OpenAICompatibleProvider (OpenAI, OpenRouter, Ollama, vLLM, LM Studio, Groq, Together)
+   ├── future AnthropicProvider
+   ├── future AzureProvider
+   └── future custom adapters
+```
+
+### Core Design Invariants
+
+1. **Protocol Dependency Only**: The `ReActController` and multi-agent delegation layer import and depend strictly on the `LLMProvider` Protocol and `LLMResponse`/`ToolCall` domain data containers defined in `harness.llm.base`. No vendor SDK client is directly exposed to runtime loops.
+3. **Transparent Structured Tool-Calling**: The provider implementation is responsible for serializing internal `ToolSpec` definitions into the target wire format and deserializing model responses into canonical `ToolCall` instances.
+4. **Pluggable Provider Registry**: The `PROVIDER_REGISTRY` in `harness.llm.factory` maps provider keys to builder callables. Developers can register custom adapters via `register_provider(name, factory_fn)` without modifying existing harness code.
+5. **Normalized Error Taxonomy**: Vendor-specific wire and protocol errors are caught and normalized into domain exception types:
+   - `LLMAuthenticationError`: Authentication or invalid API key failures.
+   - `LLMConnectionError`: Unreachable endpoints, network drops, or exhausted retries.
+   - `ProviderCapabilityError`: Configured endpoint lacks required structured tool-calling capabilities.
+6. **Zero Secret Leakage**: API credentials are never logged, echoed in string representations (`repr`), or included in diagnostic telemetry. Diagnostic check routines (`harness.llm.doctor`) verify endpoint reachability and format without exposing private keys.
+
+---
+
+## 4. Execution & Containment Foundation
 
 The foundational execution harness guarantees safe local execution across a defined workspace.
 
@@ -191,11 +248,11 @@ The foundational execution harness guarantees safe local execution across a defi
 The harness registers exactly six filesystem tools (`src/harness/tools/filesystem.py`), implementing a controlled capability set:
 
 1. **`create_directory`** (`CreateDirectoryTool`): Idempotently creates directories within the configured workspace root; automatically creates missing parent directories.
-2. **`create_file`** (`CreateFileTool`): Writes a new file. **Creation-not-overwrite invariant**: If the target file already exists, it raises `ErrorCode.ALREADY_EXISTS` rather than silently destroying existing data.
-3. **`read_file`** (`ReadFileTool`): Reads text content within the workspace; supports windowed inspection through `offset` and `limit` arguments.
-4. **`list_directory`** (`ListDirectoryTool`): Lists directory contents within the workspace; supports recursive traversal.
-5. **`search_files`** (`SearchFilesTool`): **Mandatory search capability**: Recursively locates files by name pattern or searches file contents using literal substrings or regular expressions.
-6. **`modify_file`** (`ModifyFileTool`): **Unique-old-text modification**: Replaces a target snippet with new content. Requires `old_text` and `new_text`; fails with `ErrorCode.AMBIGUOUS` if `old_text` matches multiple occurrences, or `ErrorCode.NOT_FOUND` if `old_text` is absent.
+3. **`create_file`** (`CreateFileTool`): Writes a new file. **Creation-not-overwrite invariant**: If the target file already exists, it raises `ErrorCode.ALREADY_EXISTS` rather than silently destroying existing data.
+4. **`read_file`** (`ReadFileTool`): Reads text content within the workspace; supports windowed inspection through `offset` and `limit` arguments.
+5. **`list_directory`** (`ListDirectoryTool`): Lists directory contents within the workspace; supports recursive traversal.
+6. **`search_files`** (`SearchFilesTool`): **Mandatory search capability**: Recursively locates files by name pattern or searches file contents using literal substrings or regular expressions.
+7. **`modify_file`** (`ModifyFileTool`): **Unique-old-text modification**: Replaces a target snippet with new content. Requires `old_text` and `new_text`; fails with `ErrorCode.AMBIGUOUS` if `old_text` matches multiple occurrences, or `ErrorCode.NOT_FOUND` if `old_text` is absent.
 
 ### Key Execution & Containment Invariants
 - **No Filesystem Deletion**: The harness provides no deletion tool. Neither files nor directories can be deleted by the model.
@@ -213,7 +270,7 @@ The harness registers exactly six filesystem tools (`src/harness/tools/filesyste
 
 ---
 
-## 4. MCP External Tool Integration
+## 5. MCP External Tool Integration
 
 The Model Context Protocol (MCP) subsystem (`src/harness/mcp/`) connects the harness to external tool providers without altering core ReAct orchestration.
 
@@ -251,17 +308,17 @@ ReActController appends observation to turn context
 
 ### Transport Security Hardening
 1. **Loopback-Only HTTP**: Plain HTTP (`http://`) is strictly prohibited for remote connections. It is permitted exclusively for loopback hostnames (`localhost`, `127.0.0.1`, `::1`). Remote endpoints require HTTPS (`https://`).
-2. **TLS Verification**: Enforced via `verify=True` on the HTTP client; invalid or untrusted certificates cause immediate connection termination.
-3. **Redirect Blocking**: Enforced via `follow_redirects=False` to prevent cross-origin authorization token leakage and Server-Side Request Forgery (SSRF).
-4. **Secret Sanitization**: Authorization tokens configured via `auth_token_env` are read from the execution environment, attached to requests as `Bearer <token>`, and strictly redacted (`[REDACTED]`) from client representations, error logs, and trace outputs.
-5. **Exception Translation**: Network timeouts, connection resets, and server-side errors are caught and converted into typed `ToolResult(is_error=True)` objects, preventing unhandled client crashes.
+3. **TLS Verification**: Enforced via `verify=True` on the HTTP client; invalid or untrusted certificates cause immediate connection termination.
+4. **Redirect Blocking**: Enforced via `follow_redirects=False` to prevent cross-origin authorization token leakage and Server-Side Request Forgery (SSRF).
+5. **Secret Sanitization**: Authorization tokens configured via `auth_token_env` are read from the execution environment, attached to requests as `Bearer <token>`, and strictly redacted (`[REDACTED]`) from client representations, error logs, and trace outputs.
+6. **Exception Translation**: Network timeouts, connection resets, and server-side errors are caught and converted into typed `ToolResult(is_error=True)` objects, preventing unhandled client crashes.
 
 ### Nontrivial Use Case: Transport Domain Tools
 The primary external capability integrated into the runtime is the `transport_service` MCP server, exposing `find_connection`. By default, this service is backed by a deterministic synthetic timetable (`synthetic_bavarian_timetable_v1`), with an optional live REST provider (`transport_rest_live`) enabled only when explicitly configured.
 
 ---
 
-## 5. Persistent Memory Architecture
+## 6. Persistent Memory Architecture
 
 To enable continuity across independent execution sessions, the harness implements a dual-tier persistent memory subsystem backed by SQLite (`src/harness/memory/`).
 
@@ -334,7 +391,7 @@ WHERE memory_key IS NOT NULL AND status = 'accepted';
 
 ---
 
-## 6. Memory Admission Firewall
+## 7. Memory Admission Firewall
 
 The `MemoryFirewall` (`src/harness/memory/firewall.py`) acts as a deterministic gatekeeper before any observation or input reaches the SQLite store.
 
@@ -380,7 +437,7 @@ When an untrusted tool observation contains explicit instruction directive patte
 
 ---
 
-## 7. Lifecycle and Temporal Correctness
+## 8. Lifecycle and Temporal Correctness
 
 ### Slot Identity and Atomic Supersession
 Evolving user preferences and environment configurations require updating state without destroying audit history:
@@ -417,7 +474,7 @@ Under Python 3.12's default connection mode (`autocommit=-1`, `isolation_level="
 
 ---
 
-## 8. Procedural Failure Memory
+## 9. Procedural Failure Memory
 
 > *"A failure is not knowledge. A recovered failure can become experience."*
 
@@ -467,7 +524,7 @@ Procedural lessons do not persist raw argument dictionaries, authorization token
 
 ---
 
-## 9. Retrieval and Context Injection
+## 10. Retrieval and Context Injection
 
 ### Retrieval Mechanism
 - **Declarative Retrieval**: `MemoryRetriever.retrieve()` scores active declarative memories using lexical token overlap. It enforces `status = 'accepted'` and filters out expired items (`query_now >= expires_at`). Top-k is bounded by `max_retrieved` (default: `3`), and total character volume is bounded by `max_context_chars` (default: `2,000`).
@@ -504,7 +561,7 @@ Canonical `self.context` remains unmodified by memory augmentation. For every ou
 
 ---
 
-## 10. Default vs. Experimental Configuration
+## 11. Default vs. Experimental Configuration
 
 To ensure clarity during evaluation and defense, the runtime defaults are cleanly separated from the configuration overrides used during controlled experiments:
 
@@ -519,10 +576,11 @@ To ensure clarity during evaluation and defense, the runtime defaults are cleanl
 
 ---
 
-## 11. Important Design Decisions
+## 12. Important Design Decisions
 
 | Decision Area | Chosen Mechanism | Evaluated Alternative | Engineering Rationale | Incurred Tradeoff |
 | :--- | :--- | :--- | :--- | :--- |
+| **LLM Interface** | Provider Protocol (`LLMProvider`) | Direct vendor SDK calls | Decouples runtime logic from proprietary APIs; supports any OpenAI-compatible endpoint out of the box. | Requires provider adapter for non-compatible wire protocols. |
 | **Database Engine** | Embedded SQLite (`sqlite3`) | Vector DB (e.g. Chroma, Qdrant) | Single-process, zero-dependency, local file storage; native ACID transactions for atomic supersession; partial unique indexes. | Relational schema rather than dense vector similarity search. |
 | **Retrieval Engine** | Lexical token overlap | Neural dense embeddings | 100% deterministic, zero token cost, zero network latency, zero embedding drift, air-gap compatible. | Requires lexical overlap; does not match non-overlapping synonyms. |
 | **Adversarial Ingestion** | Quarantine status (`status = 'quarantined'`) | Silent drop / deletion | Isolates malicious input from retrieval while preserving forensic audit records for inspection. | Small disk storage overhead for quarantined rows. |
@@ -536,26 +594,27 @@ To ensure clarity during evaluation and defense, the runtime defaults are cleanl
 
 ---
 
-## 12. System Invariants
+## 13. System Invariants
 
-The harness enforces twelve immutable architectural guarantees:
+The harness enforces thirteen immutable architectural guarantees:
 
-1. **Workspace Containment**: Filesystem operations are strictly confined within the resolved workspace root directory.
-2. **Filesystem Non-Deletion**: The harness contains no tool or command capable of deleting files or directories.
-3. **Creation Non-Destruction**: `create_file` raises `ALREADY_EXISTS` if the target exists; it never silently overwrites.
-4. **Unique Replacement**: `modify_file` replaces content if and only if `old_text` matches exactly one instance in the target file.
-5. **Bounded Execution**: Runs are halted deterministically when `max_steps`, `max_tool_calls`, or `max_runtime_seconds` are exceeded.
-6. **Authoritative Observation Ceiling**: Tool outputs are bounded by `ToolExecutor` to `max_observation_chars` (default: 16,000 chars).
-7. **Single Active Key**: At most one row per structured `memory_key` can have `status = 'accepted'` at any time.
-8. **Quarantine Isolation**: Memories with `status = 'quarantined'` are strictly excluded from retrieval queries.
-9. **Supersession Isolation**: Memories with `status = 'superseded'` are strictly excluded from retrieval queries.
-10. **Temporal Staleness Exclusion**: Memories where `query_now >= expires_at` are strictly excluded from retrieval queries.
-11. **Cognitive Separation**: Declarative facts and procedural lessons are stored in separate types and injected into separate prompt sections.
-12. **Verified Procedural Synthesis**: A `ProceduralLesson` is synthesized if and only if a structural/domain tool error is followed in the same turn by a successful call of the same tool with a verified argument delta.
+1. **Pluggable LLM Provider Contract**: The reasoning engine interacts with language models exclusively through the `LLMProvider` protocol, never directly through vendor SDKs.
+2. **Workspace Containment**: Filesystem operations are strictly confined within the resolved workspace root directory.
+3. **Filesystem Non-Deletion**: The harness contains no tool or command capable of deleting files or directories.
+4. **Creation Non-Destruction**: `create_file` raises `ALREADY_EXISTS` if the target exists; it never silently overwrites.
+5. **Unique Replacement**: `modify_file` replaces content if and only if `old_text` matches exactly one instance in the target file.
+6. **Bounded Execution**: Runs are halted deterministically when `max_steps`, `max_tool_calls`, or `max_runtime_seconds` are exceeded.
+7. **Authoritative Observation Ceiling**: Tool outputs are bounded by `ToolExecutor` to `max_observation_chars` (default: 16,000 chars).
+8. **Single Active Key**: At most one row per structured `memory_key` can have `status = 'accepted'` at any time.
+9. **Quarantine Isolation**: Memories with `status = 'quarantined'` are strictly excluded from retrieval queries.
+10. **Supersession Isolation**: Memories with `status = 'superseded'` are strictly excluded from retrieval queries.
+11. **Temporal Staleness Exclusion**: Memories where `query_now >= expires_at` are strictly excluded from retrieval queries.
+12. **Cognitive Separation**: Declarative facts and procedural lessons are stored in separate types and injected into separate prompt sections.
+13. **Verified Procedural Synthesis**: A `ProceduralLesson` is synthesized if and only if a structural/domain tool error is followed in the same turn by a successful call of the same tool with a verified argument delta.
 
 ---
 
-## 13. System Limitations
+## 14. System Limitations
 
 To maintain academic and engineering defensibility, the following limitations are explicitly documented:
 

@@ -7,7 +7,7 @@ This guide provides step-by-step, reproducible commands to demonstrate the Week 
 ### Prerequisites & Environment
 - **Python Runtime**: Python 3.12 (or virtual environment matching dependencies, e.g. `.venv` or `venv-repro312`).
 - **Dependencies**: Installed via `pip install -e .` or active virtual environment.
-- **Inference Key**: Set `export INNKUBE_API_KEY="your-api-key"` if running interactive live agent sessions.
+- **Inference Key**: Set `export LLM_API_KEY="your-api-key"` if running interactive live agent sessions with an authenticated provider.
 - **Default Memory State**: In `config/config.yaml`, persistent memory is explicitly enabled by default (`memory.enabled: true`, `storage_path: ".agent_memory/memory.db"`). Memory is admitted through `MemoryFirewall`, stored in SQLite, and composed into the single leading system message for outbound inference.
 - **Docker Alternative**: All commands can alternatively be run inside the containerized Docker environment.
 
@@ -311,7 +311,7 @@ docker run --rm agent-harness:latest python3 -m unittest discover -s tests -p "t
 mkdir -p workspace .agent_memory
 
 docker run --rm -it \
-  -e INNKUBE_API_KEY="$INNKUBE_API_KEY" \
+  -e LLM_API_KEY="$LLM_API_KEY" \
   -v "$(pwd)/workspace:/app/workspace" \
   -v "$(pwd)/.agent_memory:/app/.agent_memory" \
   agent-harness:latest

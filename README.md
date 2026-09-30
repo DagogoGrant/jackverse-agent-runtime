@@ -210,7 +210,86 @@ python -m harness --tui
 
 ---
 
-## 11. Running Locally
+## 11. Connect Your LLM
+
+JackVerse features a pluggable, provider-agnostic LLM interface. You can connect any OpenAI-compatible provider simply by setting environment variables in `.env` or via your shell—no code changes required.
+
+```bash
+cp .env.example .env
+```
+
+### Primary Configuration Variables
+
+```bash
+LLM_PROVIDER=openai_compatible
+LLM_BASE_URL=https://your-provider.example/v1
+LLM_API_KEY=your-api-key
+LLM_MODEL=your-model
+```
+
+> **Compatibility Note**: Any OpenAI-compatible Chat Completions endpoint that supports the structured tool-calling features required by JackVerse can be configured without changing source code. APIs with different protocols (e.g., Anthropic native Messages API, AWS Bedrock, Google Vertex AI) require a provider adapter registered with the `ProviderFactory`.
+
+### Example Configurations
+
+#### 1. Hosted OpenAI-Compatible (OpenAI)
+```env
+LLM_PROVIDER=openai_compatible
+LLM_BASE_URL=https://api.openai.com/v1
+LLM_API_KEY=sk-proj-xxxxxxxxxxxxxxxxxxxx
+LLM_MODEL=gpt-4.1-mini
+```
+
+#### 2. OpenRouter (Access to Claude, Llama 3, Gemini, Mistral)
+```env
+LLM_PROVIDER=openai_compatible
+LLM_BASE_URL=https://openrouter.ai/api/v1
+LLM_API_KEY=sk-or-v1-xxxxxxxxxxxxxxxxxxxx
+LLM_MODEL=meta-llama/llama-3.3-70b-instruct
+LLM_EXTRA_HEADERS={"HTTP-Referer": "https://jackverse.dev", "X-Title": "JackVerse"}
+```
+
+#### 3. Local Ollama (Anonymous / No API Key Required)
+```env
+LLM_PROVIDER=openai_compatible
+LLM_BASE_URL=http://localhost:11434/v1
+LLM_API_KEY=
+LLM_MODEL=llama3.3:70b
+```
+*(When running inside Docker Compose, set `LLM_BASE_URL=http://host.docker.internal:11434/v1`)*
+
+#### 4. Local or Self-Hosted vLLM / LM Studio / Together / Groq
+```env
+LLM_PROVIDER=openai_compatible
+LLM_BASE_URL=http://localhost:8000/v1
+LLM_API_KEY=optional_or_custom_token
+LLM_MODEL=meta-llama/Meta-Llama-3-70B-Instruct
+```
+
+### Validate Connectivity with Doctor
+Before launching agents, run the built-in diagnostic tool to test your configuration and endpoint connectivity without leaking secrets:
+
+```bash
+python -m harness doctor
+```
+```text
+==================================================================
+                JackVerse LLM Provider Diagnostics                
+==================================================================
+LLM Provider   : openai_compatible
+LLM Base URL   : https://api.openai.com/v1
+LLM Model      : gpt-4.1-mini
+Authentication : configured (redacted)
+------------------------------------------------------------------
+  ✓ [PASS] Configuration: Configured for model 'gpt-4.1-mini'
+  ✓ [PASS] Base URL Format: Valid HTTPS endpoint: api.openai.com
+  ✓ [PASS] Provider Factory: Resolved to OpenAICompatibleProvider
+  ✓ [PASS] Authentication: API key present (redacted)
+==================================================================
+```
+
+---
+
+## 12. Running Locally
 
 ### Prerequisites
 - Python 3.12+
@@ -220,8 +299,8 @@ python -m harness --tui
 
 1. **Clone the repository**:
    ```bash
-   git clone https://github.com/grantjackdagogo/agent-harness.git
-   cd agent-harness
+   git clone https://github.com/DagogoGrant/jackverse-agent-runtime.git
+   cd jackverse-agent-runtime
    ```
 
 2. **Create and activate a virtual environment**:
@@ -233,22 +312,23 @@ python -m harness --tui
 
 3. **Configure your LLM credentials**:
    ```bash
-   export INNKUBE_API_KEY="your-api-key"
+   cp .env.example .env
+   # Edit .env with your LLM_BASE_URL, LLM_API_KEY, and LLM_MODEL
    ```
 
 4. **Launch the CLI**:
    ```bash
-   agent-harness
+   python -m harness
    ```
 
 5. **Launch the Terminal Operator Console (TUI)**:
    ```bash
-   agent-harness --tui
+   python -m harness --tui
    ```
 
 ---
 
-## 12. Docker / Observability Stack
+## 13. Docker / Observability Stack
 
 The canonical way to run JackVerse with full distributed tracing, metrics, and Grafana dashboards is via Docker Compose.
 
@@ -282,7 +362,7 @@ make test       # Run regression test suite inside container
 
 ---
 
-## 13. Tests
+## 14. Tests
 
 JackVerse includes an extensive test suite verifying deterministic execution, memory firewalls, multi-agent delegation, and resilience:
 
@@ -301,13 +381,13 @@ The test suite covers:
 
 ---
 
-## 14. Project Structure
+## 15. Project Structure
 
 ```text
 jackverse-agent-runtime/
 ├── src/harness/                       # Core JackVerse Agent Runtime package
 │   ├── agent/                         # ReAct controller, delegation, budgets
-│   ├── engine/                        # LLM client & tool argument parsing
+│   ├── llm/                           # Provider abstraction, OpenAI-compatible adapter, doctor
 │   ├── memory/                        # SQLite storage, hybrid RRF, Memory Firewall
 │   ├── mcp/                           # MCP client, server adapters, circuit breaker
 │   ├── observability/                 # Prometheus metrics & OpenTelemetry tracing
@@ -339,7 +419,7 @@ jackverse-agent-runtime/
 
 ---
 
-## 15. Authors & Contributors
+## 16. Authors & Contributors
 
 JackVerse Agent Runtime is maintained by Grant Dagogo Jack and evolved from collaborative work on the original agent-harness implementation.
 
