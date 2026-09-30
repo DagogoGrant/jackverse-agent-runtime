@@ -482,12 +482,11 @@ def load_config(path: str | Path) -> AppConfig:
         except (ValueError, TypeError) as e:
             raise ConfigurationError(f"Invalid temperature value '{llm_data['temperature']}', must be a valid float.") from e
 
-    # API key (optional at type level: environment variable > api_key_env > INNKUBE_API_KEY fallback > config YAML)
+    # API key (optional at type level: environment variable > api_key_env > config YAML)
     api_key_env_var = str(llm_data.get("api_key_env", "LLM_API_KEY")).strip()
     api_key: str | None = (
         os.environ.get("LLM_API_KEY")
         or (os.environ.get(api_key_env_var) if api_key_env_var else None)
-        or os.environ.get("INNKUBE_API_KEY")
         or llm_data.get("api_key")
     )
     if api_key is not None:

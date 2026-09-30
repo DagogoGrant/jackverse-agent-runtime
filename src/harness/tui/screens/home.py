@@ -148,7 +148,7 @@ class HomeScreen(Container):
     def refresh_system_status(self) -> None:
         """Derive evidence-sensitive statuses without optimistic hardcoding."""
         # 1. LLM Status
-        api_key = self.config.llm.api_key or os.environ.get("LLM_API_KEY", "") or os.environ.get("INNKUBE_API_KEY", "")
+        api_key = self.config.llm.api_key or os.environ.get("LLM_API_KEY", "")
         has_runs = len(self.store.runs) > 0
         has_errors = any(r.status == "FAILED" for r in self.store.runs.values())
         is_local = any(

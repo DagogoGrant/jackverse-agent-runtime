@@ -77,7 +77,7 @@ class TestCLIAndComposition(unittest.TestCase):
             self.assertIn("LLM_API_KEY", stderr_capture.getvalue())
 
     def test_main_config_loading_error_exits(self) -> None:
-        with patch.dict(os.environ, {"INNKUBE_API_KEY": "fake_key", "AGENT_HARNESS_CONFIG": "nonexistent_config.yaml"}):
+        with patch.dict(os.environ, {"LLM_API_KEY": "fake_key", "AGENT_HARNESS_CONFIG": "nonexistent_config.yaml"}):
             stderr_capture = io.StringIO()
             with patch("sys.stderr", stderr_capture):
                 with self.assertRaises(SystemExit) as ctx:
@@ -87,7 +87,7 @@ class TestCLIAndComposition(unittest.TestCase):
 
     def test_main_interactive_loop_exit_and_quit(self) -> None:
         for exit_command in ["exit", "quit", "QUIT", "Exit"]:
-            with patch.dict(os.environ, {"INNKUBE_API_KEY": "fake_key"}):
+            with patch.dict(os.environ, {"LLM_API_KEY": "fake_key"}):
                 with patch("harness.cli.load_config", return_value=self.config):
                     with patch("harness.cli.build_controller") as mock_build:
                         mock_controller = MagicMock()
@@ -104,7 +104,7 @@ class TestCLIAndComposition(unittest.TestCase):
                         mock_controller.run.assert_not_called()
 
     def test_main_interactive_loop_keyboard_interrupt(self) -> None:
-        with patch.dict(os.environ, {"INNKUBE_API_KEY": "fake_key"}):
+        with patch.dict(os.environ, {"LLM_API_KEY": "fake_key"}):
             with patch("harness.cli.load_config", return_value=self.config):
                 with patch("harness.cli.build_controller") as mock_build:
                     mock_controller = MagicMock()
@@ -122,7 +122,7 @@ class TestCLIAndComposition(unittest.TestCase):
                     mock_controller.run.assert_not_called()
 
     def test_main_interactive_loop_normal_turn_and_empty_input(self) -> None:
-        with patch.dict(os.environ, {"INNKUBE_API_KEY": "fake_key"}):
+        with patch.dict(os.environ, {"LLM_API_KEY": "fake_key"}):
             with patch("harness.cli.load_config", return_value=self.config):
                 with patch("harness.cli.build_controller") as mock_build:
                     mock_controller = MagicMock()
@@ -142,7 +142,7 @@ class TestCLIAndComposition(unittest.TestCase):
                     self.assertIn("Agent > Here is the result.", stdout_capture.getvalue())
 
     def test_main_interactive_loop_handles_per_turn_exception(self) -> None:
-        with patch.dict(os.environ, {"INNKUBE_API_KEY": "fake_key"}):
+        with patch.dict(os.environ, {"LLM_API_KEY": "fake_key"}):
             with patch("harness.cli.load_config", return_value=self.config):
                 with patch("harness.cli.build_controller") as mock_build:
                     mock_controller = MagicMock()
@@ -166,7 +166,7 @@ class TestCLIAndComposition(unittest.TestCase):
                     self.assertIn("Agent > Recovered next turn.", stdout_capture.getvalue())
 
     def test_main_cli_command_help(self) -> None:
-        with patch.dict(os.environ, {"INNKUBE_API_KEY": "fake_key"}):
+        with patch.dict(os.environ, {"LLM_API_KEY": "fake_key"}):
             with patch("harness.cli.load_config", return_value=self.config):
                 with patch("harness.cli.build_controller") as mock_build:
                     mock_controller = MagicMock()
@@ -193,7 +193,7 @@ class TestCLIAndComposition(unittest.TestCase):
             ToolSpec(name="create_file", description="create a file", input_schema={}),
             ToolSpec(name="read_file", description="read a file", input_schema={}),
         ]
-        with patch.dict(os.environ, {"INNKUBE_API_KEY": "fake_key"}):
+        with patch.dict(os.environ, {"LLM_API_KEY": "fake_key"}):
             with patch("harness.cli.load_config", return_value=self.config):
                 with patch("harness.cli.build_controller") as mock_build:
                     mock_controller = MagicMock()
@@ -214,7 +214,7 @@ class TestCLIAndComposition(unittest.TestCase):
                     self.assertIn("- read_file", out)
 
     def test_main_cli_command_config_displays_safe_runtime_values(self) -> None:
-        with patch.dict(os.environ, {"INNKUBE_API_KEY": "super_secret_key_12345"}):
+        with patch.dict(os.environ, {"LLM_API_KEY": "super_secret_key_12345"}):
             with patch("harness.cli.load_config", return_value=self.config):
                 with patch("harness.cli.build_controller") as mock_build:
                     mock_controller = MagicMock()
@@ -272,7 +272,7 @@ class TestCLIAndComposition(unittest.TestCase):
         mock_client.server_name = "transport_service"
         adapter = MCPToolAdapter(mock_spec, mock_client)
 
-        with patch.dict(os.environ, {"INNKUBE_API_KEY": "fake_key"}):
+        with patch.dict(os.environ, {"LLM_API_KEY": "fake_key"}):
             with patch("harness.cli.load_config", return_value=cfg):
                 with patch("harness.cli.build_controller") as mock_build:
                     mock_controller = MagicMock()
@@ -370,7 +370,7 @@ class TestCLIAndComposition(unittest.TestCase):
             memory=MemoryConfig(enabled=True, storage_path=str(db_path)),
         )
 
-        with patch.dict(os.environ, {"INNKUBE_API_KEY": "fake_key"}):
+        with patch.dict(os.environ, {"LLM_API_KEY": "fake_key"}):
             with patch("harness.cli.load_config", return_value=cfg):
                 with patch("harness.cli.build_controller") as mock_build:
                     mock_controller = MagicMock()
@@ -416,7 +416,7 @@ class TestCLIAndComposition(unittest.TestCase):
             memory=MemoryConfig(enabled=True, storage_path=str(db_path)),
         )
 
-        with patch.dict(os.environ, {"INNKUBE_API_KEY": "fake_key"}):
+        with patch.dict(os.environ, {"LLM_API_KEY": "fake_key"}):
             with patch("harness.cli.load_config", return_value=cfg):
                 with patch("harness.cli.build_controller") as mock_build:
                     mock_controller = MagicMock()
@@ -445,7 +445,7 @@ class TestCLIAndComposition(unittest.TestCase):
             memory=MemoryConfig(enabled=True, storage_path=str(non_existent_db)),
         )
 
-        with patch.dict(os.environ, {"INNKUBE_API_KEY": "fake_key"}):
+        with patch.dict(os.environ, {"LLM_API_KEY": "fake_key"}):
             with patch("harness.cli.load_config", return_value=cfg):
                 with patch("harness.cli.build_controller") as mock_build:
                     mock_controller = MagicMock()
@@ -475,7 +475,7 @@ class TestCLIAndComposition(unittest.TestCase):
             memory=MemoryConfig(enabled=False),
         )
 
-        with patch.dict(os.environ, {"INNKUBE_API_KEY": "fake_key"}):
+        with patch.dict(os.environ, {"LLM_API_KEY": "fake_key"}):
             with patch("harness.cli.load_config", return_value=cfg):
                 with patch("harness.cli.build_controller") as mock_build:
                     mock_controller = MagicMock()
@@ -596,7 +596,7 @@ class TestCLIAndComposition(unittest.TestCase):
             memory=MemoryConfig(enabled=True, storage_path=str(db_path)),
         )
 
-        with patch.dict(os.environ, {"INNKUBE_API_KEY": "fake_key"}):
+        with patch.dict(os.environ, {"LLM_API_KEY": "fake_key"}):
             with patch("harness.cli.load_config", return_value=cfg):
                 with patch("harness.cli.build_controller") as mock_build:
                     mock_controller = MagicMock()

@@ -567,7 +567,7 @@ def main() -> None:
         print(f"Error loading configuration from '{config_path}': {e}", file=sys.stderr)
         sys.exit(1)
 
-    api_key = config.llm.api_key or os.environ.get("LLM_API_KEY") or os.environ.get("INNKUBE_API_KEY")
+    api_key = config.llm.api_key or os.environ.get("LLM_API_KEY")
     is_local_endpoint = any(
         h in (config.llm.base_url or "").lower()
         for h in ("localhost", "127.0.0.1", "::1", "host.docker.internal", "ollama")
