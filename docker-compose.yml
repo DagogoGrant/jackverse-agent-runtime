@@ -27,8 +27,17 @@ services:
     command: ["sleep", "infinity"]
     environment:
       - AGENT_HARNESS_CONFIG=config/config.docker.yaml
-      - INNKUBE_API_KEY=${INNKUBE_API_KEY}
+      - LLM_PROVIDER=${LLM_PROVIDER:-openai_compatible}
+      - LLM_BASE_URL=${LLM_BASE_URL:-https://api.openai.com/v1}
+      - LLM_API_KEY=${LLM_API_KEY:-}
+      - LLM_MODEL=${LLM_MODEL:-gpt-4.1-mini}
+      - LLM_TIMEOUT_SECONDS=${LLM_TIMEOUT_SECONDS:-30.0}
+      - LLM_MAX_RETRIES=${LLM_MAX_RETRIES:-2}
+      - LLM_TEMPERATURE=${LLM_TEMPERATURE:-0.0}
+      - LLM_EXTRA_HEADERS=${LLM_EXTRA_HEADERS:-}
       - PYTHONPATH=/app/src
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     ports:
       - "127.0.0.1:9101:9101"
     depends_on:
