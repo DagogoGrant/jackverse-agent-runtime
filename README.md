@@ -266,19 +266,24 @@ LLM_MODEL=meta-llama/Meta-Llama-3-70B-Instruct
 ```
 
 ### Validate Connectivity with Doctor
-Before launching agents, run the built-in diagnostic tool to test your configuration and endpoint connectivity without leaking secrets:
+
+JackVerse includes a built-in diagnostic utility to validate configuration syntax, provider instantiation, and live upstream capability without leaking sensitive credentials or tokens.
+
+#### 1. Configuration Mode (Offline)
+Validates local configuration files, environment variables, base URL format, and provider factory resolution:
 
 ```bash
 python -m harness doctor
 ```
 ```text
 ==================================================================
-                JackVerse LLM Provider Diagnostics                
+            JackVerse LLM Provider Diagnostics            
 ==================================================================
 LLM Provider   : openai_compatible
 LLM Base URL   : https://api.openai.com/v1
 LLM Model      : gpt-4.1-mini
 Authentication : configured (redacted)
+Check Mode     : Configuration & Environment Syntax
 ------------------------------------------------------------------
   ✓ [PASS] Configuration: Configured for model 'gpt-4.1-mini'
   ✓ [PASS] Base URL Format: Valid HTTPS endpoint: api.openai.com
@@ -286,6 +291,39 @@ Authentication : configured (redacted)
   ✓ [PASS] Authentication: API key present (redacted)
 ==================================================================
 ```
+
+#### 2. Live Verification Mode (`--live` / `-l`)
+Executes minimal, non-destructive upstream checks against the live provider:
+1. **Network Reachability:** Verifies network handshake with the remote host.
+2. **Authentication Acceptance:** Confirms upstream provider accepts the supplied credentials.
+3. **Model Response:** Verifies the specified model exists and responds.
+4. **Structured Tool Calling Compatibility:** Dispatches a synthetic, non-executed tool spec (`health_check`) to confirm the provider natively supports JSON tool calling (required for agentic reasoning loops).
+
+```bash
+python -m harness doctor --live
+```
+```text
+==================================================================
+            JackVerse LLM Provider Diagnostics (LIVE)            
+==================================================================
+LLM Provider   : openai_compatible
+LLM Base URL   : https://api.openai.com/v1
+LLM Model      : gpt-4.1-mini
+Authentication : configured (redacted)
+Check Mode     : Live Provider Verification
+------------------------------------------------------------------
+  ✓ [PASS] Configuration: Configured for model 'gpt-4.1-mini'
+  ✓ [PASS] Base URL Format: Valid HTTPS endpoint: api.openai.com
+  ✓ [PASS] Provider Factory: Resolved to OpenAICompatibleProvider
+  ✓ [PASS] Authentication: API key present (redacted)
+  ✓ [PASS] Endpoint Reachable: Successfully contacted api.openai.com
+  ✓ [PASS] Authentication Accepted: Provider accepted credentials
+  ✓ [PASS] Model Response: Model 'gpt-4.1-mini' responded successfully
+  ✓ [PASS] Structured Tool Calling: Model natively called synthetic tool
+==================================================================
+```
+
+> **Security Guarantee:** All API keys, authorization tokens, and Bearer headers are scrubbed and replaced with `[REDACTED]` across all diagnostic logs, error payloads, and console output.
 
 ---
 

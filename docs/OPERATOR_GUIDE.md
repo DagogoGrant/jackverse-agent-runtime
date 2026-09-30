@@ -29,7 +29,32 @@ This single command:
 
 ---
 
-## 2. Operator Console Architecture & Layout
+## 2. Pre-Flight Diagnostics: `jackverse doctor`
+
+Before launching agents or long-running scenarios, operators can independently verify LLM provider configuration and live upstream capabilities.
+
+### Offline Configuration Mode
+Performs local syntax, endpoint parsing, provider factory resolution, and credential checks without initiating network requests:
+```bash
+python -m harness doctor
+```
+
+### Live Verification Mode (`--live`)
+Executes non-destructive end-to-end probes against the live endpoint:
+1. **Network Reachability:** Verifies TCP/TLS handshake with the remote host.
+2. **Authentication Acceptance:** Confirms credentials are accepted upstream.
+3. **Model Response:** Asserts model availability and responsiveness.
+4. **Structured Tool Calling Compatibility:** Dispatches a synthetic, non-executed tool spec (`health_check`) to ensure the model natively supports JSON tool calling required by ReAct loops.
+
+```bash
+python -m harness doctor --live
+```
+
+> **Secret Redaction:** All diagnostic checks and error messages automatically redact API keys, tokens, and authorization headers (`[REDACTED]`).
+
+---
+
+## 3. Operator Console Architecture & Layout
 
 The terminal console is a **live operations control plane** (inspired by `k9s`, `lazygit`, and Grafana Dark). 
 
@@ -79,7 +104,7 @@ PrometheusObserver   OTelObserver     StructuredLogObserver    TUIObserver
 
 ---
 
-## 3. Recommended 15-Minute Operational Walkthrough
+## 4. Recommended 15-Minute Operational Walkthrough
 
 Follow these sequential steps to independently exercise every dimension of the harness:
 
@@ -179,7 +204,7 @@ Follow these sequential steps to independently exercise every dimension of the h
 
 ---
 
-## 4. Copy-Paste Interactive Scenarios (For Custom Testing)
+## 5. Copy-Paste Interactive Scenarios (For Custom Testing)
 
 Operators can press **`C`** on any screen in the TUI to open the Custom Agent Prompt modal. 
 The modal allows selecting the session mode:
@@ -237,7 +262,7 @@ Check my stored travel preferences from memory. Delegate to the transport specia
 
 ---
 
-## 5. Running the Automated Test Suite
+## 6. Running the Automated Test Suite
 
 To run the complete automated regression suite inside the Docker environment:
 
@@ -246,8 +271,8 @@ make test
 ```
 
 Expected baseline:
-- **591 tests collected**
-- **590 passed** (0 failures, 0 errors)
+- **618 tests collected**
+- **617 passed** (0 failures, 0 errors)
 - **1 expected skip** (`test_live_network_smoke_test`), because the live external network transport test is disabled by default unless `RUN_LIVE_TRANSPORT_TESTS=1`.
 
 To run the fast unit test suite:
@@ -257,7 +282,7 @@ make test-unit
 
 ---
 
-## 6. Teardown
+## 7. Teardown
 
 To shut down all containers cleanly:
 
