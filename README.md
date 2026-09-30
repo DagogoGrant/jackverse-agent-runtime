@@ -1,0 +1,352 @@
+# JackVerse Agent Runtime
+
+JackVerse is a governed runtime for building and operating tool-using LLM agents with bounded execution, persistent memory, MCP integration, multi-agent delegation, permission controls, and end-to-end observability.
+
+[![Python 3.12](https://img.shields.io/badge/python-3.12+-blue.svg)](https://www.python.org/downloads/)
+[![Docker](https://img.shields.io/badge/docker-compose-2496ED.svg)](https://www.docker.com/)
+[![OpenTelemetry](https://img.shields.io/badge/telemetry-OpenTelemetry-blueviolet.svg)](https://opentelemetry.io/)
+[![Prometheus](https://img.shields.io/badge/metrics-Prometheus-orange.svg)](https://prometheus.io/)
+[![Grafana](https://img.shields.io/badge/dashboard-Grafana-F46800.svg)](https://grafana.com/)
+[![Textual TUI](https://img.shields.io/badge/interface-Textual%20TUI-green.svg)](https://textual.textualize.io/)
+
+---
+
+## 1. Overview
+
+Deploying autonomous Large Language Model (LLM) agents in production environments presents critical reliability and security challenges:
+- **Unbounded execution loops** leading to runaway resource and token consumption.
+- **Arbitrary filesystem access** and path traversal vulnerabilities.
+- **Untrusted data contamination** in agent memory and context windows (prompt injection).
+- **Silent tool failures** and cascade crashes in distributed tool networks.
+- **Lack of granular operational oversight**, auditing, and distributed telemetry.
+
+**JackVerse** solves these challenges through an architectural separation of concerns:
+> *"The model proposes actions. The runtime governs execution. The world provides observations. The runtime decides what deserves to survive."*
+
+JackVerse wraps model reasoning in strict runtime constraints, providing deterministic execution limits, contextual permission policies, automated memory firewalls, resilient Model Context Protocol (MCP) integrations, hierarchical multi-agent delegation, and full-stack observability.
+
+---
+
+## 2. Architecture
+
+```mermaid
+flowchart TD
+    subgraph ClientLayer["User Interface & Entrypoints"]
+        CLI["CLI Driver (harness.cli)"]
+        TUI["Terminal Operator Console (Textual TUI)"]
+    end
+
+    subgraph RuntimeLayer["Runtime Control Plane"]
+        RootCtx["ExecutionContext (run_id, trace_id)"]
+        Ledger["HierarchicalBudgetLedger (Token & Turn Ceilings)"]
+        EventBus["LifecycleEventBus"]
+    end
+
+    subgraph AgentCore["Agent Orchestration Engine"]
+        ReAct["ReActController (Thought / Action / Observation)"]
+        SubMgr["SubAgentManager (Delegation & Budget Slicing)"]
+        Registry["ToolRegistry"]
+    end
+
+    subgraph SecurityLayer["Governance & Security"]
+        Workspace["Workspace (Containment & Jail Prevention)"]
+        PolicyEngine["PolicyEngine (Deterministic Rule Precedence)"]
+        PermMgr["PermissionManager (Single-Use Token Verification)"]
+    end
+
+    subgraph MemoryLayer["State & Memory Subsystem"]
+        MemoryFirewall["MemoryFirewall (Prompt-Injection Quarantine)"]
+        MemoryStore["SQLiteMemoryStore (Declarative & Procedural)"]
+        Retriever["HybridRetriever (BM25 + Dense Vectors + RRF)"]
+    end
+
+    subgraph ExternalProtocols["External Protocols & Tools"]
+        MCPClient["MCP Client Adapter (stdio / Streamable HTTP)"]
+        CircuitBreaker["Circuit Breaker & Retry Engine"]
+    end
+
+    subgraph TelemetryStack["Full-Stack Observability"]
+        PrometheusObs["Prometheus Exporter (:9101)"]
+        OTelObs["OpenTelemetry Tracer (Tempo:3200)"]
+        GrafanaUI["Grafana Operations Dashboard (:3000)"]
+    end
+
+    CLI --> RootCtx
+    TUI --> RootCtx
+    RootCtx --> ReAct
+    ReAct --> Ledger
+    ReAct --> Registry
+    Registry --> Workspace
+    Registry --> PermMgr
+    PermMgr --> PolicyEngine
+    ReAct --> SubMgr
+    SubMgr --> Registry
+    ReAct --> MemoryFirewall
+    MemoryFirewall --> MemoryStore
+    MemoryStore --> Retriever
+    Registry --> MCPClient
+    MCPClient --> CircuitBreaker
+    ReAct -.-> EventBus
+    EventBus --> PrometheusObs
+    EventBus --> OTelObs
+    PrometheusObs --> GrafanaUI
+    OTelObs --> GrafanaUI
+```
+
+---
+
+## 3. Core Capabilities
+
+- **Deterministic ReAct Execution**: Autonomous reasoning loop with fail-closed bounds and step control.
+- **Fail-Safe Filesystem Containment**: Bounded workspace directory jail preventing path traversal escapes.
+- **Multi-Principal Delegation**: Orchestrators delegate bounded tasks to specialist sub-agents without budget multiplication.
+- **Persistent Long-Term Memory**: Multi-session declarative and procedural memory with hybrid BM25 and semantic embedding search (RRF).
+- **Automated Memory Firewall**: Heuristic and deterministic admission control that quarantines untrusted prompt injections.
+- **Temporal Memory Lifecycle**: Supersession and time-bounded validity preventing stale or conflicting memory recall.
+- **Model Context Protocol (MCP)**: Native integration with stdio and Streamable HTTP MCP tool servers.
+- **Tool Resilience & Circuit Breaking**: Per-server circuit breakers (CLOSED, OPEN, HALF_OPEN) with transparent exponential retry.
+- **Contextual Security Policies**: Priority-ordered policy engine requiring interactive human confirmation for high-risk mutations.
+- **Real-Time Terminal Console (TUI)**: Rich Textual dashboard featuring a live flight recorder, system health monitors, and interactive scenario launcher.
+- **Production Telemetry**: Native Prometheus metrics, OpenTelemetry distributed tracing, Grafana dashboards, and structured JSON logs.
+
+---
+
+## 4. Execution & Tool Governance
+
+The core execution engine implements an augmented ReAct (Reasoning + Acting) loop bounded by an `ExecutionBudget`. Every iteration strictly enforces:
+- **Maximum Reasoning Turns**: Enforces finite loop guarantees.
+- **Maximum Tool Calls**: Prevents unbounded repetitive invocations.
+- **Execution Timeouts**: Enforces hard deadlines on execution runtime.
+- **Observation Byte Ceilings**: Truncates large tool outputs to prevent context flooding.
+
+### Workspace Isolation & Boundary Containment
+The `Workspace` abstraction provides guaranteed directory isolation:
+- File paths are resolved against a configured root directory using canonical path resolution.
+- Relative traversal patterns (`../`, symlinks) attempting to escape the workspace boundaries fail immediately with `ErrorCode.WORKSPACE_ESCAPE_ATTEMPT`.
+- Destructive operations (`modify_file`, `create_file`) enforce atomic writes and preserve parent directories cleanly.
+
+---
+
+## 5. Persistent Memory
+
+JackVerse maintains state across independent agent invocations through a persistent SQLite-backed memory store.
+
+### Hybrid Retrieval Engine
+Memory retrieval merges sparse keyword search and dense semantic vector search:
+- **Sparse BM25 Search**: Matches precise domain entities, station names, filenames, and keywords.
+- **Dense Vector Search**: Powered by `Snowflake/snowflake-arctic-embed-s` embeddings to retrieve conceptual relevance.
+- **Reciprocal Rank Fusion (RRF)**: Merges sparse and dense ranking distributions into a unified, balanced relevance score.
+
+### Memory Firewall & Injection Quarantine
+To defend against indirect prompt injection via retrieved web observations or external tools:
+- Inbound memories pass through the `MemoryFirewall` before admission.
+- Untrusted override directives (e.g. *"Ignore previous instructions"*, *"reveal environment variables"*) are automatically classified as `QUARANTINE`.
+- Quarantined directives are persisted in an isolated audit table and never injected into active agent prompt context.
+
+### Temporal Lifecycle & Supersession
+- **Fact Supersession**: When new facts arrive sharing an existing semantic key (e.g., updated user travel preferences), older versions are marked `SUPERSEDED`.
+- **Observation Expiration**: Ephemeral observations (live platform numbers, transient errors) carry expiration timestamps and are filtered out once stale.
+
+---
+
+## 6. MCP Integration
+
+JackVerse supports external tool integrations via the open **Model Context Protocol (MCP)**:
+- **Transports**: Supports both standard process `stdio` and network `Streamable HTTP` transports.
+- **Dynamic Adaptation**: Remote MCP tool definitions are dynamically inspected and registered into the agent's internal `ToolRegistry`.
+- **Prefix Namespacing**: Multi-server tools are isolated using configurable prefixes (e.g. `mcpfs_read_text_file`).
+
+### Resilience & Circuit Breakers
+To prevent distributed cascade failures when communicating with external MCP services:
+- **Deterministic Retries**: Idempotent read operations automatically retry on transient network errors (HTTP 503, connection drops) with exponential backoff and jitter.
+- **Circuit Breaker State Machine**: Repeated logical failures trip the circuit breaker from `CLOSED` to `OPEN`, immediately fast-failing downstream calls without saturating network connections. After a cooldown window, the circuit enters `HALF_OPEN` to test service recovery.
+
+---
+
+## 7. Multi-Agent Delegation
+
+Complex workflows require specialized capabilities without privilege escalation. JackVerse provides hierarchical multi-agent delegation:
+- **Role Profiles**: Sub-agents operate under specialized profiles (e.g., `transport_specialist`, `workspace_analyst`) with restricted tool subsets.
+- **Non-Multiplying Budgets**: When an orchestrator delegates a subtask, it carves out a slice of its own remaining `ExecutionBudget`. Child agents cannot exceed the parent's overall envelope.
+- **Context Isolation**: Child agents maintain clean, isolated conversation contexts. Only the final synthesized result returns to the orchestrator, preventing context window saturation.
+
+---
+
+## 8. Permissions & Human Confirmation
+
+Actions within JackVerse are evaluated against a declarative, priority-based `PolicyEngine`:
+- **Deterministic Evaluation**: Rules evaluate by explicit priority (highest to lowest) to reach a deterministic decision: `ALLOW`, `DENY`, or `REQUIRE_CONFIRMATION`.
+- **Least Privilege Defaults**: Unknown tools and unmapped actions evaluate to fail-closed `DENY`.
+- **Single-Use Confirmation Tokens**: High-risk mutations (e.g. creating files or modifying configuration) halt execution and prompt the human operator via the terminal console. Confirmations are bound to a cryptographically hashed token containing the exact operation arguments; tampering with arguments invalidates the approval.
+
+---
+
+## 9. Observability
+
+JackVerse provides comprehensive observability out of the box:
+
+- **Metrics**: Native Prometheus metrics server exposed on `:9101/metrics`. Tracks turn counts, tool invocation latencies, memory hits/misses, circuit breaker state transitions, and LLM token usage.
+- **Distributed Tracing**: OpenTelemetry instrumentation exporting traces over OTLP/HTTP to **Grafana Tempo**. Tracing spans flow across orchestrators, delegation transitions, tool calls, and MCP transport requests.
+- **Dashboards**: Pre-provisioned **Grafana** operations dashboard at `http://localhost:3000` visualizing real-time system performance and security evaluations.
+- **Lifecycle Event Bus**: Decoupled pub/sub event stream (`LifecycleEventBus`) delivering real-time lifecycle events to metric collectors, tracers, and UI observers.
+
+---
+
+## 10. Terminal Operator Console
+
+JackVerse includes a high-performance terminal UI built with Textual:
+
+```bash
+python -m harness --tui
+```
+
+### Features:
+- **Instant System Status**: Evidence-based health probes for LLM connectivity, MCP servers, observability backends, and workspace readiness.
+- **Interactive Scenarios**: 1-click execution of curated runtime journeys covering filesystem containment, persistent memory, multi-agent delegation, and resilience tours.
+- **Live Flight Recorder**: Real-time event stream displaying tool calls, thought synthesis, and telemetry spans as they execute.
+- **Execution Topology Tree**: Hierarchical visualization of active agent runs and sub-agent delegation spans.
+- **Human-in-the-Loop Dialog**: Interactive confirmation modals for mutating actions.
+- **Integrated Telemetry Handoff**: Press `t` to copy the active run's trace ID or view Grafana dashboard pointers.
+
+---
+
+## 11. Running Locally
+
+### Prerequisites
+- Python 3.12+
+- Docker and Docker Compose (recommended for full observability stack)
+
+### Quick Start (Local Virtual Environment)
+
+1. **Clone the repository**:
+   ```bash
+   git clone https://github.com/grantjackdagogo/agent-harness.git
+   cd agent-harness
+   ```
+
+2. **Create and activate a virtual environment**:
+   ```bash
+   python3.12 -m venv .venv
+   source .venv/bin/activate
+   pip install -e .
+   ```
+
+3. **Configure your LLM credentials**:
+   ```bash
+   export INNKUBE_API_KEY="your-api-key"
+   ```
+
+4. **Launch the CLI**:
+   ```bash
+   agent-harness
+   ```
+
+5. **Launch the Terminal Operator Console (TUI)**:
+   ```bash
+   agent-harness --tui
+   ```
+
+---
+
+## 12. Docker / Observability Stack
+
+The canonical way to run JackVerse with full distributed tracing, metrics, and Grafana dashboards is via Docker Compose.
+
+```bash
+make showcase
+```
+
+This single command:
+1. Builds and starts the multi-container stack:
+   - `harness`: Agent runtime container
+   - `transport-mcp`: Containerized MCP transport service
+   - `prometheus`: Scrapes runtime metrics on `:9101`
+   - `tempo`: Distributed trace collector on `:3200`
+   - `grafana`: Operations dashboard on `:3000` (Default: `admin` / `admin`)
+2. Performs automated health probes until all endpoints are ready.
+3. Automatically attaches the **Terminal Operator Console** directly to your terminal.
+
+### Management Commands
+```bash
+make up         # Start Docker stack in background
+make down       # Stop and remove containers and networks
+make logs       # Follow container logs
+make test       # Run regression test suite inside container
+```
+
+### Telemetry Endpoints
+- **Grafana Dashboard**: [http://localhost:3000/d/agent-harness-runtime/agent-harness-operations](http://localhost:3000/d/agent-harness-runtime/agent-harness-operations)
+- **Prometheus UI**: [http://localhost:9090](http://localhost:9090)
+- **Tempo Explorer**: [http://localhost:3000/explore](http://localhost:3000/explore)
+- **Harness Metrics**: [http://localhost:9101/metrics](http://localhost:9101/metrics)
+
+---
+
+## 13. Tests
+
+JackVerse includes an extensive test suite verifying deterministic execution, memory firewalls, multi-agent delegation, and resilience:
+
+```bash
+# Run complete test suite in Docker
+make test
+
+# Or run locally via unittest
+python -m unittest discover -s tests -p "test_*.py"
+```
+
+The test suite covers:
+- **Unit Tests**: Isolated unit tests for ReAct loops, workspace containment, memory RRF retrieval, circuit breaker transitions, and policy evaluation.
+- **Integration Tests**: Verification of SQLite memory lifecycle, MCP Streamable HTTP transports, and Prometheus metric exporters.
+- **End-to-End Governance Tests**: Full multi-agent execution flows with human confirmation simulation and distributed trace verification.
+
+---
+
+## 14. Project Structure
+
+```text
+agent-harness/
+├── src/harness/                       # Core JackVerse Agent Runtime package
+│   ├── agent/                         # ReAct controller, delegation, budgets
+│   ├── engine/                        # LLM client & tool argument parsing
+│   ├── memory/                        # SQLite storage, hybrid RRF, Memory Firewall
+│   ├── mcp/                           # MCP client, server adapters, circuit breaker
+│   ├── observability/                 # Prometheus metrics & OpenTelemetry tracing
+│   ├── permissions/                   # Contextual policy engine & confirmation tokens
+│   ├── tools/                         # Filesystem containment & tool registry
+│   └── tui/                           # Textual terminal operator console
+├── tests/                             # Test suite (unit, integration, e2e)
+│   ├── unit/                          # Deterministic unit tests
+│   ├── integration/                   # Subsystem integration tests
+│   └── e2e/                           # End-to-end multi-agent governance scenarios
+├── observability/                     # Monitoring stack configurations
+│   ├── grafana/                       # Dashboards & datasource provisioning
+│   ├── prometheus/                    # Metric scraper configs
+│   └── tempo/                         # Trace storage & receiver configs
+├── docs/                              # Project documentation & media
+│   ├── OPERATOR_GUIDE.md              # Complete Operator & Runtime Runbook
+│   ├── architecture.md                # System architecture specification
+│   ├── demo/                          # Demo video & walkthrough
+│   └── observability/                 # Dashboard screenshots & telemetry evidence
+├── config/                            # Runtime configuration files
+│   ├── config.yaml                    # Local configuration
+│   └── config.docker.yaml             # Docker stack configuration
+├── evaluation/                        # Performance benchmarking & evaluation suites
+├── docker-compose.yml                 # Multi-container orchestration stack
+├── Dockerfile                         # Agent runtime image
+├── Makefile                           # Development & verification workflows
+└── pyproject.toml                     # Package dependencies & build metadata
+```
+
+---
+
+## 15. Authors & Contributors
+
+JackVerse Agent Runtime is maintained by Grant Dagogo Jack and evolved from collaborative work on the original agent-harness implementation.
+
+- **Grant Dagogo Jack** — Lead Architecture, Multi-Agent Runtime & Observability ([GitHub](https://github.com/grantjackdagogo))
+
+For detailed operational walkthroughs and architecture specifications, consult:
+- [`docs/OPERATOR_GUIDE.md`](docs/OPERATOR_GUIDE.md) — Operational runbook and screen walkthrough.
+- [`docs/architecture.md`](docs/architecture.md) — Architectural invariants and security models.
+- [`docs/demo/`](docs/demo/) — Demonstration video and recording.
+- [`docs/observability/README.md`](docs/observability/README.md) — Telemetry evidence and Grafana dashboards.
