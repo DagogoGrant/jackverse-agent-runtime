@@ -413,3 +413,211 @@ tools:
         rendered = rep.render()
         self.assertIn("JackVerse LLM Provider Diagnostics", rendered)
         self.assertIn("http://localhost:11434/v1", rendered)
+
+
+class TestDoctorAndLegacyCleanup(unittest.TestCase):
+    """Targeted tests verifying legacy InnKube removal, clean domain errors, and live doctor capabilities."""
+
+    # 1. InnKube fallback completely removed
+    def test_innkube_fallback_completely_removed(self) -> None:
+        from harness.cli import main
+        import io
+
+        # Scenario A: config.py does not read INNKUBE_API_KEY
+        with tempfile.NamedTemporaryFile("w", suffix=".yaml", delete=False) as f:
+            f.write("""
+agent:
+  max_steps: 5
+llm:
+  provider: openai_compatible
+  base_url: https://api.openai.com/v1
+  model: gpt-4.1-mini
+  temperature: 0.0
+tools:
+  workspace_root: ./workspace
+""")
+            cfg_path = Path(f.name)
+
+        try:
+            with patch.dict(os.environ, {"INNKUBE_API_KEY": "innkube_val_123"}, clear=True):
+                cfg = load_config(cfg_path)
+                # Must be None, not "innkube_val_123"
+                self.assertIsNone(cfg.llm.api_key)
+
+            # Scenario B: cli.py main exits with missing LLM_API_KEY even if INNKUBE_API_KEY is in env
+            with patch.dict(os.environ, {"INNKUBE_API_KEY": "innkube_val_123", "AGENT_HARNESS_CONFIG": str(cfg_path)}, clear=True):
+                stderr_capture = io.StringIO()
+                with patch("sys.stderr", stderr_capture), patch("harness.cli.load_dotenv"):
+                    with self.assertRaises(SystemExit) as ctx:
+                        main()
+                self.assertEqual(ctx.exception.code, 1)
+                self.assertIn("LLM_API_KEY environment variable is not set", stderr_capture.getvalue())
+                self.assertNotIn("INNKUBE_API_KEY", stderr_capture.getvalue())
+        finally:
+            if os.path.exists(cfg_path):
+                os.unlink(cfg_path)
+
+    # 2. Domain exceptions contain no unittest/mock dependency
+    def test_domain_exceptions_contain_no_unittest_or_mock_dependency(self) -> None:
+        base_path = Path(__file__).resolve().parent.parent.parent / "src" / "harness" / "llm" / "base.py"
+        base_code = base_path.read_text(encoding="utf-8")
+
+        self.assertNotIn("unittest", base_code)
+        self.assertNotIn("mock", base_code)
+        self.assertNotIn("MagicMock", base_code)
+
+        # Verify hierarchy
+        auth_err = LLMAuthenticationError("unauthorized")
+        conn_err = LLMConnectionError("unreachable")
+        cap_err = ProviderCapabilityError("no tool support")
+
+        for err in (auth_err, conn_err, cap_err):
+            self.assertIsInstance(err, LLMError)
+            self.assertIsInstance(err, RuntimeError)
+
+    # 3. Doctor configuration-only mode
+    def test_doctor_configuration_only_mode(self) -> None:
+        cfg = LLMConfig(
+            provider="openai_compatible",
+            base_url="https://api.openai.com/v1",
+            model="gpt-4.1-mini",
+            temperature=0.0,
+            api_key="sk-test-key",
+        )
+        mock_provider = MagicMock()
+        report = run_llm_diagnostics(cfg, live=False, provider=mock_provider)
+
+        self.assertFalse(report.live)
+        self.assertTrue(report.all_passed)
+        # In non-live mode, mock_provider.chat is never called
+        mock_provider.chat.assert_not_called()
+        self.assertEqual(len(report.checks), 4)
+
+    # 4. Doctor live successful response
+    def test_doctor_live_successful_response(self) -> None:
+        cfg = LLMConfig(
+            provider="openai_compatible",
+            base_url="https://api.openai.com/v1",
+            model="gpt-4.1-mini",
+            temperature=0.0,
+            api_key="sk-test-key",
+        )
+        # Mock responses: 1st for ping (content), 2nd for health_check (tool_calls)
+        tool_call = ToolCall(id="call_1", name="health_check", arguments={"message": "ping"})
+        mock_provider = MagicMock()
+        mock_provider.chat.side_effect = [
+            LLMResponse(content="pong"),
+            LLMResponse(content=None, tool_calls=[tool_call]),
+        ]
+
+        report = run_llm_diagnostics(cfg, live=True, provider=mock_provider)
+
+        self.assertTrue(report.live)
+        self.assertTrue(report.all_passed)
+        names = [c.name for c in report.checks]
+        self.assertIn("Endpoint Reachable", names)
+        self.assertIn("Authentication Accepted", names)
+        self.assertIn("Model Response", names)
+        self.assertIn("Structured Tool Calling", names)
+        self.assertEqual(mock_provider.chat.call_count, 2)
+
+    # 5. Doctor live authentication failure
+    def test_doctor_live_authentication_failure(self) -> None:
+        cfg = LLMConfig(
+            provider="openai_compatible",
+            base_url="https://api.openai.com/v1",
+            model="gpt-4.1-mini",
+            temperature=0.0,
+            api_key="sk-invalid-key",
+        )
+        mock_provider = MagicMock()
+        mock_provider.chat.side_effect = LLMAuthenticationError("401 Unauthorized: Invalid API key")
+
+        report = run_llm_diagnostics(cfg, live=True, provider=mock_provider)
+
+        self.assertFalse(report.all_passed)
+        auth_check = next(c for c in report.checks if c.name == "Authentication Accepted")
+        self.assertFalse(auth_check.passed)
+        self.assertIn("rejected", auth_check.details.lower())
+
+    # 6. Doctor live connection failure
+    def test_doctor_live_connection_failure(self) -> None:
+        cfg = LLMConfig(
+            provider="openai_compatible",
+            base_url="https://api.openai.com/v1",
+            model="gpt-4.1-mini",
+            temperature=0.0,
+            api_key="sk-test-key",
+        )
+        mock_provider = MagicMock()
+        mock_provider.chat.side_effect = LLMConnectionError("Connection timed out to api.openai.com")
+
+        report = run_llm_diagnostics(cfg, live=True, provider=mock_provider)
+
+        self.assertFalse(report.all_passed)
+        conn_check = next(c for c in report.checks if c.name == "Endpoint Reachable")
+        self.assertFalse(conn_check.passed)
+        self.assertIn("failed", conn_check.details.lower())
+
+    # 7. Doctor live nonexistent model
+    def test_doctor_live_nonexistent_model(self) -> None:
+        cfg = LLMConfig(
+            provider="openai_compatible",
+            base_url="https://api.openai.com/v1",
+            model="nonexistent-model-xyz",
+            temperature=0.0,
+            api_key="sk-test-key",
+        )
+        mock_provider = MagicMock()
+        mock_provider.chat.side_effect = LLMError("Model 'nonexistent-model-xyz' not found (404)")
+
+        report = run_llm_diagnostics(cfg, live=True, provider=mock_provider)
+
+        self.assertFalse(report.all_passed)
+        model_check = next(c for c in report.checks if c.name == "Model Response")
+        self.assertFalse(model_check.passed)
+        self.assertIn("not found", model_check.details.lower())
+
+    # 8. Doctor live provider without structured tool support
+    def test_doctor_live_provider_without_structured_tool_support(self) -> None:
+        cfg = LLMConfig(
+            provider="openai_compatible",
+            base_url="https://api.openai.com/v1",
+            model="gpt-4.1-mini",
+            temperature=0.0,
+            api_key="sk-test-key",
+        )
+        mock_provider = MagicMock()
+        # Ping succeeds, but tool probe returns plain conversational text without tool_calls
+        mock_provider.chat.side_effect = [
+            LLMResponse(content="pong"),
+            LLMResponse(content="I do not support tool calls, here is plain text instead.", tool_calls=[]),
+        ]
+
+        report = run_llm_diagnostics(cfg, live=True, provider=mock_provider)
+
+        self.assertFalse(report.all_passed)
+        tool_check = next(c for c in report.checks if c.name == "Structured Tool Calling")
+        self.assertFalse(tool_check.passed)
+        self.assertIn("plain text instead of returning a structured tool call", tool_check.details)
+
+    # 9. Doctor never exposes API keys
+    def test_doctor_never_exposes_api_keys(self) -> None:
+        secret = "sk-live-supersecrettoken9876543210"
+        cfg = LLMConfig(
+            provider="openai_compatible",
+            base_url="https://api.openai.com/v1",
+            model="gpt-4.1-mini",
+            temperature=0.0,
+            api_key=secret,
+        )
+        mock_provider = MagicMock()
+        mock_provider.chat.side_effect = LLMAuthenticationError(
+            f"Authentication failed: Bearer {secret} was rejected"
+        )
+
+        report = run_llm_diagnostics(cfg, live=True, provider=mock_provider)
+        rendered = report.render()
+
+        self.assertNotIn(secret, rendered)
+        self.assertIn("[REDACTED]", rendered)
