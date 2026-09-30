@@ -1,0 +1,17 @@
+FROM python:3.12-slim-bookworm
+
+WORKDIR /app
+
+# Copy dependency specifications first
+COPY pyproject.toml README.md ./
+
+# Copy application source
+COPY src/ ./src
+
+# Install package dependencies (transport service requires MCP, HTTP libraries, and config parsers)
+RUN pip install --no-cache-dir mcp==2.1.1 httpx httpx2 python-dotenv pyyaml && \
+    pip install --no-cache-dir --no-deps .
+
+EXPOSE 8000
+
+CMD ["python", "-m", "harness.mcp.servers.transport_server", "--transport", "streamable-http", "--host", "0.0.0.0", "--port", "8000"]
