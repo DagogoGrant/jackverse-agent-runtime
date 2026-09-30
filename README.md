@@ -104,7 +104,8 @@ flowchart TD
 - **Missions & Cases**: Multi-week objectives partitioned into discrete trackable cases with rigorous state machines.
 - **Opportunity Deduplication**: Content-hash fingerprinting (`opp_v1`) to track external leads without duplicate processing.
 - **Parameter-Bound Approvals**: Cryptographically binds human authorizations to the canonical SHA-256 fingerprint (`act_fp_v1`) of the action's type and parameters (tamper-evident authorization).
-- **Personal Context Vault**: Stores user facts with explicit provenance, confidence scoring, sensitivity boundaries, and purpose gating.
+- **Personal Context Vault**: Stores user facts with explicit provenance (`ContextSource`), confidence scoring, sensitivity boundaries (`SensitivityLevel.SENSITIVE`), lifecycle validation, and cryptographic package generation (`ContextPackage`).
+- **Claim Ledger**: Guarantees that *"the LLM must never be allowed to invent personal facts."* Every external assertion is grounded in active, authorized, verified ContextFacts before submission, detecting contradictions (`ClaimStatus.CONFLICTED`) and enforcing purpose-specific verification thresholds.
 - **Transactional State + Immutable Event Log**: Atomic domain mutations and `DomainEvents` committed in a single Unit-of-Work boundary over SQLite (current state is stored directly; the event log provides audit history, deterministic sequencing, and future replay foundations).
 
 See the complete [Caseworker Architecture Specification](docs/CASEWORKER_ARCHITECTURE.md) for full details.

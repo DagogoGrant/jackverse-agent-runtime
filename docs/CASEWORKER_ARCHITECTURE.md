@@ -215,24 +215,114 @@ Consequential actions (such as submitting official applications, committing fund
 
 ---
 
-## 6. Personal Context Vault & Purpose Gating
+## 6. Personal Context Vault & Access Policy
 
-Personal facts stored in `ContextFact` are governed by privacy controls:
+The Personal Context Vault provides governed, verifiable storage for user identity, credentials, career history, preferences, and constraints.
 
-- **Provenance**: `source_type` explicitly records origin (`user_input`, `document`, `agent_inference`, `third_party_verifier`).
-- **Decoupled Confidence & Verification**: `confidence` (float `0.0`–`1.0`) is stored separately from `verification_status` (`unverified`, `user_verified`, `source_verified`).
-- **Purpose Gating**: Facts can be restricted to specific use cases via `allowed_purposes` (e.g. `["job_application", "visa"]`). Gating logic verifies purpose alignment prior to disclosure.
-- **Historical Superseding**: When user facts change (e.g. new address), prior records are not destructively overwritten; they are marked with `superseded_by_fact_id` and `superseded_at`, preserving a complete audit history.
+> **Foundational Principle:**
+> *"The LLM must never be allowed to invent personal facts."*
+> Every external factual assertion must be grounded in explicit, active, verified ContextFacts in the user's vault.
+
+### 6.1 Vault Domain Model
+
+1. **ContextSource**: Distinct entity tracking provenance origin (e.g., CV upload, profile import, third-party verifier, user input).
+   - Agent inferences (`SourceType.AGENT_INFERENCE`) represent provenance, **not verification**, and remain strictly `UNVERIFIED` until confirmed.
+   - Tracks optimistic concurrency `version` and redacts sensitive references in `to_safe_dict()` and `__repr__`.
+2. **ContextFact**: Verifiable factual assertion (e.g., degree, skill, email, salary constraint).
+   - **Lifecycle States**: Computed properties ensure facts are only considered active when not superseded, not rejected, and not expired:
+     - `is_active`: `not is_superseded and not is_rejected and not is_expired`
+     - `is_expired`: `expires_at is not None and now_utc() > expires_at`
+     - `is_superseded`: `superseded_by_fact_id is not None`
+     - `is_rejected`: `verification_status == VerificationStatus.REJECTED`
+   - **Historical Lineage**: When facts are superseded, prior records are preserved with `superseded_by_fact_id` and `superseded_at`.
+   - **Safe Redaction**: Facts with `sensitivity == SensitivityLevel.SENSITIVE` redact raw values to `"[REDACTED]"` in safe display representations and domain event payloads.
+3. **ContextAccessPolicy**: Purpose-aware access evaluator.
+   - **Conservative Default**: SENSITIVE facts are inaccessible unless explicitly authorized for the requested purpose in `allowed_purposes`.
+   - **Lifecycle Guard**: Expired, superseded, or rejected facts are never granted access.
+   - **Confidence Gating**: Evaluates whether fact confidence satisfies required thresholds.
+4. **ContextPackage & Builder**:
+   - Compiles authorized, purpose-scoped bundles of active facts for consumption by tasks or downstream agents.
+   - Computes a deterministic SHA-256 fingerprint (`ctx_pkg_v1`) over canonically sorted fact IDs and attributes to detect tampering.
+5. **Profile Completeness**:
+   - `ProfileCompletenessEvaluator` audits active facts against `RequirementSet` specifications (e.g. `standard_job_application_requirements`, `standard_housing_application_requirements`).
+   - Classifies requirements into `satisfied`, `missing`, `unverifiable`, and `expired` with a quantitative completeness ratio.
 
 ---
 
-## 7. 14-Phase Implementation Roadmap
+## 7. Claim Ledger & Support Policy
 
-The Caseworker vision will unfold across 14 systematic phases:
+The Claim Ledger sits between the user's Personal Context Vault and external applications, ensuring that any statement made on the user's behalf is verifiable and grounded.
+
+```mermaid
+flowchart TD
+    subgraph "Personal Context Vault"
+        CS["ContextSource<br/>(CV, LinkedIn, Manual)"] -->|"provenance"| CF["ContextFacts<br/>(Active / Unexpired)"]
+        CF -->|"purpose check"| VP["ContextAccessPolicy"]
+        VP -->|"filtered facts"| CP["ContextPackage<br/>(Fingerprint: ctx_pkg_v1)"]
+    end
+
+    subgraph "Claim Ledger"
+        CLM["Proposed Claim<br/>('Reduced latency by 40%')"] --> CVP["ClaimVerificationPolicy"]
+        CF -.->|"supporting facts"| CVP
+        CVP -->|"evaluate support"| RES{"Support Status"}
+        RES -->|"all facts valid"| SUP["SUPPORTED"]
+        RES -->|"missing/unverified/expired"| UNSUP["UNSUPPORTED"]
+        RES -->|"contradictory facts"| CONF["CONFLICTED"]
+    end
+
+    CP -.->|"authorized context"| AGENT["Future Task / Application Agent"]
+    SUP --> AGENT
+    UNSUP -->|"blocked"| HITL["Human Clarification / Approval"]
+    CONF -->|"blocked"| HITL
+```
+
+### 7.1 Claim Aggregate Root & Lifecycle
+
+```mermaid
+stateDiagram-v2
+    [*] --> PROPOSED
+    PROPOSED --> SUPPORTED: evaluate (all facts valid)
+    PROPOSED --> UNSUPPORTED: evaluate (missing / unverified)
+    PROPOSED --> CONFLICTED: evaluate (contradictory facts)
+    PROPOSED --> REJECTED: user retracts
+    PROPOSED --> EXPIRED: context lapses
+
+    SUPPORTED --> UNSUPPORTED: supporting fact expired/superseded
+    SUPPORTED --> CONFLICTED: conflicting fact added
+    SUPPORTED --> REJECTED: user retracts
+    SUPPORTED --> EXPIRED: claim expired
+
+    UNSUPPORTED --> SUPPORTED: supporting fact verified
+    UNSUPPORTED --> CONFLICTED: conflicting fact added
+    UNSUPPORTED --> REJECTED: user retracts
+    UNSUPPORTED --> EXPIRED: claim expired
+
+    CONFLICTED --> SUPPORTED: contradiction resolved
+    CONFLICTED --> UNSUPPORTED: supporting fact revoked
+    CONFLICTED --> REJECTED: user retracts
+    CONFLICTED --> EXPIRED: claim expired
+
+    REJECTED --> [*]
+    EXPIRED --> [*]
+```
+
+### 7.2 Claim Verification Policy & Contradiction Detection
+
+1. **Ownership Invariant**: All supporting facts must belong to the claim's owner.
+2. **Lifecycle Invariant**: Supporting facts must be active (unexpired, unsuperseded, unrejected).
+3. **Purpose Gating**: Supporting facts must be authorized for the claim's intended purpose.
+4. **Verification Threshold**: Facts must meet the minimum verification rank required by the purpose (e.g. `USER_VERIFIED` for job/housing applications).
+5. **Contradiction Detection**: If two or more active supporting facts declare conflicting values for the same normalized `(namespace, key)`, the policy evaluates the claim to `ClaimStatus.CONFLICTED`.
+
+---
+
+## 8. 14-Phase Implementation Roadmap
+
+The Caseworker vision unfolds across 14 systematic phases:
 
 ```text
-Phase 1:  Domain Foundation                 (COMPLETE)
-Phase 2:  Personal Context Vault + Claim Ledger
+Phase 1:  Domain Foundation                     (COMPLETE)
+Phase 2:  Personal Context Vault + Claim Ledger  (COMPLETE)
 Phase 3:  API Service Layer
 Phase 4:  Consumer Web UI
 Phase 5:  Opportunity Discovery Engine
@@ -246,3 +336,4 @@ Phase 12: Evals + Replay
 Phase 13: Security Hardening
 Phase 14: Multi-user Production Hardening
 ```
+
