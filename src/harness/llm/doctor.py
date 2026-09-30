@@ -84,11 +84,16 @@ def run_llm_diagnostics(config: LLMConfig) -> DiagnosticReport:
             DiagnosticCheck("Provider Factory", False, f"Resolution error: {e}")
         )
 
-    # 4. Authentication check (without leaking secrets)
+    is_local = any(
+        h in (config.base_url or "").lower()
+        for h in ("localhost", "127.0.0.1", "::1", "host.docker.internal", "ollama")
+    )
     if auth_configured:
         checks.append(DiagnosticCheck("Authentication", True, "API key present (redacted)"))
-    else:
+    elif is_local:
         checks.append(DiagnosticCheck("Authentication", True, "No API key configured (local / anonymous mode)"))
+    else:
+        checks.append(DiagnosticCheck("Authentication", False, "API key is not configured for remote endpoint"))
 
     return DiagnosticReport(
         provider=config.provider,
