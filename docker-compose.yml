@@ -50,6 +50,9 @@ services:
     volumes:
       - agent_memory:/app/.agent_memory
       - ./workspace:/app/workspace
+      - ./src:/app/src
+      - ./tests:/app/tests
+      - caseworker_data:/app/.caseworker
     networks:
       - agent-net
 
@@ -99,11 +102,30 @@ services:
     networks:
       - agent-net
 
+  caseworker-api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: ["uvicorn", "caseworker.api:create_app", "--factory", "--host", "0.0.0.0", "--port", "8080", "--workers", "1"]
+    ports:
+      - "127.0.0.1:8080:8080"
+    environment:
+      - CASEWORKER_DB_PATH=/app/.caseworker/caseworker.db
+      - CASEWORKER_DEV_AUTH=false
+      - PYTHONPATH=/app/src
+    volumes:
+      - ./src:/app/src
+      - ./tests:/app/tests
+      - caseworker_data:/app/.caseworker
+    networks:
+      - agent-net
+
 volumes:
   agent_memory:
   prometheus_data:
   grafana_data:
   tempo_data:
+  caseworker_data:
 
 networks:
   agent-net:

@@ -349,7 +349,66 @@ Following the initial delivery of the Personal Context Vault and Claim Ledger, M
 
 ---
 
-## 8. 14-Phase Implementation Roadmap
+## 8. Phase 3: Caseworker API Service Layer
+
+```mermaid
+graph TD
+    subgraph "HTTP Client / Frontend"
+        Client["Web UI / External Clients"]
+    end
+
+    subgraph "FastAPI Middleware & Ingress"
+        CORS["CORSMiddleware"]
+        CID["CorrelationIdMiddleware (X-Request-ID)"]
+        SEC["SecurityHeadersMiddleware (nosniff, no-store)"]
+        IDP["FailClosedIdentityProvider / DevIdentityProvider"]
+        ERR["RFC 9457 Problem Details Exception Handlers"]
+    end
+
+    subgraph "RESTful API Routers (/api/v1)"
+        R_Health["Health & Readiness Probes (/health)"]
+        R_Missions["MissionsRouter (/api/v1/missions)"]
+        R_Cases["CasesRouter (/api/v1/cases)"]
+        R_Opps["OpportunitiesRouter (/api/v1/opportunities)"]
+        R_Context["ContextVaultRouter (/api/v1/context)"]
+        R_Claims["ClaimLedgerRouter (/api/v1/claims)"]
+        R_Actions["ActionsRouter (/api/v1/actions)"]
+        R_Approvals["ApprovalsRouter (/api/v1/approvals)"]
+        R_Events["EventsCursorRouter (/api/v1/events)"]
+    end
+
+    subgraph "Application Services"
+        MS["MissionService"]
+        CS["CaseService"]
+        OS["OpportunityService"]
+        VS["ContextVaultService"]
+        CLS["ClaimLedgerService"]
+        AS["ActionService (ActionPolicy)"]
+        APS["ApprovalService (Idempotency)"]
+    end
+
+    Client --> CORS --> CID --> SEC --> IDP --> ERR
+    IDP --> R_Health & R_Missions & R_Cases & R_Opps & R_Context & R_Claims & R_Actions & R_Approvals & R_Events
+    R_Missions --> MS
+    R_Cases --> CS
+    R_Opps --> OS
+    R_Context --> VS
+    R_Claims --> CLS
+    R_Actions --> AS
+    R_Approvals --> APS
+```
+
+### Architectural Guarantees:
+1. **Resource-Bound ETags**: All mutating endpoints require `If-Match: "{resource_type}:{id}:v{version}"`. Missing headers trigger `428 Precondition Required`, mismatches trigger `412 Precondition Failed`.
+2. **Server-Side Action Safety**: Consequential actions are evaluated server-side via `ActionPolicy`, preventing clients from bypassing human approvals or downgrading risk levels.
+3. **Idempotent Approvals**: Repeated approve or reject calls safely return existing state without duplicate version increments or conflicting side-effects. Conflicting reversals fail with `409 Conflict`.
+4. **User-Scoped Deduplication**: External opportunities are fingerprinted and deduplicated strictly per `(user_id, fingerprint)`.
+5. **Monotonic Cursor Pagination**: Event streams use native SQLite `rowid AS position` cursor pagination (`after_position: int | None`).
+6. **Thread-Safe SQLite Concurrency**: Non-shared SQLite connections are opened per `CaseworkerUnitOfWork` and closed on `__exit__`, with WAL mode and `synchronous = NORMAL`.
+
+---
+
+## 9. 14-Phase Implementation Roadmap
 
 The Caseworker vision unfolds across 14 systematic phases:
 
@@ -357,7 +416,7 @@ The Caseworker vision unfolds across 14 systematic phases:
 Phase 1:  Domain Foundation                     (COMPLETE)
 Phase 2:  Personal Context Vault + Claim Ledger  (COMPLETE)
 Milestone 2.1: Security & Integrity Hardening   (COMPLETE)
-Phase 3:  API Service Layer
+Phase 3:  API Service Layer                     (COMPLETE)
 Phase 4:  Consumer Web UI
 Phase 5:  Opportunity Discovery Engine
 Phase 6:  Governed Async Subagents

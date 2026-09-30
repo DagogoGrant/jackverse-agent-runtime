@@ -61,6 +61,14 @@ class MissionService:
         with self.storage.unit_of_work() as uow:
             return uow.missions.get_by_id(mission_id)
 
+    def get_mission_for_user(self, user_id: str, mission_id: str) -> Mission | None:
+        """Retrieve a mission by identifier, returning None if non-existent or owned by another user."""
+        with self.storage.unit_of_work() as uow:
+            mission = uow.missions.get_by_id(mission_id)
+            if mission is None or mission.user_id != user_id:
+                return None
+            return mission
+
     def list_user_missions(self, user_id: str, status: MissionStatus | None = None) -> list[Mission]:
         """List all missions belonging to a user, optionally filtered by status."""
         with self.storage.unit_of_work() as uow:
@@ -76,6 +84,35 @@ class MissionService:
         with self.storage.unit_of_work() as uow:
             mission = uow.missions.get_by_id(mission_id)
             if mission is None:
+                raise EntityNotFoundError("Mission", mission_id)
+
+            old_status = mission.status.value
+            mission.transition_to(new_status, reason=reason)
+            uow.missions.save(mission)
+
+            event = make_mission_status_changed_event(
+                mission_id=mission.mission_id,
+                user_id=mission.user_id,
+                aggregate_version=mission.version,
+                old_status=old_status,
+                new_status=mission.status.value,
+                reason=reason,
+            )
+            uow.events.append(event)
+
+        return mission
+
+    def transition_mission_for_user(
+        self,
+        user_id: str,
+        mission_id: str,
+        new_status: MissionStatus | str,
+        reason: str | None = None,
+    ) -> Mission:
+        """Transition a mission's state, raising EntityNotFoundError if non-existent or owned by another user."""
+        with self.storage.unit_of_work() as uow:
+            mission = uow.missions.get_by_id(mission_id)
+            if mission is None or mission.user_id != user_id:
                 raise EntityNotFoundError("Mission", mission_id)
 
             old_status = mission.status.value

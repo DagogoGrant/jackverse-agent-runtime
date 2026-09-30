@@ -88,6 +88,14 @@ class ContextVaultService:
         with self.storage.unit_of_work() as uow:
             return uow.sources.get_by_id(source_id)
 
+    def get_source_for_user(self, user_id: str, source_id: str) -> ContextSource | None:
+        """Retrieve a context source by identifier, returning None if non-existent or owned by another user."""
+        with self.storage.unit_of_work() as uow:
+            source = uow.sources.get_by_id(source_id)
+            if source is None or source.user_id != user_id:
+                return None
+            return source
+
     def list_sources(self, user_id: str) -> list[ContextSource]:
         """List all context sources belonging to a user."""
         with self.storage.unit_of_work() as uow:
@@ -299,6 +307,99 @@ class ContextVaultService:
         """Retrieve a context fact by ID."""
         with self.storage.unit_of_work() as uow:
             return uow.context.get_by_id(fact_id)
+
+    def get_fact_for_user(self, user_id: str, fact_id: str) -> ContextFact | None:
+        """Retrieve a context fact by identifier, returning None if non-existent or owned by another user."""
+        with self.storage.unit_of_work() as uow:
+            fact = uow.context.get_by_id(fact_id)
+            if fact is None or fact.user_id != user_id:
+                return None
+            return fact
+
+    def verify_fact_for_user(
+        self,
+        user_id: str,
+        fact_id: str,
+        status: VerificationStatus | str = VerificationStatus.USER_VERIFIED,
+    ) -> ContextFact:
+        """Verify a context fact, asserting user ownership."""
+        with self.storage.unit_of_work() as uow:
+            fact = uow.context.get_by_id(fact_id)
+            if fact is None or fact.user_id != user_id:
+                raise EntityNotFoundError("ContextFact", fact_id)
+
+            fact.verify(status)
+            uow.context.save(fact)
+
+            event = make_context_fact_verified_event(
+                fact_id=fact.fact_id,
+                user_id=fact.user_id,
+                aggregate_version=fact.version,
+                status=fact.verification_status.value,
+            )
+            uow.events.append(event)
+
+        return fact
+
+    def reject_fact_for_user(
+        self,
+        user_id: str,
+        fact_id: str,
+        reason: str | None = None,
+    ) -> ContextFact:
+        """Reject a context fact, asserting user ownership."""
+        with self.storage.unit_of_work() as uow:
+            fact = uow.context.get_by_id(fact_id)
+            if fact is None or fact.user_id != user_id:
+                raise EntityNotFoundError("ContextFact", fact_id)
+
+            fact.reject(reason)
+            uow.context.save(fact)
+
+            event = make_context_fact_rejected_event(
+                fact_id=fact.fact_id,
+                user_id=fact.user_id,
+                aggregate_version=fact.version,
+                reason=reason,
+            )
+            uow.events.append(event)
+
+        return fact
+
+    def supersede_fact_for_user(
+        self,
+        user_id: str,
+        old_fact_id: str,
+        new_value: Any,
+        new_source_id: str | None = None,
+        new_source_type: SourceType | str | None = None,
+        new_source_reference: str = "",
+        new_confidence: float = 1.0,
+        sensitivity: SensitivityLevel | str | None = None,
+        allowed_purposes: list[str] | None = None,
+        verification_status: VerificationStatus | str = VerificationStatus.UNVERIFIED,
+        expires_at: datetime | None = None,
+        reason: str | None = None,
+    ) -> tuple[ContextFact, ContextFact]:
+        """Supersede a context fact, asserting user ownership."""
+        with self.storage.unit_of_work() as uow:
+            old_fact = uow.context.get_by_id(old_fact_id)
+            if old_fact is None or old_fact.user_id != user_id:
+                raise EntityNotFoundError("ContextFact", old_fact_id)
+
+        return self.supersede_fact(
+            old_fact_id=old_fact_id,
+            new_value=new_value,
+            new_source_id=new_source_id,
+            new_source_type=new_source_type,
+            new_source_reference=new_source_reference,
+            new_confidence=new_confidence,
+            sensitivity=sensitivity,
+            allowed_purposes=allowed_purposes,
+            verification_status=verification_status,
+            expires_at=expires_at,
+            reason=reason,
+        )
 
     def list_active_facts(self, user_id: str, namespace: str | None = None) -> list[ContextFact]:
         """List all active (unexpired, unsuperseded, unrejected) facts for a user."""

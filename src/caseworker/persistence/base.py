@@ -126,6 +126,10 @@ class ApprovalRepository(Protocol):
         """List all pending approvals for a user."""
         ...
 
+    def list_by_user(self, user_id: str, status: ApprovalStatus | None = None) -> list[Approval]:
+        """List approvals for a user, optionally filtered by status."""
+        ...
+
 
 @runtime_checkable
 class ContextSourceRepository(Protocol):
@@ -220,6 +224,17 @@ class EventStore(Protocol):
 
     def get_next_aggregate_version(self, aggregate_type: str, aggregate_id: str) -> int:
         """Return the next strictly monotonic aggregate version for an aggregate stream."""
+        ...
+
+    def list_user_events(
+        self,
+        user_id: str,
+        aggregate_type: str | None = None,
+        aggregate_id: str | None = None,
+        after_position: int | None = None,
+        limit: int = 50,
+    ) -> list[tuple[int, DomainEvent]]:
+        """Retrieve ordered events for a user with stable integer cursor positions."""
         ...
 
 

@@ -376,16 +376,29 @@ def make_context_access_granted_event(
     )
 
 
+CANONICAL_DENIAL_REASONS: dict[str, str] = {
+    "PURPOSE_REQUIRED": "Requested purpose cannot be empty",
+    "FACT_REJECTED": "Fact has been rejected",
+    "FACT_SUPERSEDED": "Fact has been superseded",
+    "FACT_EXPIRED": "Fact has expired",
+    "LOW_CONFIDENCE": "Fact confidence is below required threshold",
+    "UNVERIFIED_FACT": "Fact is unverified",
+    "PURPOSE_NOT_AUTHORIZED": "Requested purpose is not authorized",
+    "SENSITIVE_FACT_RESTRICTED": "Sensitive fact requires explicit purpose authorization",
+}
+
+
 def make_context_access_denied_event(
     user_id: str,
     aggregate_version: int,
     purpose: str,
     fact_id: str,
-    reason: str,
+    reason: str | None = None,
     reason_code: str = "DENIED",
     namespace: str = "",
     key: str = "",
 ) -> DomainEvent:
+    safe_reason = CANONICAL_DENIAL_REASONS.get(reason_code, "Access denied by context policy")
     return DomainEvent(
         event_type="context.access_denied",
         aggregate_type="context_vault",
@@ -395,7 +408,7 @@ def make_context_access_denied_event(
         payload={
             "purpose": purpose,
             "fact_id": fact_id,
-            "reason": reason,
+            "reason": safe_reason,
             "reason_code": reason_code,
             "namespace": namespace,
             "key": key,

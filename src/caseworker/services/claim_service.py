@@ -211,6 +211,32 @@ class ClaimLedgerService:
         with self.storage.unit_of_work() as uow:
             return uow.claims.get_by_id(claim_id)
 
+    def get_claim_for_user(self, user_id: str, claim_id: str) -> Claim | None:
+        """Retrieve a claim by ID, returning None if non-existent or owned by another user."""
+        with self.storage.unit_of_work() as uow:
+            claim = uow.claims.get_by_id(claim_id)
+            if claim is None or claim.user_id != user_id:
+                return None
+            return claim
+
+    def evaluate_claim_for_user(self, user_id: str, claim_id: str) -> Claim:
+        """Evaluate an existing claim, asserting user ownership."""
+        with self.storage.unit_of_work() as uow:
+            claim = uow.claims.get_by_id(claim_id)
+            if claim is None or claim.user_id != user_id:
+                raise EntityNotFoundError("Claim", claim_id)
+
+        return self.evaluate_claim(claim_id)
+
+    def reject_claim_for_user(self, user_id: str, claim_id: str, reason: str | None = None) -> Claim:
+        """Reject an existing claim, asserting user ownership."""
+        with self.storage.unit_of_work() as uow:
+            claim = uow.claims.get_by_id(claim_id)
+            if claim is None or claim.user_id != user_id:
+                raise EntityNotFoundError("Claim", claim_id)
+
+        return self.reject_claim(claim_id, reason=reason)
+
     def list_user_claims(self, user_id: str, status: ClaimStatus | None = None) -> list[Claim]:
         """List claims belonging to a user, optionally filtered by status."""
         with self.storage.unit_of_work() as uow:

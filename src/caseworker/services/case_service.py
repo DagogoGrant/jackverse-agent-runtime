@@ -74,6 +74,14 @@ class CaseService:
         with self.storage.unit_of_work() as uow:
             return uow.cases.get_by_id(case_id)
 
+    def get_case_for_user(self, user_id: str, case_id: str) -> Case | None:
+        """Retrieve a case by identifier, returning None if non-existent or owned by another user."""
+        with self.storage.unit_of_work() as uow:
+            case = uow.cases.get_by_id(case_id)
+            if case is None or case.user_id != user_id:
+                return None
+            return case
+
     def list_user_cases(self, user_id: str, status: CaseStatus | None = None) -> list[Case]:
         """List all cases belonging to a user, optionally filtered by status."""
         with self.storage.unit_of_work() as uow:
@@ -83,6 +91,14 @@ class CaseService:
         """List all cases linked to a specific mission."""
         with self.storage.unit_of_work() as uow:
             return uow.cases.list_by_mission(mission_id)
+
+    def list_mission_cases_for_user(self, user_id: str, mission_id: str) -> list[Case]:
+        """List cases for a mission owned by user, returning empty list if mission not owned."""
+        with self.storage.unit_of_work() as uow:
+            mission = uow.missions.get_by_id(mission_id)
+            if mission is None or mission.user_id != user_id:
+                return []
+            return [c for c in uow.cases.list_by_mission(mission_id) if c.user_id == user_id]
 
     def transition_case(
         self,
@@ -112,11 +128,60 @@ class CaseService:
 
         return case
 
+    def transition_case_for_user(
+        self,
+        user_id: str,
+        case_id: str,
+        new_status: CaseStatus | str,
+        reason: str | None = None,
+    ) -> Case:
+        """Transition case state, raising EntityNotFoundError if non-existent or owned by another user."""
+        with self.storage.unit_of_work() as uow:
+            case = uow.cases.get_by_id(case_id)
+            if case is None or case.user_id != user_id:
+                raise EntityNotFoundError("Case", case_id)
+
+            old_status = case.status.value
+            case.transition_to(new_status, reason=reason)
+            uow.cases.save(case)
+
+            event = make_case_status_changed_event(
+                case_id=case.case_id,
+                user_id=case.user_id,
+                aggregate_version=case.version,
+                old_status=old_status,
+                new_status=case.status.value,
+                reason=reason,
+            )
+            uow.events.append(event)
+
+        return case
+
     def resolve_case(self, case_id: str, outcome: str) -> Case:
         """Resolve a case with recorded outcome and emit CaseResolved event atomically."""
         with self.storage.unit_of_work() as uow:
             case = uow.cases.get_by_id(case_id)
             if case is None:
+                raise EntityNotFoundError("Case", case_id)
+
+            case.resolve(outcome)
+            uow.cases.save(case)
+
+            event = make_case_resolved_event(
+                case_id=case.case_id,
+                user_id=case.user_id,
+                aggregate_version=case.version,
+                outcome=outcome,
+            )
+            uow.events.append(event)
+
+        return case
+
+    def resolve_case_for_user(self, user_id: str, case_id: str, outcome: str) -> Case:
+        """Resolve a case, raising EntityNotFoundError if non-existent or owned by another user."""
+        with self.storage.unit_of_work() as uow:
+            case = uow.cases.get_by_id(case_id)
+            if case is None or case.user_id != user_id:
                 raise EntityNotFoundError("Case", case_id)
 
             case.resolve(outcome)

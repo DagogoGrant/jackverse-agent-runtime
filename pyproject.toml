@@ -23,6 +23,8 @@ dependencies = [
     "opentelemetry-exporter-otlp-proto-http==1.44.0",
     "rich>=14.0.0",
     "textual>=8.0.0",
+    "fastapi>=0.115.0",
+    "uvicorn>=0.30.0",
 ]
 
 [project.scripts]

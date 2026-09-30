@@ -778,6 +778,21 @@ class SQLiteApprovalRepository(ApprovalRepository):
         )
         return [self._row_to_approval(r) for r in cur.fetchall()]
 
+    def list_by_user(self, user_id: str, status: ApprovalStatus | None = None) -> list[Approval]:
+        cur = self.conn.cursor()
+        query = """
+            SELECT approval_id, action_id, case_id, user_id, action_fingerprint,
+                   status, requested_at, decided_at, expires_at, reason, version
+            FROM approvals WHERE user_id = ?
+        """
+        params: list[Any] = [user_id]
+        if status is not None:
+            query += " AND status = ?"
+            params.append(status.value if isinstance(status, ApprovalStatus) else status)
+        query += " ORDER BY requested_at DESC"
+        cur.execute(query, tuple(params))
+        return [self._row_to_approval(r) for r in cur.fetchall()]
+
 
 class SQLiteContextSourceRepository(ContextSourceRepository):
     def __init__(self, conn: sqlite3.Connection) -> None:
@@ -1354,13 +1369,48 @@ class SQLiteEventStore(EventStore):
         row = cur.fetchone()
         return int(row[0]) if row and row[0] is not None else 1
 
+    def list_user_events(
+        self,
+        user_id: str,
+        aggregate_type: str | None = None,
+        aggregate_id: str | None = None,
+        after_position: int | None = None,
+        limit: int = 50,
+    ) -> list[tuple[int, DomainEvent]]:
+        cur = self.conn.cursor()
+        query = """
+            SELECT rowid, event_id, event_type, aggregate_type, aggregate_id,
+                   aggregate_version, user_id, occurred_at, payload, schema_version
+            FROM domain_events
+            WHERE user_id = ?
+        """
+        params: list[Any] = [user_id]
+        if aggregate_type is not None:
+            query += " AND aggregate_type = ?"
+            params.append(aggregate_type)
+        if aggregate_id is not None:
+            query += " AND aggregate_id = ?"
+            params.append(aggregate_id)
+        if after_position is not None:
+            query += " AND rowid > ?"
+            params.append(after_position)
+        query += " ORDER BY rowid ASC LIMIT ?"
+        params.append(limit)
+        cur.execute(query, tuple(params))
+        results = []
+        for r in cur.fetchall():
+            pos = int(r[0])
+            event = self._row_to_event(r[1:])
+            results.append((pos, event))
+        return results
 
 
 class SQLiteCaseworkerUnitOfWork(CaseworkerUnitOfWork):
     """Transaction / Unit-of-Work boundary using SQLite."""
 
-    def __init__(self, conn: sqlite3.Connection) -> None:
+    def __init__(self, conn: sqlite3.Connection, close_on_exit: bool = False) -> None:
         self.conn = conn
+        self._close_on_exit = close_on_exit
         self.missions = SQLiteMissionRepository(conn)
         self.cases = SQLiteCaseRepository(conn)
         self.opportunities = SQLiteOpportunityRepository(conn)
@@ -1394,10 +1444,14 @@ class SQLiteCaseworkerUnitOfWork(CaseworkerUnitOfWork):
         exc_val: BaseException | None,
         exc_tb: Any,
     ) -> None:
-        if exc_type is not None:
-            self.rollback()
-        else:
-            self.commit()
+        try:
+            if exc_type is not None:
+                self.rollback()
+            else:
+                self.commit()
+        finally:
+            if self._close_on_exit:
+                self.conn.close()
 
 
 class SQLiteCaseworkerStorage:
@@ -1450,7 +1504,7 @@ class SQLiteCaseworkerStorage:
     def unit_of_work(self) -> SQLiteCaseworkerUnitOfWork:
         """Create a new transactional UnitOfWork."""
         conn = self._get_connection()
-        return SQLiteCaseworkerUnitOfWork(conn)
+        return SQLiteCaseworkerUnitOfWork(conn, close_on_exit=not self._is_memory)
 
     def close(self) -> None:
         """Close shared resources."""
