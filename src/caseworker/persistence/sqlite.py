@@ -1,18 +1,18 @@
 """SQLite persistence implementation for JackVerse Caseworker.
 
 Features:
-- Deterministic schema initialization with version tracking.
+- Deterministic schema migrations via SQLiteMigrator with user_version tracking.
 - Foreign keys enabled (`PRAGMA foreign_keys = ON`).
 - WAL journal mode for filesystem databases.
 - Full Unit-of-Work transaction boundary ensuring atomic state + event commits.
 - Optimistic concurrency locking via aggregate/entity version checks.
 - Partial indexes for idempotency and fingerprint constraints.
+- Repositories for Missions, Cases, Opportunities, Actions, Approvals, ContextSources, ContextFacts, Claims, and DomainEvents.
 """
 
 from __future__ import annotations
 
 from collections.abc import Sequence
-from contextlib import contextmanager
 from datetime import datetime
 import json
 from pathlib import Path
@@ -22,6 +22,7 @@ from typing import Any
 from caseworker.domain.action import Action
 from caseworker.domain.approval import Approval
 from caseworker.domain.case import Case
+from caseworker.domain.claim import Claim
 from caseworker.domain.context import ContextFact
 from caseworker.domain.enums import (
     ActionStatus,
@@ -29,6 +30,7 @@ from caseworker.domain.enums import (
     ApprovalStatus,
     CaseStatus,
     CaseType,
+    ClaimStatus,
     MissionKind,
     MissionStatus,
     OpportunityStatus,
@@ -45,7 +47,9 @@ from caseworker.domain.errors import (
 )
 from caseworker.domain.events import DomainEvent
 from caseworker.domain.mission import Mission
+from caseworker.domain.namespaces import matches_namespace_filter
 from caseworker.domain.opportunity import Opportunity
+from caseworker.domain.source import ContextSource
 from caseworker.domain.types import (
     canonical_json_dumps,
     from_iso_utc,
@@ -57,158 +61,14 @@ from caseworker.persistence.base import (
     ApprovalRepository,
     CaseRepository,
     CaseworkerUnitOfWork,
+    ClaimRepository,
     ContextRepository,
+    ContextSourceRepository,
     EventStore,
     MissionRepository,
     OpportunityRepository,
 )
-
-
-# Schema DDL statements
-SCHEMA_DDL = """
-PRAGMA foreign_keys = ON;
-
-CREATE TABLE IF NOT EXISTS missions (
-    mission_id TEXT PRIMARY KEY,
-    user_id TEXT NOT NULL,
-    title TEXT NOT NULL,
-    goal TEXT NOT NULL,
-    kind TEXT NOT NULL,
-    status TEXT NOT NULL,
-    success_criteria TEXT NOT NULL,
-    constraints TEXT NOT NULL,
-    created_at TEXT NOT NULL,
-    updated_at TEXT NOT NULL,
-    deadline TEXT,
-    version INTEGER NOT NULL DEFAULT 1
-);
-
-CREATE INDEX IF NOT EXISTS idx_missions_user ON missions(user_id, status);
-
-CREATE TABLE IF NOT EXISTS cases (
-    case_id TEXT PRIMARY KEY,
-    mission_id TEXT,
-    user_id TEXT NOT NULL,
-    case_type TEXT NOT NULL,
-    title TEXT NOT NULL,
-    goal TEXT NOT NULL,
-    status TEXT NOT NULL,
-    success_criteria TEXT NOT NULL,
-    constraints TEXT NOT NULL,
-    created_at TEXT NOT NULL,
-    updated_at TEXT NOT NULL,
-    deadline TEXT,
-    resolved_at TEXT,
-    outcome TEXT,
-    version INTEGER NOT NULL DEFAULT 1,
-    FOREIGN KEY (mission_id) REFERENCES missions(mission_id) ON DELETE SET NULL
-);
-
-CREATE INDEX IF NOT EXISTS idx_cases_user ON cases(user_id, status);
-CREATE INDEX IF NOT EXISTS idx_cases_mission ON cases(mission_id);
-
-CREATE TABLE IF NOT EXISTS opportunities (
-    opportunity_id TEXT PRIMARY KEY,
-    mission_id TEXT,
-    user_id TEXT NOT NULL,
-    opportunity_type TEXT NOT NULL,
-    title TEXT NOT NULL,
-    organization TEXT NOT NULL,
-    source_url TEXT NOT NULL,
-    source_name TEXT NOT NULL,
-    location TEXT NOT NULL,
-    status TEXT NOT NULL,
-    requirements TEXT NOT NULL,
-    metadata TEXT NOT NULL,
-    fingerprint TEXT NOT NULL,
-    discovered_at TEXT NOT NULL,
-    deadline TEXT,
-    version INTEGER NOT NULL DEFAULT 1,
-    FOREIGN KEY (mission_id) REFERENCES missions(mission_id) ON DELETE SET NULL
-);
-
-CREATE UNIQUE INDEX IF NOT EXISTS idx_opportunities_user_fp ON opportunities(user_id, fingerprint);
-CREATE INDEX IF NOT EXISTS idx_opportunities_mission ON opportunities(mission_id);
-CREATE INDEX IF NOT EXISTS idx_opportunities_user ON opportunities(user_id, status);
-
-CREATE TABLE IF NOT EXISTS actions (
-    action_id TEXT PRIMARY KEY,
-    case_id TEXT NOT NULL,
-    action_type TEXT NOT NULL,
-    description TEXT NOT NULL,
-    status TEXT NOT NULL,
-    risk_level TEXT NOT NULL,
-    requires_approval INTEGER NOT NULL,
-    created_at TEXT NOT NULL,
-    executed_at TEXT,
-    parameters TEXT NOT NULL,
-    result TEXT NOT NULL,
-    idempotency_key TEXT,
-    version INTEGER NOT NULL DEFAULT 1,
-    FOREIGN KEY (case_id) REFERENCES cases(case_id) ON DELETE CASCADE
-);
-
-CREATE UNIQUE INDEX IF NOT EXISTS idx_actions_idempotency ON actions(case_id, idempotency_key) WHERE idempotency_key IS NOT NULL;
-CREATE INDEX IF NOT EXISTS idx_actions_case ON actions(case_id);
-
-CREATE TABLE IF NOT EXISTS approvals (
-    approval_id TEXT PRIMARY KEY,
-    action_id TEXT NOT NULL,
-    case_id TEXT NOT NULL,
-    user_id TEXT NOT NULL,
-    action_fingerprint TEXT NOT NULL,
-    status TEXT NOT NULL,
-    requested_at TEXT NOT NULL,
-    decided_at TEXT,
-    expires_at TEXT,
-    reason TEXT,
-    version INTEGER NOT NULL DEFAULT 1,
-    FOREIGN KEY (action_id) REFERENCES actions(action_id) ON DELETE CASCADE,
-    FOREIGN KEY (case_id) REFERENCES cases(case_id) ON DELETE CASCADE
-);
-
-CREATE INDEX IF NOT EXISTS idx_approvals_case ON approvals(case_id);
-CREATE INDEX IF NOT EXISTS idx_approvals_action ON approvals(action_id);
-CREATE INDEX IF NOT EXISTS idx_approvals_user_pending ON approvals(user_id, status);
-
-CREATE TABLE IF NOT EXISTS context_facts (
-    fact_id TEXT PRIMARY KEY,
-    user_id TEXT NOT NULL,
-    namespace TEXT NOT NULL,
-    key TEXT NOT NULL,
-    value TEXT NOT NULL,
-    source_type TEXT NOT NULL,
-    source_reference TEXT NOT NULL,
-    confidence REAL NOT NULL,
-    verification_status TEXT NOT NULL,
-    sensitivity TEXT NOT NULL,
-    allowed_purposes TEXT NOT NULL,
-    created_at TEXT NOT NULL,
-    updated_at TEXT NOT NULL,
-    expires_at TEXT,
-    superseded_by_fact_id TEXT,
-    superseded_at TEXT,
-    version INTEGER NOT NULL DEFAULT 1
-);
-
-CREATE INDEX IF NOT EXISTS idx_context_user_ns_key ON context_facts(user_id, namespace, key);
-CREATE INDEX IF NOT EXISTS idx_context_user_active ON context_facts(user_id, superseded_by_fact_id);
-
-CREATE TABLE IF NOT EXISTS domain_events (
-    event_id TEXT PRIMARY KEY,
-    event_type TEXT NOT NULL,
-    aggregate_type TEXT NOT NULL,
-    aggregate_id TEXT NOT NULL,
-    aggregate_version INTEGER NOT NULL,
-    user_id TEXT NOT NULL,
-    occurred_at TEXT NOT NULL,
-    payload TEXT NOT NULL,
-    schema_version INTEGER NOT NULL DEFAULT 1
-);
-
-CREATE UNIQUE INDEX IF NOT EXISTS idx_events_aggregate_version ON domain_events(aggregate_type, aggregate_id, aggregate_version);
-CREATE INDEX IF NOT EXISTS idx_events_user_occurred ON domain_events(user_id, occurred_at);
-"""
+from caseworker.persistence.migration import SQLiteMigrator
 
 
 class SQLiteMissionRepository(MissionRepository):
@@ -220,7 +80,6 @@ class SQLiteMissionRepository(MissionRepository):
         cur.execute("SELECT version FROM missions WHERE mission_id = ?", (mission.mission_id,))
         row = cur.fetchone()
         if row is None:
-            # Insert new
             try:
                 cur.execute(
                     """
@@ -248,7 +107,6 @@ class SQLiteMissionRepository(MissionRepository):
             except sqlite3.IntegrityError as e:
                 raise PersistenceError(f"Failed to insert Mission '{mission.mission_id}': {e}") from e
         else:
-            # Update existing with optimistic lock check
             expected_version = mission.version - 1
             cur.execute(
                 """
@@ -921,6 +779,111 @@ class SQLiteApprovalRepository(ApprovalRepository):
         return [self._row_to_approval(r) for r in cur.fetchall()]
 
 
+class SQLiteContextSourceRepository(ContextSourceRepository):
+    def __init__(self, conn: sqlite3.Connection) -> None:
+        self.conn = conn
+
+    def save(self, source: ContextSource) -> None:
+        cur = self.conn.cursor()
+        cur.execute("SELECT version FROM context_sources WHERE source_id = ?", (source.source_id,))
+        row = cur.fetchone()
+        if row is None:
+            try:
+                cur.execute(
+                    """
+                    INSERT INTO context_sources (
+                        source_id, user_id, source_type, title, source_reference,
+                        content_hash, sensitivity, created_at, updated_at,
+                        metadata, version
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        source.source_id,
+                        source.user_id,
+                        source.source_type.value,
+                        source.title,
+                        source.source_reference,
+                        source.content_hash,
+                        source.sensitivity.value,
+                        to_iso_utc(source.created_at),
+                        to_iso_utc(source.updated_at),
+                        canonical_json_dumps(source.metadata),
+                        source.version,
+                    ),
+                )
+            except sqlite3.IntegrityError as e:
+                raise PersistenceError(f"Failed to insert ContextSource '{source.source_id}': {e}") from e
+        else:
+            expected_version = source.version - 1
+            cur.execute(
+                """
+                UPDATE context_sources SET
+                    user_id = ?, source_type = ?, title = ?, source_reference = ?,
+                    content_hash = ?, sensitivity = ?, updated_at = ?,
+                    metadata = ?, version = ?
+                WHERE source_id = ? AND version = ?
+                """,
+                (
+                    source.user_id,
+                    source.source_type.value,
+                    source.title,
+                    source.source_reference,
+                    source.content_hash,
+                    source.sensitivity.value,
+                    to_iso_utc(source.updated_at),
+                    canonical_json_dumps(source.metadata),
+                    source.version,
+                    source.source_id,
+                    expected_version,
+                ),
+            )
+            if cur.rowcount == 0:
+                raise OptimisticLockError("ContextSource", source.source_id, expected_version)
+
+    def _row_to_source(self, row: tuple[Any, ...]) -> ContextSource:
+        return ContextSource(
+            source_id=row[0],
+            user_id=row[1],
+            source_type=SourceType(row[2]),
+            title=row[3],
+            source_reference=row[4],
+            content_hash=row[5],
+            sensitivity=SensitivityLevel(row[6]),
+            created_at=from_iso_utc(row[7]),
+            updated_at=from_iso_utc(row[8]),
+            metadata=json.loads(row[9]),
+            version=row[10],
+        )
+
+    def get_by_id(self, source_id: str) -> ContextSource | None:
+        cur = self.conn.cursor()
+        cur.execute(
+            """
+            SELECT source_id, user_id, source_type, title, source_reference,
+                   content_hash, sensitivity, created_at, updated_at,
+                   metadata, version
+            FROM context_sources WHERE source_id = ?
+            """,
+            (source_id,),
+        )
+        row = cur.fetchone()
+        return self._row_to_source(row) if row else None
+
+    def list_by_user(self, user_id: str) -> list[ContextSource]:
+        cur = self.conn.cursor()
+        cur.execute(
+            """
+            SELECT source_id, user_id, source_type, title, source_reference,
+                   content_hash, sensitivity, created_at, updated_at,
+                   metadata, version
+            FROM context_sources WHERE user_id = ?
+            ORDER BY created_at DESC
+            """,
+            (user_id,),
+        )
+        return [self._row_to_source(r) for r in cur.fetchall()]
+
+
 class SQLiteContextRepository(ContextRepository):
     def __init__(self, conn: sqlite3.Connection) -> None:
         self.conn = conn
@@ -935,10 +898,11 @@ class SQLiteContextRepository(ContextRepository):
                     """
                     INSERT INTO context_facts (
                         fact_id, user_id, namespace, key, value, source_type,
-                        source_reference, confidence, verification_status,
-                        sensitivity, allowed_purposes, created_at, updated_at,
-                        expires_at, superseded_by_fact_id, superseded_at, version
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        source_reference, source_id, confidence, verification_status,
+                        rejection_reason, sensitivity, allowed_purposes, created_at,
+                        updated_at, expires_at, superseded_by_fact_id,
+                        superseded_at, version
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         fact.fact_id,
@@ -948,8 +912,10 @@ class SQLiteContextRepository(ContextRepository):
                         canonical_json_dumps(fact.value),
                         fact.source_type.value,
                         fact.source_reference,
+                        fact.source_id,
                         fact.confidence,
                         fact.verification_status.value,
+                        fact.rejection_reason,
                         fact.sensitivity.value,
                         canonical_json_dumps(fact.allowed_purposes),
                         to_iso_utc(fact.created_at),
@@ -970,10 +936,10 @@ class SQLiteContextRepository(ContextRepository):
                 """
                 UPDATE context_facts SET
                     user_id = ?, namespace = ?, key = ?, value = ?, source_type = ?,
-                    source_reference = ?, confidence = ?, verification_status = ?,
-                    sensitivity = ?, allowed_purposes = ?, updated_at = ?,
-                    expires_at = ?, superseded_by_fact_id = ?, superseded_at = ?,
-                    version = ?
+                    source_reference = ?, source_id = ?, confidence = ?,
+                    verification_status = ?, rejection_reason = ?, sensitivity = ?,
+                    allowed_purposes = ?, updated_at = ?, expires_at = ?,
+                    superseded_by_fact_id = ?, superseded_at = ?, version = ?
                 WHERE fact_id = ? AND version = ?
                 """,
                 (
@@ -983,8 +949,10 @@ class SQLiteContextRepository(ContextRepository):
                     canonical_json_dumps(fact.value),
                     fact.source_type.value,
                     fact.source_reference,
+                    fact.source_id,
                     fact.confidence,
                     fact.verification_status.value,
+                    fact.rejection_reason,
                     fact.sensitivity.value,
                     canonical_json_dumps(fact.allowed_purposes),
                     to_iso_utc(fact.updated_at),
@@ -1000,6 +968,30 @@ class SQLiteContextRepository(ContextRepository):
                 raise OptimisticLockError("ContextFact", fact.fact_id, expected_version)
 
     def _row_to_fact(self, row: tuple[Any, ...]) -> ContextFact:
+        # Gracefully handle both 17-col (v1) and 19-col (v2) schema rows
+        if len(row) >= 19:
+            return ContextFact(
+                fact_id=row[0],
+                user_id=row[1],
+                namespace=row[2],
+                key=row[3],
+                value=json.loads(row[4]),
+                source_type=SourceType(row[5]),
+                source_reference=row[6],
+                source_id=row[7],
+                confidence=float(row[8]),
+                verification_status=VerificationStatus(row[9]),
+                rejection_reason=row[10],
+                sensitivity=SensitivityLevel(row[11]),
+                allowed_purposes=json.loads(row[12]),
+                created_at=from_iso_utc(row[13]),
+                updated_at=from_iso_utc(row[14]),
+                expires_at=from_iso_utc(row[15]),
+                superseded_by_fact_id=row[16],
+                superseded_at=from_iso_utc(row[17]),
+                version=row[18],
+            )
+        # Fallback for old schema during migration/inspection
         return ContextFact(
             fact_id=row[0],
             user_id=row[1],
@@ -1025,9 +1017,10 @@ class SQLiteContextRepository(ContextRepository):
         cur.execute(
             """
             SELECT fact_id, user_id, namespace, key, value, source_type,
-                   source_reference, confidence, verification_status,
-                   sensitivity, allowed_purposes, created_at, updated_at,
-                   expires_at, superseded_by_fact_id, superseded_at, version
+                   source_reference, source_id, confidence, verification_status,
+                   rejection_reason, sensitivity, allowed_purposes, created_at,
+                   updated_at, expires_at, superseded_by_fact_id, superseded_at,
+                   version
             FROM context_facts WHERE fact_id = ?
             """,
             (fact_id,),
@@ -1042,13 +1035,15 @@ class SQLiteContextRepository(ContextRepository):
             cur.execute(
                 """
                 SELECT fact_id, user_id, namespace, key, value, source_type,
-                       source_reference, confidence, verification_status,
-                       sensitivity, allowed_purposes, created_at, updated_at,
-                       expires_at, superseded_by_fact_id, superseded_at, version
+                       source_reference, source_id, confidence, verification_status,
+                       rejection_reason, sensitivity, allowed_purposes, created_at,
+                       updated_at, expires_at, superseded_by_fact_id, superseded_at,
+                       version
                 FROM context_facts
                 WHERE user_id = ?
                   AND namespace = ?
                   AND superseded_by_fact_id IS NULL
+                  AND verification_status != 'rejected'
                   AND (expires_at IS NULL OR expires_at > ?)
                 ORDER BY updated_at DESC
                 """,
@@ -1058,12 +1053,14 @@ class SQLiteContextRepository(ContextRepository):
             cur.execute(
                 """
                 SELECT fact_id, user_id, namespace, key, value, source_type,
-                       source_reference, confidence, verification_status,
-                       sensitivity, allowed_purposes, created_at, updated_at,
-                       expires_at, superseded_by_fact_id, superseded_at, version
+                       source_reference, source_id, confidence, verification_status,
+                       rejection_reason, sensitivity, allowed_purposes, created_at,
+                       updated_at, expires_at, superseded_by_fact_id, superseded_at,
+                       version
                 FROM context_facts
                 WHERE user_id = ?
                   AND superseded_by_fact_id IS NULL
+                  AND verification_status != 'rejected'
                   AND (expires_at IS NULL OR expires_at > ?)
                 ORDER BY updated_at DESC
                 """,
@@ -1076,9 +1073,10 @@ class SQLiteContextRepository(ContextRepository):
         cur.execute(
             """
             SELECT fact_id, user_id, namespace, key, value, source_type,
-                   source_reference, confidence, verification_status,
-                   sensitivity, allowed_purposes, created_at, updated_at,
-                   expires_at, superseded_by_fact_id, superseded_at, version
+                   source_reference, source_id, confidence, verification_status,
+                   rejection_reason, sensitivity, allowed_purposes, created_at,
+                   updated_at, expires_at, superseded_by_fact_id, superseded_at,
+                   version
             FROM context_facts
             WHERE user_id = ? AND namespace = ? AND key = ?
             ORDER BY version ASC
@@ -1086,6 +1084,180 @@ class SQLiteContextRepository(ContextRepository):
             (user_id, namespace, key),
         )
         return [self._row_to_fact(r) for r in cur.fetchall()]
+
+    def list_by_namespace(self, user_id: str, namespace_prefix: str) -> list[ContextFact]:
+        """List active facts matching a hierarchical namespace prefix (e.g. 'career.*')."""
+        all_active = self.list_active(user_id)
+        return [f for f in all_active if matches_namespace_filter(f.namespace, namespace_prefix)]
+
+    def get_by_source_id(self, source_id: str) -> list[ContextFact]:
+        cur = self.conn.cursor()
+        cur.execute(
+            """
+            SELECT fact_id, user_id, namespace, key, value, source_type,
+                   source_reference, source_id, confidence, verification_status,
+                   rejection_reason, sensitivity, allowed_purposes, created_at,
+                   updated_at, expires_at, superseded_by_fact_id, superseded_at,
+                   version
+            FROM context_facts
+            WHERE source_id = ?
+            ORDER BY created_at ASC
+            """,
+            (source_id,),
+        )
+        return [self._row_to_fact(r) for r in cur.fetchall()]
+
+
+class SQLiteClaimRepository(ClaimRepository):
+    def __init__(self, conn: sqlite3.Connection) -> None:
+        self.conn = conn
+
+    def save(self, claim: Claim) -> None:
+        cur = self.conn.cursor()
+        cur.execute("SELECT version FROM claims WHERE claim_id = ?", (claim.claim_id,))
+        row = cur.fetchone()
+        if row is None:
+            try:
+                cur.execute(
+                    """
+                    INSERT INTO claims (
+                        claim_id, user_id, case_id, mission_id, purpose, text,
+                        status, supporting_fact_ids, created_at, updated_at,
+                        verified_at, rejection_reason, version
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        claim.claim_id,
+                        claim.user_id,
+                        claim.case_id,
+                        claim.mission_id,
+                        claim.purpose,
+                        claim.text,
+                        claim.status.value,
+                        canonical_json_dumps(claim.supporting_fact_ids),
+                        to_iso_utc(claim.created_at),
+                        to_iso_utc(claim.updated_at),
+                        to_iso_utc(claim.verified_at),
+                        claim.rejection_reason,
+                        claim.version,
+                    ),
+                )
+            except sqlite3.IntegrityError as e:
+                raise PersistenceError(f"Failed to insert Claim '{claim.claim_id}': {e}") from e
+        else:
+            expected_version = claim.version - 1
+            cur.execute(
+                """
+                UPDATE claims SET
+                    user_id = ?, case_id = ?, mission_id = ?, purpose = ?,
+                    text = ?, status = ?, supporting_fact_ids = ?,
+                    updated_at = ?, verified_at = ?, rejection_reason = ?,
+                    version = ?
+                WHERE claim_id = ? AND version = ?
+                """,
+                (
+                    claim.user_id,
+                    claim.case_id,
+                    claim.mission_id,
+                    claim.purpose,
+                    claim.text,
+                    claim.status.value,
+                    canonical_json_dumps(claim.supporting_fact_ids),
+                    to_iso_utc(claim.updated_at),
+                    to_iso_utc(claim.verified_at),
+                    claim.rejection_reason,
+                    claim.version,
+                    claim.claim_id,
+                    expected_version,
+                ),
+            )
+            if cur.rowcount == 0:
+                raise OptimisticLockError("Claim", claim.claim_id, expected_version)
+
+    def _row_to_claim(self, row: tuple[Any, ...]) -> Claim:
+        return Claim(
+            claim_id=row[0],
+            user_id=row[1],
+            case_id=row[2],
+            mission_id=row[3],
+            purpose=row[4],
+            text=row[5],
+            status=ClaimStatus(row[6]),
+            supporting_fact_ids=json.loads(row[7]),
+            created_at=from_iso_utc(row[8]),
+            updated_at=from_iso_utc(row[9]),
+            verified_at=from_iso_utc(row[10]),
+            rejection_reason=row[11],
+            version=row[12],
+        )
+
+    def get_by_id(self, claim_id: str) -> Claim | None:
+        cur = self.conn.cursor()
+        cur.execute(
+            """
+            SELECT claim_id, user_id, case_id, mission_id, purpose, text,
+                   status, supporting_fact_ids, created_at, updated_at,
+                   verified_at, rejection_reason, version
+            FROM claims WHERE claim_id = ?
+            """,
+            (claim_id,),
+        )
+        row = cur.fetchone()
+        return self._row_to_claim(row) if row else None
+
+    def list_by_user(self, user_id: str, status: ClaimStatus | None = None) -> list[Claim]:
+        cur = self.conn.cursor()
+        if status is not None:
+            cur.execute(
+                """
+                SELECT claim_id, user_id, case_id, mission_id, purpose, text,
+                       status, supporting_fact_ids, created_at, updated_at,
+                       verified_at, rejection_reason, version
+                FROM claims WHERE user_id = ? AND status = ?
+                ORDER BY created_at DESC
+                """,
+                (user_id, status.value),
+            )
+        else:
+            cur.execute(
+                """
+                SELECT claim_id, user_id, case_id, mission_id, purpose, text,
+                       status, supporting_fact_ids, created_at, updated_at,
+                       verified_at, rejection_reason, version
+                FROM claims WHERE user_id = ?
+                ORDER BY created_at DESC
+                """,
+                (user_id,),
+            )
+        return [self._row_to_claim(r) for r in cur.fetchall()]
+
+    def list_by_case(self, case_id: str) -> list[Claim]:
+        cur = self.conn.cursor()
+        cur.execute(
+            """
+            SELECT claim_id, user_id, case_id, mission_id, purpose, text,
+                   status, supporting_fact_ids, created_at, updated_at,
+                   verified_at, rejection_reason, version
+            FROM claims WHERE case_id = ?
+            ORDER BY created_at DESC
+            """,
+            (case_id,),
+        )
+        return [self._row_to_claim(r) for r in cur.fetchall()]
+
+    def list_by_purpose(self, user_id: str, purpose: str) -> list[Claim]:
+        cur = self.conn.cursor()
+        cur.execute(
+            """
+            SELECT claim_id, user_id, case_id, mission_id, purpose, text,
+                   status, supporting_fact_ids, created_at, updated_at,
+                   verified_at, rejection_reason, version
+            FROM claims WHERE user_id = ? AND purpose = ?
+            ORDER BY created_at DESC
+            """,
+            (user_id, purpose),
+        )
+        return [self._row_to_claim(r) for r in cur.fetchall()]
 
 
 class SQLiteEventStore(EventStore):
@@ -1180,7 +1352,9 @@ class SQLiteCaseworkerUnitOfWork(CaseworkerUnitOfWork):
         self.opportunities = SQLiteOpportunityRepository(conn)
         self.actions = SQLiteActionRepository(conn)
         self.approvals = SQLiteApprovalRepository(conn)
+        self.sources = SQLiteContextSourceRepository(conn)
         self.context = SQLiteContextRepository(conn)
+        self.claims = SQLiteClaimRepository(conn)
         self.events = SQLiteEventStore(conn)
         self._in_transaction = False
 
@@ -1222,13 +1396,12 @@ class SQLiteCaseworkerStorage:
         if not self._is_memory:
             Path(db_path).parent.mkdir(parents=True, exist_ok=True)
 
-        # In-memory connections must be held open to preserve schema across transactions
         self._shared_conn: sqlite3.Connection | None = None
         if self._is_memory:
             self._shared_conn = sqlite3.connect(
                 ":memory:",
                 check_same_thread=False,
-                isolation_level=None,  # Manual transactions
+                isolation_level=None,
             )
             self._init_db(self._shared_conn)
         else:
@@ -1243,7 +1416,8 @@ class SQLiteCaseworkerStorage:
         if not self._is_memory:
             conn.execute("PRAGMA journal_mode = WAL;")
             conn.execute("PRAGMA synchronous = NORMAL;")
-        conn.executescript(SCHEMA_DDL)
+        # Apply versioned migrations to ensure current schema
+        SQLiteMigrator.migrate(conn)
 
     def _get_connection(self) -> sqlite3.Connection:
         if self._is_memory and self._shared_conn is not None:
@@ -1251,7 +1425,7 @@ class SQLiteCaseworkerStorage:
         conn = sqlite3.connect(
             self.db_path,
             check_same_thread=False,
-            isolation_level=None,  # Manual transactions via UnitOfWork
+            isolation_level=None,
         )
         conn.execute("PRAGMA foreign_keys = ON;")
         if not self._is_memory:

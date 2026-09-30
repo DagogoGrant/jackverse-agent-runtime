@@ -9,11 +9,13 @@ from typing import Protocol, runtime_checkable
 from caseworker.domain.action import Action
 from caseworker.domain.approval import Approval
 from caseworker.domain.case import Case
+from caseworker.domain.claim import Claim
 from caseworker.domain.context import ContextFact
-from caseworker.domain.enums import CaseStatus, MissionStatus, OpportunityStatus
+from caseworker.domain.enums import CaseStatus, ClaimStatus, MissionStatus, OpportunityStatus
 from caseworker.domain.events import DomainEvent
 from caseworker.domain.mission import Mission
 from caseworker.domain.opportunity import Opportunity
+from caseworker.domain.source import ContextSource
 
 
 @runtime_checkable
@@ -126,6 +128,23 @@ class ApprovalRepository(Protocol):
 
 
 @runtime_checkable
+class ContextSourceRepository(Protocol):
+    """Repository interface for ContextSource entities."""
+
+    def save(self, source: ContextSource) -> None:
+        """Save a new context source or update an existing one."""
+        ...
+
+    def get_by_id(self, source_id: str) -> ContextSource | None:
+        """Retrieve a context source by its unique ID."""
+        ...
+
+    def list_by_user(self, user_id: str) -> list[ContextSource]:
+        """List all context sources belonging to a user."""
+        ...
+
+
+@runtime_checkable
 class ContextRepository(Protocol):
     """Repository interface for ContextFact entities."""
 
@@ -138,11 +157,44 @@ class ContextRepository(Protocol):
         ...
 
     def list_active(self, user_id: str, namespace: str | None = None) -> list[ContextFact]:
-        """List currently active (non-superseded, non-expired) facts for a user."""
+        """List currently active (non-superseded, non-expired, non-rejected) facts for a user."""
         ...
 
     def list_history(self, user_id: str, namespace: str, key: str) -> list[ContextFact]:
         """List full revision history for a specific fact key."""
+        ...
+
+    def list_by_namespace(self, user_id: str, namespace_prefix: str) -> list[ContextFact]:
+        """List active facts matching a hierarchical namespace prefix (e.g. 'career.*')."""
+        ...
+
+    def get_by_source_id(self, source_id: str) -> list[ContextFact]:
+        """List all facts derived from a specific context source."""
+        ...
+
+
+@runtime_checkable
+class ClaimRepository(Protocol):
+    """Repository interface for Claim entities in the Claim Ledger."""
+
+    def save(self, claim: Claim) -> None:
+        """Save a new claim or update an existing one."""
+        ...
+
+    def get_by_id(self, claim_id: str) -> Claim | None:
+        """Retrieve a claim by its unique ID."""
+        ...
+
+    def list_by_user(self, user_id: str, status: ClaimStatus | None = None) -> list[Claim]:
+        """List claims belonging to a user, optionally filtered by status."""
+        ...
+
+    def list_by_case(self, case_id: str) -> list[Claim]:
+        """List all claims linked to a specific case."""
+        ...
+
+    def list_by_purpose(self, user_id: str, purpose: str) -> list[Claim]:
+        """List all claims for a user matching an intended purpose."""
         ...
 
 
@@ -176,7 +228,9 @@ class CaseworkerUnitOfWork(Protocol):
     opportunities: OpportunityRepository
     actions: ActionRepository
     approvals: ApprovalRepository
+    sources: ContextSourceRepository
     context: ContextRepository
+    claims: ClaimRepository
     events: EventStore
 
     def commit(self) -> None:

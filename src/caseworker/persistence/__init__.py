@@ -5,18 +5,23 @@ from caseworker.persistence.base import (
     ApprovalRepository,
     CaseRepository,
     CaseworkerUnitOfWork,
+    ClaimRepository,
     ContextRepository,
+    ContextSourceRepository,
     EventStore,
     MissionRepository,
     OpportunityRepository,
 )
+from caseworker.persistence.migration import SQLiteMigrator
 from caseworker.persistence.sqlite import (
     SQLiteActionRepository,
     SQLiteApprovalRepository,
     SQLiteCaseRepository,
     SQLiteCaseworkerStorage,
     SQLiteCaseworkerUnitOfWork,
+    SQLiteClaimRepository,
     SQLiteContextRepository,
+    SQLiteContextSourceRepository,
     SQLiteEventStore,
     SQLiteMissionRepository,
     SQLiteOpportunityRepository,
@@ -29,9 +34,13 @@ __all__ = [
     "OpportunityRepository",
     "ActionRepository",
     "ApprovalRepository",
+    "ContextSourceRepository",
     "ContextRepository",
+    "ClaimRepository",
     "EventStore",
     "CaseworkerUnitOfWork",
+    # Migration
+    "SQLiteMigrator",
     # SQLite Implementations
     "SQLiteCaseworkerStorage",
     "SQLiteCaseworkerUnitOfWork",
@@ -40,6 +49,9 @@ __all__ = [
     "SQLiteOpportunityRepository",
     "SQLiteActionRepository",
     "SQLiteApprovalRepository",
+    "SQLiteContextSourceRepository",
     "SQLiteContextRepository",
+    "SQLiteClaimRepository",
     "SQLiteEventStore",
 ]
+
