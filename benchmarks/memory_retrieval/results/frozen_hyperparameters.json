@@ -1,0 +1,28 @@
+{
+  "dense_model": "Snowflake/snowflake-arctic-embed-s",
+  "dense_revision": "e596f507467533e48a2e17c007f0e1dacc837b33",
+  "dense_query_config": "qpname=query",
+  "dense_fingerprint": "Snowflake/snowflake-arctic-embed-s@e596f507467533e48a2e17c007f0e1dacc837b33:dim=384:qpname=query:l2=1",
+  "dense_threshold": 0.55,
+  "sparse_min_coverage": 0.35,
+  "sparse_bm25_cutoff": -2.5,
+  "sparse_stopword_policy_version": "v1-standard-english-34",
+  "bm25_cutoff_stability": "16/16 stable decisions across 0, 100, 1000 distractor scale test",
+  "rrf_k": 10,
+  "sparse_weight": 1.0,
+  "dense_weight": 1.0,
+  "candidate_pool": 10,
+  "candidate_limit": null,
+  "enable_relevance_gate": true,
+  "index_readiness": "incremental",
+  "bge_comparator": {
+    "dense_model": "BAAI/bge-small-en-v1.5",
+    "dense_revision": "default",
+    "dense_query_config": "qpfx=cdf0ab26",
+    "dense_fingerprint": "BAAI/bge-small-en-v1.5@default:dim=384:qpfx=cdf0ab26:l2=1",
+    "dense_threshold": 0.55,
+    "bge_cold_load_sec": 7.038
+  },
+  "arctic_cold_load_sec": 0.126,
+  "calibration_timestamp": "2026-09-12T10:51:16.037460+00:00"
+}

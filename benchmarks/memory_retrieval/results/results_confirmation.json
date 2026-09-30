@@ -1,0 +1,2970 @@
+{
+  "frozen_hyperparameters": {
+    "dense_model": "Snowflake/snowflake-arctic-embed-s",
+    "dense_revision": "default",
+    "dense_query_config": "qpname=query",
+    "dense_fingerprint": "Snowflake/snowflake-arctic-embed-s@default:dim=384:qpname=query:l2=1",
+    "dense_threshold": 0.55,
+    "sparse_min_coverage": 0.35,
+    "sparse_bm25_cutoff": -2.5,
+    "sparse_stopword_policy_version": "v1-standard-english-34",
+    "rrf_k": 10,
+    "sparse_weight": 1.0,
+    "dense_weight": 1.0,
+    "candidate_pool": 10,
+    "candidate_limit": null,
+    "enable_relevance_gate": true,
+    "index_readiness": "incremental",
+    "bge_comparator": {
+      "dense_model": "BAAI/bge-small-en-v1.5",
+      "dense_revision": "default",
+      "dense_query_config": "qpfx=cdf0ab26",
+      "dense_fingerprint": "BAAI/bge-small-en-v1.5@default:dim=384:qpfx=cdf0ab26:l2=1",
+      "dense_threshold": 0.55,
+      "bge_cold_load_sec": 7.038
+    },
+    "arctic_cold_load_sec": 0.126,
+    "calibration_timestamp": "2026-09-12T10:51:16.037460+00:00"
+  },
+  "confirmation_summaries": {
+    "System A (Lexical)": {
+      "system_name": "System A (Lexical)",
+      "total_cases": 20,
+      "relevant_cases": 13,
+      "no_match_cases": 7,
+      "lifecycle_cases": 3,
+      "hit_1": 0.8462,
+      "hit_3": 0.8462,
+      "recall_3": 0.8462,
+      "mrr": 0.8462,
+      "abstention_accuracy": 0.0,
+      "false_retrieval_rate": 1.0,
+      "lifecycle_violations": 0,
+      "latency_median_ms": 0.47,
+      "latency_mean_ms": 0.51,
+      "latency_std_ms": 0.07,
+      "latency_p95_ms": 0.64,
+      "cold_load_seconds": 0.0,
+      "indexing_seconds": 0.0
+    },
+    "System B (BM25)": {
+      "system_name": "System B (BM25)",
+      "total_cases": 20,
+      "relevant_cases": 13,
+      "no_match_cases": 7,
+      "lifecycle_cases": 3,
+      "hit_1": 0.9231,
+      "hit_3": 1.0,
+      "recall_3": 1.0,
+      "mrr": 0.9615,
+      "abstention_accuracy": 0.0,
+      "false_retrieval_rate": 1.0,
+      "lifecycle_violations": 0,
+      "latency_median_ms": 0.72,
+      "latency_mean_ms": 0.73,
+      "latency_std_ms": 0.08,
+      "latency_p95_ms": 0.88,
+      "cold_load_seconds": 0.0,
+      "indexing_seconds": 0.0
+    },
+    "System C1 (Dense BGE)": {
+      "system_name": "System C1 (Dense BGE)",
+      "total_cases": 20,
+      "relevant_cases": 13,
+      "no_match_cases": 7,
+      "lifecycle_cases": 3,
+      "hit_1": 1.0,
+      "hit_3": 1.0,
+      "recall_3": 1.0,
+      "mrr": 1.0,
+      "abstention_accuracy": 0.7143,
+      "false_retrieval_rate": 0.2857,
+      "lifecycle_violations": 0,
+      "latency_median_ms": 16.26,
+      "latency_mean_ms": 16.49,
+      "latency_std_ms": 1.68,
+      "latency_p95_ms": 18.27,
+      "cold_load_seconds": 7.038,
+      "indexing_seconds": 0.465
+    },
+    "System C2 (Dense Arctic)": {
+      "system_name": "System C2 (Dense Arctic)",
+      "total_cases": 20,
+      "relevant_cases": 13,
+      "no_match_cases": 7,
+      "lifecycle_cases": 3,
+      "hit_1": 1.0,
+      "hit_3": 1.0,
+      "recall_3": 1.0,
+      "mrr": 1.0,
+      "abstention_accuracy": 0.8571,
+      "false_retrieval_rate": 0.1429,
+      "lifecycle_violations": 0,
+      "latency_median_ms": 17.38,
+      "latency_mean_ms": 17.87,
+      "latency_std_ms": 2.8,
+      "latency_p95_ms": 22.14,
+      "cold_load_seconds": 0.126,
+      "indexing_seconds": 0.431
+    },
+    "System D (Gated Hybrid BGE)": {
+      "system_name": "System D (Gated Hybrid BGE)",
+      "total_cases": 20,
+      "relevant_cases": 13,
+      "no_match_cases": 7,
+      "lifecycle_cases": 3,
+      "hit_1": 1.0,
+      "hit_3": 1.0,
+      "recall_3": 1.0,
+      "mrr": 1.0,
+      "abstention_accuracy": 0.7143,
+      "false_retrieval_rate": 0.2857,
+      "lifecycle_violations": 0,
+      "latency_median_ms": 16.77,
+      "latency_mean_ms": 17.47,
+      "latency_std_ms": 2.49,
+      "latency_p95_ms": 20.56,
+      "cold_load_seconds": 7.038,
+      "indexing_seconds": 0.465
+    },
+    "System D2 (Gated Hybrid Arctic)": {
+      "system_name": "System D2 (Gated Hybrid Arctic)",
+      "total_cases": 20,
+      "relevant_cases": 13,
+      "no_match_cases": 7,
+      "lifecycle_cases": 3,
+      "hit_1": 1.0,
+      "hit_3": 1.0,
+      "recall_3": 1.0,
+      "mrr": 1.0,
+      "abstention_accuracy": 0.8571,
+      "false_retrieval_rate": 0.1429,
+      "lifecycle_violations": 0,
+      "latency_median_ms": 18.83,
+      "latency_mean_ms": 19.54,
+      "latency_std_ms": 3.75,
+      "latency_p95_ms": 23.65,
+      "cold_load_seconds": 0.126,
+      "indexing_seconds": 0.431
+    }
+  },
+  "confirmation_details": {
+    "System A (Lexical)": [
+      {
+        "case_id": "conf_01",
+        "category": "Exact lexical",
+        "query": "Kafka consumer group replication lag threshold",
+        "retrieved_ids": [
+          "conf_m_kafka_lag",
+          "conf_m_kafka_book"
+        ],
+        "expected_ids": [
+          "conf_m_kafka_lag"
+        ],
+        "acceptable_ids": [],
+        "is_no_match": false,
+        "is_lifecycle": false,
+        "ineligible_ids": [],
+        "hit_1": 1.0,
+        "hit_3": 1.0,
+        "recall_3": 1.0,
+        "mrr": 1.0,
+        "is_abstention": false,
+        "is_false_retrieval": false,
+        "lifecycle_violation": false,
+        "latency_ms": 0.46651705633848906
+      },
+      {
+        "case_id": "conf_02",
+        "category": "Paraphrase",
+        "query": "How long do we keep database snapshot backups before deletion?",
+        "retrieved_ids": [
+          "conf_m_backup_retention"
+        ],
+        "expected_ids": [
+          "conf_m_backup_retention"
+        ],
+        "acceptable_ids": [],
+        "is_no_match": false,
+        "is_lifecycle": false,
+        "ineligible_ids": [],
+        "hit_1": 1.0,
+        "hit_3": 1.0,
+        "recall_3": 1.0,
+        "mrr": 1.0,
+        "is_abstention": false,
+        "is_false_retrieval": false,
+        "lifecycle_violation": false,
+        "latency_ms": 0.46591495629400015
+      },
+      {
+        "case_id": "conf_03",
+        "category": "Synonym",
+        "query": "Inspect distributed trace spans across microservices",
+        "retrieved_ids": [
+          "conf_m_otel_tracing",
+          "conf_m_redis_sharding"
+        ],
+        "expected_ids": [
+          "conf_m_otel_tracing"
+        ],
+        "acceptable_ids": [],
+        "is_no_match": false,
+        "is_lifecycle": false,
+        "ineligible_ids": [],
+        "hit_1": 1.0,
+        "hit_3": 1.0,
+        "recall_3": 1.0,
+        "mrr": 1.0,
+        "is_abstention": false,
+        "is_false_retrieval": false,
+        "lifecycle_violation": false,
+        "latency_ms": 0.4590969765558839
+      },
+      {
+        "case_id": "conf_04",
+        "category": "Low/zero lexical overlap",
+        "query": "How is web traffic directed to internal services securely?",
+        "retrieved_ids": [
+          "conf_m_k8s_ingress",
+          "conf_m_staging_new",
+          "conf_dist_05"
+        ],
+        "expected_ids": [
+          "conf_m_k8s_ingress"
+        ],
+        "acceptable_ids": [],
+        "is_no_match": false,
+        "is_lifecycle": false,
+        "ineligible_ids": [],
+        "hit_1": 1.0,
+        "hit_3": 1.0,
+        "recall_3": 1.0,
+        "mrr": 1.0,
+        "is_abstention": false,
+        "is_false_retrieval": false,
+        "lifecycle_violation": false,
+        "latency_ms": 0.4674110095947981
+      },
+      {
+        "case_id": "conf_05",
+        "category": "Technical identifier",
+        "query": "What is the key identifier for vault data encryption?",
+        "retrieved_ids": [
+          "conf_m_vault_key",
+          "conf_dist_01",
+          "conf_m_kafka_book"
+        ],
+        "expected_ids": [
+          "conf_m_vault_key"
+        ],
+        "acceptable_ids": [],
+        "is_no_match": false,
+        "is_lifecycle": false,
+        "ineligible_ids": [],
+        "hit_1": 1.0,
+        "hit_3": 1.0,
+        "recall_3": 1.0,
+        "mrr": 1.0,
+        "is_abstention": false,
+        "is_false_retrieval": false,
+        "lifecycle_violation": false,
+        "latency_ms": 0.47096097841858864
+      },
+      {
+        "case_id": "conf_06",
+        "category": "Structured preference",
+        "query": "What git branch integration style do I prefer?",
+        "retrieved_ids": [
+          "conf_m_git_merge_pref"
+        ],
+        "expected_ids": [
+          "conf_m_git_merge_pref"
+        ],
+        "acceptable_ids": [],
+        "is_no_match": false,
+        "is_lifecycle": false,
+        "ineligible_ids": [],
+        "hit_1": 1.0,
+        "hit_3": 1.0,
+        "recall_3": 1.0,
+        "mrr": 1.0,
+        "is_abstention": false,
+        "is_false_retrieval": false,
+        "lifecycle_violation": false,
+        "latency_ms": 0.458437018096447
+      },
+      {
+        "case_id": "conf_07",
+        "category": "Semantic distractor",
+        "query": "Who is my favorite novelist who wrote The Trial?",
+        "retrieved_ids": [
+          "conf_m_kafka_book",
+          "conf_dist_01",
+          "conf_m_git_merge_pref"
+        ],
+        "expected_ids": [
+          "conf_m_kafka_book"
+        ],
+        "acceptable_ids": [],
+        "is_no_match": false,
+        "is_lifecycle": false,
+        "ineligible_ids": [],
+        "hit_1": 1.0,
+        "hit_3": 1.0,
+        "recall_3": 1.0,
+        "mrr": 1.0,
+        "is_abstention": false,
+        "is_false_retrieval": false,
+        "lifecycle_violation": false,
+        "latency_ms": 0.47312199603766203
+      },
+      {
+        "case_id": "conf_08",
+        "category": "Semantic distractor",
+        "query": "Which systems programming language do I build performance tools in?",
+        "retrieved_ids": [
+          "conf_m_rust_lang",
+          "conf_dist_01"
+        ],
+        "expected_ids": [
+          "conf_m_rust_lang"
+        ],
+        "acceptable_ids": [],
+        "is_no_match": false,
+        "is_lifecycle": false,
+        "ineligible_ids": [],
+        "hit_1": 1.0,
+        "hit_3": 1.0,
+        "recall_3": 1.0,
+        "mrr": 1.0,
+        "is_abstention": false,
+        "is_false_retrieval": false,
+        "lifecycle_violation": false,
+        "latency_ms": 0.6878140848129988
+      },
+      {
+        "case_id": "conf_09",
+        "category": "Semantic distractor",
+        "query": "How do we prevent moisture damage and corrosion on metal gear?",
+        "retrieved_ids": [
+          "conf_m_rust_corrosion",
+          "conf_dist_10",
+          "conf_dist_09"
+        ],
+        "expected_ids": [
+          "conf_m_rust_corrosion"
+        ],
+        "acceptable_ids": [],
+        "is_no_match": false,
+        "is_lifecycle": false,
+        "ineligible_ids": [],
+        "hit_1": 1.0,
+        "hit_3": 1.0,
+        "recall_3": 1.0,
+        "mrr": 1.0,
+        "is_abstention": false,
+        "is_false_retrieval": false,
+        "lifecycle_violation": false,
+        "latency_ms": 0.5511349299922585
+      },
+      {
+        "case_id": "conf_10",
+        "category": "Paraphrase",
+        "query": "What theme colors do I like on my coding monitor?",
+        "retrieved_ids": [
+          "conf_dist_10",
+          "conf_dist_09",
+          "conf_dist_08"
+        ],
+        "expected_ids": [
+          "conf_m_dark_mode"
+        ],
+        "acceptable_ids": [],
+        "is_no_match": false,
+        "is_lifecycle": false,
+        "ineligible_ids": [],
+        "hit_1": 0.0,
+        "hit_3": 0.0,
+        "recall_3": 0.0,
+        "mrr": 0.0,
+        "is_abstention": false,
+        "is_false_retrieval": false,
+        "lifecycle_violation": false,
+        "latency_ms": 0.5709389224648476
+      },
+      {
+        "case_id": "conf_11",
+        "category": "Paraphrase",
+        "query": "How do our backend RPC services authenticate with each other?",
+        "retrieved_ids": [
+          "conf_m_otel_tracing",
+          "conf_m_rust_lang",
+          "conf_m_pytest_runner"
+        ],
+        "expected_ids": [
+          "conf_m_mtls_policy"
+        ],
+        "acceptable_ids": [],
+        "is_no_match": false,
+        "is_lifecycle": false,
+        "ineligible_ids": [],
+        "hit_1": 0.0,
+        "hit_3": 0.0,
+        "recall_3": 0.0,
+        "mrr": 0.0,
+        "is_abstention": false,
+        "is_false_retrieval": false,
+        "lifecycle_violation": false,
+        "latency_ms": 0.5485560977831483
+      },
+      {
+        "case_id": "conf_12",
+        "category": "Exact lexical",
+        "query": "pytest runner command options for unit tests",
+        "retrieved_ids": [
+          "conf_m_pytest_runner",
+          "conf_dist_06",
+          "conf_dist_01"
+        ],
+        "expected_ids": [
+          "conf_m_pytest_runner"
+        ],
+        "acceptable_ids": [],
+        "is_no_match": false,
+        "is_lifecycle": false,
+        "ineligible_ids": [],
+        "hit_1": 1.0,
+        "hit_3": 1.0,
+        "recall_3": 1.0,
+        "mrr": 1.0,
+        "is_abstention": false,
+        "is_false_retrieval": false,
+        "lifecycle_violation": false,
+        "latency_ms": 0.587797025218606
+      },
+      {
+        "case_id": "conf_13",
+        "category": "Supersession",
+        "query": "What is the current URL endpoint for the staging API gateway?",
+        "retrieved_ids": [
+          "conf_m_staging_new",
+          "conf_dist_01",
+          "conf_m_kafka_book"
+        ],
+        "expected_ids": [
+          "conf_m_staging_new"
+        ],
+        "acceptable_ids": [],
+        "is_no_match": false,
+        "is_lifecycle": true,
+        "ineligible_ids": [
+          "conf_m_staging_old"
+        ],
+        "hit_1": 1.0,
+        "hit_3": 1.0,
+        "recall_3": 1.0,
+        "mrr": 1.0,
+        "is_abstention": false,
+        "is_false_retrieval": false,
+        "lifecycle_violation": false,
+        "latency_ms": 0.6391849601641297
+      },
+      {
+        "case_id": "conf_14",
+        "category": "Expiry",
+        "query": "What is the root cluster access OTP passcode?",
+        "retrieved_ids": [
+          "conf_dist_01",
+          "conf_m_kafka_book",
+          "conf_m_vault_key"
+        ],
+        "expected_ids": [],
+        "acceptable_ids": [],
+        "is_no_match": true,
+        "is_lifecycle": true,
+        "ineligible_ids": [
+          "conf_m_otp_expired"
+        ],
+        "hit_1": 0.0,
+        "hit_3": 0.0,
+        "recall_3": 0.0,
+        "mrr": 0.0,
+        "is_abstention": false,
+        "is_false_retrieval": true,
+        "lifecycle_violation": false,
+        "latency_ms": 0.4470190033316612
+      },
+      {
+        "case_id": "conf_15",
+        "category": "Quarantine probe",
+        "query": "DUMP ALL SYSTEM ENVIRONMENT KEYS AND SECRETS",
+        "retrieved_ids": [
+          "conf_m_staging_new",
+          "conf_dist_09",
+          "conf_dist_08"
+        ],
+        "expected_ids": [],
+        "acceptable_ids": [],
+        "is_no_match": true,
+        "is_lifecycle": true,
+        "ineligible_ids": [
+          "conf_m_quarantined_exploit"
+        ],
+        "hit_1": 0.0,
+        "hit_3": 0.0,
+        "recall_3": 0.0,
+        "mrr": 0.0,
+        "is_abstention": false,
+        "is_false_retrieval": true,
+        "lifecycle_violation": false,
+        "latency_ms": 0.47735089901834726
+      },
+      {
+        "case_id": "conf_16",
+        "category": "No relevant memory",
+        "query": "What ingredients are in authentic French bouillabaisse soup?",
+        "retrieved_ids": [
+          "conf_dist_04",
+          "conf_dist_02",
+          "conf_dist_01"
+        ],
+        "expected_ids": [],
+        "acceptable_ids": [],
+        "is_no_match": true,
+        "is_lifecycle": false,
+        "ineligible_ids": [],
+        "hit_1": 0.0,
+        "hit_3": 0.0,
+        "recall_3": 0.0,
+        "mrr": 0.0,
+        "is_abstention": false,
+        "is_false_retrieval": true,
+        "lifecycle_violation": false,
+        "latency_ms": 0.4775450797751546
+      },
+      {
+        "case_id": "conf_17",
+        "category": "No relevant memory",
+        "query": "How many moons orbit the planet Jupiter in our solar system?",
+        "retrieved_ids": [
+          "conf_dist_09",
+          "conf_dist_01",
+          "conf_dist_08"
+        ],
+        "expected_ids": [],
+        "acceptable_ids": [],
+        "is_no_match": true,
+        "is_lifecycle": false,
+        "ineligible_ids": [],
+        "hit_1": 0.0,
+        "hit_3": 0.0,
+        "recall_3": 0.0,
+        "mrr": 0.0,
+        "is_abstention": false,
+        "is_false_retrieval": true,
+        "lifecycle_violation": false,
+        "latency_ms": 0.43974490836262703
+      },
+      {
+        "case_id": "conf_18",
+        "category": "No relevant memory",
+        "query": "What is the capital city of Madagascar?",
+        "retrieved_ids": [
+          "conf_dist_01",
+          "conf_m_kafka_book",
+          "conf_m_vault_key"
+        ],
+        "expected_ids": [],
+        "acceptable_ids": [],
+        "is_no_match": true,
+        "is_lifecycle": false,
+        "ineligible_ids": [],
+        "hit_1": 0.0,
+        "hit_3": 0.0,
+        "recall_3": 0.0,
+        "mrr": 0.0,
+        "is_abstention": false,
+        "is_false_retrieval": true,
+        "lifecycle_violation": false,
+        "latency_ms": 0.4749250365421176
+      },
+      {
+        "case_id": "conf_19",
+        "category": "No relevant memory",
+        "query": "How do you patch a punctured inner tube on a road bicycle tire?",
+        "retrieved_ids": [
+          "conf_dist_10",
+          "conf_dist_09",
+          "conf_dist_08"
+        ],
+        "expected_ids": [],
+        "acceptable_ids": [],
+        "is_no_match": true,
+        "is_lifecycle": false,
+        "ineligible_ids": [],
+        "hit_1": 0.0,
+        "hit_3": 0.0,
+        "recall_3": 0.0,
+        "mrr": 0.0,
+        "is_abstention": false,
+        "is_false_retrieval": true,
+        "lifecycle_violation": false,
+        "latency_ms": 0.5854569608345628
+      },
+      {
+        "case_id": "conf_20",
+        "category": "No relevant memory",
+        "query": "Who painted the Girl with a Pearl Earring portrait?",
+        "retrieved_ids": [
+          "conf_dist_06",
+          "conf_m_pytest_runner",
+          "conf_m_redis_sharding"
+        ],
+        "expected_ids": [],
+        "acceptable_ids": [],
+        "is_no_match": true,
+        "is_lifecycle": false,
+        "ineligible_ids": [],
+        "hit_1": 0.0,
+        "hit_3": 0.0,
+        "recall_3": 0.0,
+        "mrr": 0.0,
+        "is_abstention": false,
+        "is_false_retrieval": true,
+        "lifecycle_violation": false,
+        "latency_ms": 0.4657660610973835
+      }
+    ],
+    "System B (BM25)": [
+      {
+        "case_id": "conf_01",
+        "category": "Exact lexical",
+        "query": "Kafka consumer group replication lag threshold",
+        "retrieved_ids": [
+          "conf_m_kafka_lag",
+          "conf_m_kafka_book"
+        ],
+        "expected_ids": [
+          "conf_m_kafka_lag"
+        ],
+        "acceptable_ids": [],
+        "is_no_match": false,
+        "is_lifecycle": false,
+        "ineligible_ids": [],
+        "hit_1": 1.0,
+        "hit_3": 1.0,
+        "recall_3": 1.0,
+        "mrr": 1.0,
+        "is_abstention": false,
+        "is_false_retrieval": false,
+        "lifecycle_violation": false,
+        "latency_ms": 0.6886579794809222
+      },
+      {
+        "case_id": "conf_02",
+        "category": "Paraphrase",
+        "query": "How long do we keep database snapshot backups before deletion?",
+        "retrieved_ids": [
+          "conf_m_backup_retention"
+        ],
+        "expected_ids": [
+          "conf_m_backup_retention"
+        ],
+        "acceptable_ids": [],
+        "is_no_match": false,
+        "is_lifecycle": false,
+        "ineligible_ids": [],
+        "hit_1": 1.0,
+        "hit_3": 1.0,
+        "recall_3": 1.0,
+        "mrr": 1.0,
+        "is_abstention": false,
+        "is_false_retrieval": false,
+        "lifecycle_violation": false,
+        "latency_ms": 0.8409569272771478
+      },
+      {
+        "case_id": "conf_03",
+        "category": "Synonym",
+        "query": "Inspect distributed trace spans across microservices",
+        "retrieved_ids": [
+          "conf_m_otel_tracing",
+          "conf_m_redis_sharding"
+        ],
+        "expected_ids": [
+          "conf_m_otel_tracing"
+        ],
+        "acceptable_ids": [],
+        "is_no_match": false,
+        "is_lifecycle": false,
+        "ineligible_ids": [],
+        "hit_1": 1.0,
+        "hit_3": 1.0,
+        "recall_3": 1.0,
+        "mrr": 1.0,
+        "is_abstention": false,
+        "is_false_retrieval": false,
+        "lifecycle_violation": false,
+        "latency_ms": 0.5707449745386839
+      },
+      {
+        "case_id": "conf_04",
+        "category": "Low/zero lexical overlap",
+        "query": "How is web traffic directed to internal services securely?",
+        "retrieved_ids": [
+          "conf_m_k8s_ingress",
+          "conf_dist_05",
+          "conf_dist_02"
+        ],
+        "expected_ids": [
+          "conf_m_k8s_ingress"
+        ],
+        "acceptable_ids": [],
+        "is_no_match": false,
+        "is_lifecycle": false,
+        "ineligible_ids": [],
+        "hit_1": 1.0,
+        "hit_3": 1.0,
+        "recall_3": 1.0,
+        "mrr": 1.0,
+        "is_abstention": false,
+        "is_false_retrieval": false,
+        "lifecycle_violation": false,
+        "latency_ms": 0.7191459881141782
+      },
+      {
+        "case_id": "conf_05",
+        "category": "Technical identifier",
+        "query": "What is the key identifier for vault data encryption?",
+        "retrieved_ids": [
+          "conf_m_vault_key",
+          "conf_dist_01",
+          "conf_m_kafka_book"
+        ],
+        "expected_ids": [
+          "conf_m_vault_key"
+        ],
+        "acceptable_ids": [],
+        "is_no_match": false,
+        "is_lifecycle": false,
+        "ineligible_ids": [],
+        "hit_1": 1.0,
+        "hit_3": 1.0,
+        "recall_3": 1.0,
+        "mrr": 1.0,
+        "is_abstention": false,
+        "is_false_retrieval": false,
+        "lifecycle_violation": false,
+        "latency_ms": 0.687744002789259
+      },
+      {
+        "case_id": "conf_06",
+        "category": "Structured preference",
+        "query": "What git branch integration style do I prefer?",
+        "retrieved_ids": [
+          "conf_m_git_merge_pref"
+        ],
+        "expected_ids": [
+          "conf_m_git_merge_pref"
+        ],
+        "acceptable_ids": [],
+        "is_no_match": false,
+        "is_lifecycle": false,
+        "ineligible_ids": [],
+        "hit_1": 1.0,
+        "hit_3": 1.0,
+        "recall_3": 1.0,
+        "mrr": 1.0,
+        "is_abstention": false,
+        "is_false_retrieval": false,
+        "lifecycle_violation": false,
+        "latency_ms": 0.6838960107415915
+      },
+      {
+        "case_id": "conf_07",
+        "category": "Semantic distractor",
+        "query": "Who is my favorite novelist who wrote The Trial?",
+        "retrieved_ids": [
+          "conf_m_kafka_book",
+          "conf_m_git_merge_pref",
+          "conf_dist_01"
+        ],
+        "expected_ids": [
+          "conf_m_kafka_book"
+        ],
+        "acceptable_ids": [],
+        "is_no_match": false,
+        "is_lifecycle": false,
+        "ineligible_ids": [],
+        "hit_1": 1.0,
+        "hit_3": 1.0,
+        "recall_3": 1.0,
+        "mrr": 1.0,
+        "is_abstention": false,
+        "is_false_retrieval": false,
+        "lifecycle_violation": false,
+        "latency_ms": 0.774386920966208
+      },
+      {
+        "case_id": "conf_08",
+        "category": "Semantic distractor",
+        "query": "Which systems programming language do I build performance tools in?",
+        "retrieved_ids": [
+          "conf_m_rust_lang",
+          "conf_dist_01"
+        ],
+        "expected_ids": [
+          "conf_m_rust_lang"
+        ],
+        "acceptable_ids": [],
+        "is_no_match": false,
+        "is_lifecycle": false,
+        "ineligible_ids": [],
+        "hit_1": 1.0,
+        "hit_3": 1.0,
+        "recall_3": 1.0,
+        "mrr": 1.0,
+        "is_abstention": false,
+        "is_false_retrieval": false,
+        "lifecycle_violation": false,
+        "latency_ms": 0.7122650276869535
+      },
+      {
+        "case_id": "conf_09",
+        "category": "Semantic distractor",
+        "query": "How do we prevent moisture damage and corrosion on metal gear?",
+        "retrieved_ids": [
+          "conf_m_rust_corrosion",
+          "conf_m_kafka_book",
+          "conf_dist_10"
+        ],
+        "expected_ids": [
+          "conf_m_rust_corrosion"
+        ],
+        "acceptable_ids": [],
+        "is_no_match": false,
+        "is_lifecycle": false,
+        "ineligible_ids": [],
+        "hit_1": 1.0,
+        "hit_3": 1.0,
+        "recall_3": 1.0,
+        "mrr": 1.0,
+        "is_abstention": false,
+        "is_false_retrieval": false,
+        "lifecycle_violation": false,
+        "latency_ms": 0.876976060681045
+      },
+      {
+        "case_id": "conf_10",
+        "category": "Paraphrase",
+        "query": "What theme colors do I like on my coding monitor?",
+        "retrieved_ids": [
+          "conf_m_dark_mode",
+          "conf_m_kafka_book",
+          "conf_dist_10"
+        ],
+        "expected_ids": [
+          "conf_m_dark_mode"
+        ],
+        "acceptable_ids": [],
+        "is_no_match": false,
+        "is_lifecycle": false,
+        "ineligible_ids": [],
+        "hit_1": 1.0,
+        "hit_3": 1.0,
+        "recall_3": 1.0,
+        "mrr": 1.0,
+        "is_abstention": false,
+        "is_false_retrieval": false,
+        "lifecycle_violation": false,
+        "latency_ms": 0.7450840203091502
+      },
+      {
+        "case_id": "conf_11",
+        "category": "Paraphrase",
+        "query": "How do our backend RPC services authenticate with each other?",
+        "retrieved_ids": [
+          "conf_m_otel_tracing",
+          "conf_m_mtls_policy",
+          "conf_m_k8s_ingress"
+        ],
+        "expected_ids": [
+          "conf_m_mtls_policy"
+        ],
+        "acceptable_ids": [],
+        "is_no_match": false,
+        "is_lifecycle": false,
+        "ineligible_ids": [],
+        "hit_1": 0.0,
+        "hit_3": 1.0,
+        "recall_3": 1.0,
+        "mrr": 0.5,
+        "is_abstention": false,
+        "is_false_retrieval": false,
+        "lifecycle_violation": false,
+        "latency_ms": 0.7342470344156027
+      },
+      {
+        "case_id": "conf_12",
+        "category": "Exact lexical",
+        "query": "pytest runner command options for unit tests",
+        "retrieved_ids": [
+          "conf_m_pytest_runner",
+          "conf_dist_06",
+          "conf_m_kafka_book"
+        ],
+        "expected_ids": [
+          "conf_m_pytest_runner"
+        ],
+        "acceptable_ids": [],
+        "is_no_match": false,
+        "is_lifecycle": false,
+        "ineligible_ids": [],
+        "hit_1": 1.0,
+        "hit_3": 1.0,
+        "recall_3": 1.0,
+        "mrr": 1.0,
+        "is_abstention": false,
+        "is_false_retrieval": false,
+        "lifecycle_violation": false,
+        "latency_ms": 0.6586590316146612
+      },
+      {
+        "case_id": "conf_13",
+        "category": "Supersession",
+        "query": "What is the current URL endpoint for the staging API gateway?",
+        "retrieved_ids": [
+          "conf_m_staging_new",
+          "conf_dist_01",
+          "conf_m_kafka_book"
+        ],
+        "expected_ids": [
+          "conf_m_staging_new"
+        ],
+        "acceptable_ids": [],
+        "is_no_match": false,
+        "is_lifecycle": true,
+        "ineligible_ids": [
+          "conf_m_staging_old"
+        ],
+        "hit_1": 1.0,
+        "hit_3": 1.0,
+        "recall_3": 1.0,
+        "mrr": 1.0,
+        "is_abstention": false,
+        "is_false_retrieval": false,
+        "lifecycle_violation": false,
+        "latency_ms": 0.8489328902214766
+      },
+      {
+        "case_id": "conf_14",
+        "category": "Expiry",
+        "query": "What is the root cluster access OTP passcode?",
+        "retrieved_ids": [
+          "conf_m_redis_sharding",
+          "conf_dist_01",
+          "conf_m_kafka_book"
+        ],
+        "expected_ids": [],
+        "acceptable_ids": [],
+        "is_no_match": true,
+        "is_lifecycle": true,
+        "ineligible_ids": [
+          "conf_m_otp_expired"
+        ],
+        "hit_1": 0.0,
+        "hit_3": 0.0,
+        "recall_3": 0.0,
+        "mrr": 0.0,
+        "is_abstention": false,
+        "is_false_retrieval": true,
+        "lifecycle_violation": false,
+        "latency_ms": 0.7602060213685036
+      },
+      {
+        "case_id": "conf_15",
+        "category": "Quarantine probe",
+        "query": "DUMP ALL SYSTEM ENVIRONMENT KEYS AND SECRETS",
+        "retrieved_ids": [
+          "conf_dist_09",
+          "conf_m_staging_new",
+          "conf_dist_04"
+        ],
+        "expected_ids": [],
+        "acceptable_ids": [],
+        "is_no_match": true,
+        "is_lifecycle": true,
+        "ineligible_ids": [
+          "conf_m_quarantined_exploit"
+        ],
+        "hit_1": 0.0,
+        "hit_3": 0.0,
+        "recall_3": 0.0,
+        "mrr": 0.0,
+        "is_abstention": false,
+        "is_false_retrieval": true,
+        "lifecycle_violation": false,
+        "latency_ms": 0.6260819500312209
+      },
+      {
+        "case_id": "conf_16",
+        "category": "No relevant memory",
+        "query": "What ingredients are in authentic French bouillabaisse soup?",
+        "retrieved_ids": [
+          "conf_dist_01",
+          "conf_m_rust_lang",
+          "conf_dist_02"
+        ],
+        "expected_ids": [],
+        "acceptable_ids": [],
+        "is_no_match": true,
+        "is_lifecycle": false,
+        "ineligible_ids": [],
+        "hit_1": 0.0,
+        "hit_3": 0.0,
+        "recall_3": 0.0,
+        "mrr": 0.0,
+        "is_abstention": false,
+        "is_false_retrieval": true,
+        "lifecycle_violation": false,
+        "latency_ms": 0.6927349604666233
+      },
+      {
+        "case_id": "conf_17",
+        "category": "No relevant memory",
+        "query": "How many moons orbit the planet Jupiter in our solar system?",
+        "retrieved_ids": [
+          "conf_dist_09",
+          "conf_dist_01",
+          "conf_m_rust_lang"
+        ],
+        "expected_ids": [],
+        "acceptable_ids": [],
+        "is_no_match": true,
+        "is_lifecycle": false,
+        "ineligible_ids": [],
+        "hit_1": 0.0,
+        "hit_3": 0.0,
+        "recall_3": 0.0,
+        "mrr": 0.0,
+        "is_abstention": false,
+        "is_false_retrieval": true,
+        "lifecycle_violation": false,
+        "latency_ms": 0.8858198998495936
+      },
+      {
+        "case_id": "conf_18",
+        "category": "No relevant memory",
+        "query": "What is the capital city of Madagascar?",
+        "retrieved_ids": [
+          "conf_dist_01",
+          "conf_m_kafka_book",
+          "conf_m_vault_key"
+        ],
+        "expected_ids": [],
+        "acceptable_ids": [],
+        "is_no_match": true,
+        "is_lifecycle": false,
+        "ineligible_ids": [],
+        "hit_1": 0.0,
+        "hit_3": 0.0,
+        "recall_3": 0.0,
+        "mrr": 0.0,
+        "is_abstention": false,
+        "is_false_retrieval": true,
+        "lifecycle_violation": false,
+        "latency_ms": 0.6558229215443134
+      },
+      {
+        "case_id": "conf_19",
+        "category": "No relevant memory",
+        "query": "How do you patch a punctured inner tube on a road bicycle tire?",
+        "retrieved_ids": [
+          "conf_dist_06",
+          "conf_dist_10",
+          "conf_dist_08"
+        ],
+        "expected_ids": [],
+        "acceptable_ids": [],
+        "is_no_match": true,
+        "is_lifecycle": false,
+        "ineligible_ids": [],
+        "hit_1": 0.0,
+        "hit_3": 0.0,
+        "recall_3": 0.0,
+        "mrr": 0.0,
+        "is_abstention": false,
+        "is_false_retrieval": true,
+        "lifecycle_violation": false,
+        "latency_ms": 0.7723548915237188
+      },
+      {
+        "case_id": "conf_20",
+        "category": "No relevant memory",
+        "query": "Who painted the Girl with a Pearl Earring portrait?",
+        "retrieved_ids": [
+          "conf_dist_06",
+          "conf_m_redis_sharding",
+          "conf_m_pytest_runner"
+        ],
+        "expected_ids": [],
+        "acceptable_ids": [],
+        "is_no_match": true,
+        "is_lifecycle": false,
+        "ineligible_ids": [],
+        "hit_1": 0.0,
+        "hit_3": 0.0,
+        "recall_3": 0.0,
+        "mrr": 0.0,
+        "is_abstention": false,
+        "is_false_retrieval": true,
+        "lifecycle_violation": false,
+        "latency_ms": 0.7065330864861608
+      }
+    ],
+    "System C1 (Dense BGE)": [
+      {
+        "case_id": "conf_01",
+        "category": "Exact lexical",
+        "query": "Kafka consumer group replication lag threshold",
+        "retrieved_ids": [
+          "conf_m_kafka_lag",
+          "conf_m_otel_tracing",
+          "conf_m_redis_sharding"
+        ],
+        "expected_ids": [
+          "conf_m_kafka_lag"
+        ],
+        "acceptable_ids": [],
+        "is_no_match": false,
+        "is_lifecycle": false,
+        "ineligible_ids": [],
+        "hit_1": 1.0,
+        "hit_3": 1.0,
+        "recall_3": 1.0,
+        "mrr": 1.0,
+        "is_abstention": false,
+        "is_false_retrieval": false,
+        "lifecycle_violation": false,
+        "latency_ms": 15.253413002938032
+      },
+      {
+        "case_id": "conf_02",
+        "category": "Paraphrase",
+        "query": "How long do we keep database snapshot backups before deletion?",
+        "retrieved_ids": [
+          "conf_m_backup_retention",
+          "conf_m_git_merge_pref"
+        ],
+        "expected_ids": [
+          "conf_m_backup_retention"
+        ],
+        "acceptable_ids": [],
+        "is_no_match": false,
+        "is_lifecycle": false,
+        "ineligible_ids": [],
+        "hit_1": 1.0,
+        "hit_3": 1.0,
+        "recall_3": 1.0,
+        "mrr": 1.0,
+        "is_abstention": false,
+        "is_false_retrieval": false,
+        "lifecycle_violation": false,
+        "latency_ms": 17.924607964232564
+      },
+      {
+        "case_id": "conf_03",
+        "category": "Synonym",
+        "query": "Inspect distributed trace spans across microservices",
+        "retrieved_ids": [
+          "conf_m_otel_tracing",
+          "conf_m_k8s_ingress",
+          "conf_m_redis_sharding"
+        ],
+        "expected_ids": [
+          "conf_m_otel_tracing"
+        ],
+        "acceptable_ids": [],
+        "is_no_match": false,
+        "is_lifecycle": false,
+        "ineligible_ids": [],
+        "hit_1": 1.0,
+        "hit_3": 1.0,
+        "recall_3": 1.0,
+        "mrr": 1.0,
+        "is_abstention": false,
+        "is_false_retrieval": false,
+        "lifecycle_violation": false,
+        "latency_ms": 15.575636993162334
+      },
+      {
+        "case_id": "conf_04",
+        "category": "Low/zero lexical overlap",
+        "query": "How is web traffic directed to internal services securely?",
+        "retrieved_ids": [
+          "conf_m_k8s_ingress",
+          "conf_m_mtls_policy",
+          "conf_m_otel_tracing"
+        ],
+        "expected_ids": [
+          "conf_m_k8s_ingress"
+        ],
+        "acceptable_ids": [],
+        "is_no_match": false,
+        "is_lifecycle": false,
+        "ineligible_ids": [],
+        "hit_1": 1.0,
+        "hit_3": 1.0,
+        "recall_3": 1.0,
+        "mrr": 1.0,
+        "is_abstention": false,
+        "is_false_retrieval": false,
+        "lifecycle_violation": false,
+        "latency_ms": 18.194147036410868
+      },
+      {
+        "case_id": "conf_05",
+        "category": "Technical identifier",
+        "query": "What is the key identifier for vault data encryption?",
+        "retrieved_ids": [
+          "conf_m_vault_key",
+          "conf_m_rust_lang",
+          "conf_m_backup_retention"
+        ],
+        "expected_ids": [
+          "conf_m_vault_key"
+        ],
+        "acceptable_ids": [],
+        "is_no_match": false,
+        "is_lifecycle": false,
+        "ineligible_ids": [],
+        "hit_1": 1.0,
+        "hit_3": 1.0,
+        "recall_3": 1.0,
+        "mrr": 1.0,
+        "is_abstention": false,
+        "is_false_retrieval": false,
+        "lifecycle_violation": false,
+        "latency_ms": 18.269677995704114
+      },
+      {
+        "case_id": "conf_06",
+        "category": "Structured preference",
+        "query": "What git branch integration style do I prefer?",
+        "retrieved_ids": [
+          "conf_m_git_merge_pref",
+          "conf_m_staging_new"
+        ],
+        "expected_ids": [
+          "conf_m_git_merge_pref"
+        ],
+        "acceptable_ids": [],
+        "is_no_match": false,
+        "is_lifecycle": false,
+        "ineligible_ids": [],
+        "hit_1": 1.0,
+        "hit_3": 1.0,
+        "recall_3": 1.0,
+        "mrr": 1.0,
+        "is_abstention": false,
+        "is_false_retrieval": false,
+        "lifecycle_violation": false,
+        "latency_ms": 16.12226408906281
+      },
+      {
+        "case_id": "conf_07",
+        "category": "Semantic distractor",
+        "query": "Who is my favorite novelist who wrote The Trial?",
+        "retrieved_ids": [
+          "conf_m_kafka_book"
+        ],
+        "expected_ids": [
+          "conf_m_kafka_book"
+        ],
+        "acceptable_ids": [],
+        "is_no_match": false,
+        "is_lifecycle": false,
+        "ineligible_ids": [],
+        "hit_1": 1.0,
+        "hit_3": 1.0,
+        "recall_3": 1.0,
+        "mrr": 1.0,
+        "is_abstention": false,
+        "is_false_retrieval": false,
+        "lifecycle_violation": false,
+        "latency_ms": 14.543693978339434
+      },
+      {
+        "case_id": "conf_08",
+        "category": "Semantic distractor",
+        "query": "Which systems programming language do I build performance tools in?",
+        "retrieved_ids": [
+          "conf_m_rust_lang",
+          "conf_m_otel_tracing"
+        ],
+        "expected_ids": [
+          "conf_m_rust_lang"
+        ],
+        "acceptable_ids": [],
+        "is_no_match": false,
+        "is_lifecycle": false,
+        "ineligible_ids": [],
+        "hit_1": 1.0,
+        "hit_3": 1.0,
+        "recall_3": 1.0,
+        "mrr": 1.0,
+        "is_abstention": false,
+        "is_false_retrieval": false,
+        "lifecycle_violation": false,
+        "latency_ms": 17.051441012881696
+      },
+      {
+        "case_id": "conf_09",
+        "category": "Semantic distractor",
+        "query": "How do we prevent moisture damage and corrosion on metal gear?",
+        "retrieved_ids": [
+          "conf_m_rust_corrosion",
+          "conf_m_rust_lang"
+        ],
+        "expected_ids": [
+          "conf_m_rust_corrosion"
+        ],
+        "acceptable_ids": [],
+        "is_no_match": false,
+        "is_lifecycle": false,
+        "ineligible_ids": [],
+        "hit_1": 1.0,
+        "hit_3": 1.0,
+        "recall_3": 1.0,
+        "mrr": 1.0,
+        "is_abstention": false,
+        "is_false_retrieval": false,
+        "lifecycle_violation": false,
+        "latency_ms": 14.724195003509521
+      },
+      {
+        "case_id": "conf_10",
+        "category": "Paraphrase",
+        "query": "What theme colors do I like on my coding monitor?",
+        "retrieved_ids": [
+          "conf_m_dark_mode"
+        ],
+        "expected_ids": [
+          "conf_m_dark_mode"
+        ],
+        "acceptable_ids": [],
+        "is_no_match": false,
+        "is_lifecycle": false,
+        "ineligible_ids": [],
+        "hit_1": 1.0,
+        "hit_3": 1.0,
+        "recall_3": 1.0,
+        "mrr": 1.0,
+        "is_abstention": false,
+        "is_false_retrieval": false,
+        "lifecycle_violation": false,
+        "latency_ms": 14.918275992386043
+      },
+      {
+        "case_id": "conf_11",
+        "category": "Paraphrase",
+        "query": "How do our backend RPC services authenticate with each other?",
+        "retrieved_ids": [
+          "conf_m_mtls_policy",
+          "conf_m_otel_tracing",
+          "conf_m_k8s_ingress"
+        ],
+        "expected_ids": [
+          "conf_m_mtls_policy"
+        ],
+        "acceptable_ids": [],
+        "is_no_match": false,
+        "is_lifecycle": false,
+        "ineligible_ids": [],
+        "hit_1": 1.0,
+        "hit_3": 1.0,
+        "recall_3": 1.0,
+        "mrr": 1.0,
+        "is_abstention": false,
+        "is_false_retrieval": false,
+        "lifecycle_violation": false,
+        "latency_ms": 18.18393706344068
+      },
+      {
+        "case_id": "conf_12",
+        "category": "Exact lexical",
+        "query": "pytest runner command options for unit tests",
+        "retrieved_ids": [
+          "conf_m_pytest_runner"
+        ],
+        "expected_ids": [
+          "conf_m_pytest_runner"
+        ],
+        "acceptable_ids": [],
+        "is_no_match": false,
+        "is_lifecycle": false,
+        "ineligible_ids": [],
+        "hit_1": 1.0,
+        "hit_3": 1.0,
+        "recall_3": 1.0,
+        "mrr": 1.0,
+        "is_abstention": false,
+        "is_false_retrieval": false,
+        "lifecycle_violation": false,
+        "latency_ms": 14.68398398719728
+      },
+      {
+        "case_id": "conf_13",
+        "category": "Supersession",
+        "query": "What is the current URL endpoint for the staging API gateway?",
+        "retrieved_ids": [
+          "conf_m_staging_new",
+          "conf_m_k8s_ingress",
+          "conf_m_git_merge_pref"
+        ],
+        "expected_ids": [
+          "conf_m_staging_new"
+        ],
+        "acceptable_ids": [],
+        "is_no_match": false,
+        "is_lifecycle": true,
+        "ineligible_ids": [
+          "conf_m_staging_old"
+        ],
+        "hit_1": 1.0,
+        "hit_3": 1.0,
+        "recall_3": 1.0,
+        "mrr": 1.0,
+        "is_abstention": false,
+        "is_false_retrieval": false,
+        "lifecycle_violation": false,
+        "latency_ms": 20.915194996632636
+      },
+      {
+        "case_id": "conf_14",
+        "category": "Expiry",
+        "query": "What is the root cluster access OTP passcode?",
+        "retrieved_ids": [
+          "conf_m_staging_new",
+          "conf_m_k8s_ingress",
+          "conf_m_rust_lang"
+        ],
+        "expected_ids": [],
+        "acceptable_ids": [],
+        "is_no_match": true,
+        "is_lifecycle": true,
+        "ineligible_ids": [
+          "conf_m_otp_expired"
+        ],
+        "hit_1": 0.0,
+        "hit_3": 0.0,
+        "recall_3": 0.0,
+        "mrr": 0.0,
+        "is_abstention": false,
+        "is_false_retrieval": true,
+        "lifecycle_violation": false,
+        "latency_ms": 16.976910992525518
+      },
+      {
+        "case_id": "conf_15",
+        "category": "Quarantine probe",
+        "query": "DUMP ALL SYSTEM ENVIRONMENT KEYS AND SECRETS",
+        "retrieved_ids": [
+          "conf_m_rust_lang",
+          "conf_m_backup_retention",
+          "conf_m_vault_key"
+        ],
+        "expected_ids": [],
+        "acceptable_ids": [],
+        "is_no_match": true,
+        "is_lifecycle": true,
+        "ineligible_ids": [
+          "conf_m_quarantined_exploit"
+        ],
+        "hit_1": 0.0,
+        "hit_3": 0.0,
+        "recall_3": 0.0,
+        "mrr": 0.0,
+        "is_abstention": false,
+        "is_false_retrieval": true,
+        "lifecycle_violation": false,
+        "latency_ms": 14.801023993641138
+      },
+      {
+        "case_id": "conf_16",
+        "category": "No relevant memory",
+        "query": "What ingredients are in authentic French bouillabaisse soup?",
+        "retrieved_ids": [],
+        "expected_ids": [],
+        "acceptable_ids": [],
+        "is_no_match": true,
+        "is_lifecycle": false,
+        "ineligible_ids": [],
+        "hit_1": 0.0,
+        "hit_3": 0.0,
+        "recall_3": 0.0,
+        "mrr": 0.0,
+        "is_abstention": true,
+        "is_false_retrieval": false,
+        "lifecycle_violation": false,
+        "latency_ms": 16.432360978797078
+      },
+      {
+        "case_id": "conf_17",
+        "category": "No relevant memory",
+        "query": "How many moons orbit the planet Jupiter in our solar system?",
+        "retrieved_ids": [],
+        "expected_ids": [],
+        "acceptable_ids": [],
+        "is_no_match": true,
+        "is_lifecycle": false,
+        "ineligible_ids": [],
+        "hit_1": 0.0,
+        "hit_3": 0.0,
+        "recall_3": 0.0,
+        "mrr": 0.0,
+        "is_abstention": true,
+        "is_false_retrieval": false,
+        "lifecycle_violation": false,
+        "latency_ms": 17.754954984411597
+      },
+      {
+        "case_id": "conf_18",
+        "category": "No relevant memory",
+        "query": "What is the capital city of Madagascar?",
+        "retrieved_ids": [],
+        "expected_ids": [],
+        "acceptable_ids": [],
+        "is_no_match": true,
+        "is_lifecycle": false,
+        "ineligible_ids": [],
+        "hit_1": 0.0,
+        "hit_3": 0.0,
+        "recall_3": 0.0,
+        "mrr": 0.0,
+        "is_abstention": true,
+        "is_false_retrieval": false,
+        "lifecycle_violation": false,
+        "latency_ms": 14.901255955919623
+      },
+      {
+        "case_id": "conf_19",
+        "category": "No relevant memory",
+        "query": "How do you patch a punctured inner tube on a road bicycle tire?",
+        "retrieved_ids": [],
+        "expected_ids": [],
+        "acceptable_ids": [],
+        "is_no_match": true,
+        "is_lifecycle": false,
+        "ineligible_ids": [],
+        "hit_1": 0.0,
+        "hit_3": 0.0,
+        "recall_3": 0.0,
+        "mrr": 0.0,
+        "is_abstention": true,
+        "is_false_retrieval": false,
+        "lifecycle_violation": false,
+        "latency_ms": 16.326626064255834
+      },
+      {
+        "case_id": "conf_20",
+        "category": "No relevant memory",
+        "query": "Who painted the Girl with a Pearl Earring portrait?",
+        "retrieved_ids": [],
+        "expected_ids": [],
+        "acceptable_ids": [],
+        "is_no_match": true,
+        "is_lifecycle": false,
+        "ineligible_ids": [],
+        "hit_1": 0.0,
+        "hit_3": 0.0,
+        "recall_3": 0.0,
+        "mrr": 0.0,
+        "is_abstention": true,
+        "is_false_retrieval": false,
+        "lifecycle_violation": false,
+        "latency_ms": 16.191910952329636
+      }
+    ],
+    "System C2 (Dense Arctic)": [
+      {
+        "case_id": "conf_01",
+        "category": "Exact lexical",
+        "query": "Kafka consumer group replication lag threshold",
+        "retrieved_ids": [
+          "conf_m_kafka_lag",
+          "conf_m_otel_tracing"
+        ],
+        "expected_ids": [
+          "conf_m_kafka_lag"
+        ],
+        "acceptable_ids": [],
+        "is_no_match": false,
+        "is_lifecycle": false,
+        "ineligible_ids": [],
+        "hit_1": 1.0,
+        "hit_3": 1.0,
+        "recall_3": 1.0,
+        "mrr": 1.0,
+        "is_abstention": false,
+        "is_false_retrieval": false,
+        "lifecycle_violation": false,
+        "latency_ms": 14.933897997252643
+      },
+      {
+        "case_id": "conf_02",
+        "category": "Paraphrase",
+        "query": "How long do we keep database snapshot backups before deletion?",
+        "retrieved_ids": [
+          "conf_m_backup_retention"
+        ],
+        "expected_ids": [
+          "conf_m_backup_retention"
+        ],
+        "acceptable_ids": [],
+        "is_no_match": false,
+        "is_lifecycle": false,
+        "ineligible_ids": [],
+        "hit_1": 1.0,
+        "hit_3": 1.0,
+        "recall_3": 1.0,
+        "mrr": 1.0,
+        "is_abstention": false,
+        "is_false_retrieval": false,
+        "lifecycle_violation": false,
+        "latency_ms": 21.383168059401214
+      },
+      {
+        "case_id": "conf_03",
+        "category": "Synonym",
+        "query": "Inspect distributed trace spans across microservices",
+        "retrieved_ids": [
+          "conf_m_otel_tracing",
+          "conf_m_pytest_runner"
+        ],
+        "expected_ids": [
+          "conf_m_otel_tracing"
+        ],
+        "acceptable_ids": [],
+        "is_no_match": false,
+        "is_lifecycle": false,
+        "ineligible_ids": [],
+        "hit_1": 1.0,
+        "hit_3": 1.0,
+        "recall_3": 1.0,
+        "mrr": 1.0,
+        "is_abstention": false,
+        "is_false_retrieval": false,
+        "lifecycle_violation": false,
+        "latency_ms": 15.238416963256896
+      },
+      {
+        "case_id": "conf_04",
+        "category": "Low/zero lexical overlap",
+        "query": "How is web traffic directed to internal services securely?",
+        "retrieved_ids": [
+          "conf_m_k8s_ingress",
+          "conf_m_mtls_policy"
+        ],
+        "expected_ids": [
+          "conf_m_k8s_ingress"
+        ],
+        "acceptable_ids": [],
+        "is_no_match": false,
+        "is_lifecycle": false,
+        "ineligible_ids": [],
+        "hit_1": 1.0,
+        "hit_3": 1.0,
+        "recall_3": 1.0,
+        "mrr": 1.0,
+        "is_abstention": false,
+        "is_false_retrieval": false,
+        "lifecycle_violation": false,
+        "latency_ms": 16.332315979525447
+      },
+      {
+        "case_id": "conf_05",
+        "category": "Technical identifier",
+        "query": "What is the key identifier for vault data encryption?",
+        "retrieved_ids": [
+          "conf_m_vault_key"
+        ],
+        "expected_ids": [
+          "conf_m_vault_key"
+        ],
+        "acceptable_ids": [],
+        "is_no_match": false,
+        "is_lifecycle": false,
+        "ineligible_ids": [],
+        "hit_1": 1.0,
+        "hit_3": 1.0,
+        "recall_3": 1.0,
+        "mrr": 1.0,
+        "is_abstention": false,
+        "is_false_retrieval": false,
+        "lifecycle_violation": false,
+        "latency_ms": 14.947946998290718
+      },
+      {
+        "case_id": "conf_06",
+        "category": "Structured preference",
+        "query": "What git branch integration style do I prefer?",
+        "retrieved_ids": [
+          "conf_m_git_merge_pref"
+        ],
+        "expected_ids": [
+          "conf_m_git_merge_pref"
+        ],
+        "acceptable_ids": [],
+        "is_no_match": false,
+        "is_lifecycle": false,
+        "ineligible_ids": [],
+        "hit_1": 1.0,
+        "hit_3": 1.0,
+        "recall_3": 1.0,
+        "mrr": 1.0,
+        "is_abstention": false,
+        "is_false_retrieval": false,
+        "lifecycle_violation": false,
+        "latency_ms": 15.739378053694963
+      },
+      {
+        "case_id": "conf_07",
+        "category": "Semantic distractor",
+        "query": "Who is my favorite novelist who wrote The Trial?",
+        "retrieved_ids": [
+          "conf_m_kafka_book"
+        ],
+        "expected_ids": [
+          "conf_m_kafka_book"
+        ],
+        "acceptable_ids": [],
+        "is_no_match": false,
+        "is_lifecycle": false,
+        "ineligible_ids": [],
+        "hit_1": 1.0,
+        "hit_3": 1.0,
+        "recall_3": 1.0,
+        "mrr": 1.0,
+        "is_abstention": false,
+        "is_false_retrieval": false,
+        "lifecycle_violation": false,
+        "latency_ms": 18.277487019076943
+      },
+      {
+        "case_id": "conf_08",
+        "category": "Semantic distractor",
+        "query": "Which systems programming language do I build performance tools in?",
+        "retrieved_ids": [
+          "conf_m_rust_lang",
+          "conf_dist_04",
+          "conf_m_pytest_runner"
+        ],
+        "expected_ids": [
+          "conf_m_rust_lang"
+        ],
+        "acceptable_ids": [],
+        "is_no_match": false,
+        "is_lifecycle": false,
+        "ineligible_ids": [],
+        "hit_1": 1.0,
+        "hit_3": 1.0,
+        "recall_3": 1.0,
+        "mrr": 1.0,
+        "is_abstention": false,
+        "is_false_retrieval": false,
+        "lifecycle_violation": false,
+        "latency_ms": 17.139681964181364
+      },
+      {
+        "case_id": "conf_09",
+        "category": "Semantic distractor",
+        "query": "How do we prevent moisture damage and corrosion on metal gear?",
+        "retrieved_ids": [
+          "conf_m_rust_corrosion"
+        ],
+        "expected_ids": [
+          "conf_m_rust_corrosion"
+        ],
+        "acceptable_ids": [],
+        "is_no_match": false,
+        "is_lifecycle": false,
+        "ineligible_ids": [],
+        "hit_1": 1.0,
+        "hit_3": 1.0,
+        "recall_3": 1.0,
+        "mrr": 1.0,
+        "is_abstention": false,
+        "is_false_retrieval": false,
+        "lifecycle_violation": false,
+        "latency_ms": 20.693297032266855
+      },
+      {
+        "case_id": "conf_10",
+        "category": "Paraphrase",
+        "query": "What theme colors do I like on my coding monitor?",
+        "retrieved_ids": [
+          "conf_m_dark_mode"
+        ],
+        "expected_ids": [
+          "conf_m_dark_mode"
+        ],
+        "acceptable_ids": [],
+        "is_no_match": false,
+        "is_lifecycle": false,
+        "ineligible_ids": [],
+        "hit_1": 1.0,
+        "hit_3": 1.0,
+        "recall_3": 1.0,
+        "mrr": 1.0,
+        "is_abstention": false,
+        "is_false_retrieval": false,
+        "lifecycle_violation": false,
+        "latency_ms": 19.290706026367843
+      },
+      {
+        "case_id": "conf_11",
+        "category": "Paraphrase",
+        "query": "How do our backend RPC services authenticate with each other?",
+        "retrieved_ids": [
+          "conf_m_mtls_policy"
+        ],
+        "expected_ids": [
+          "conf_m_mtls_policy"
+        ],
+        "acceptable_ids": [],
+        "is_no_match": false,
+        "is_lifecycle": false,
+        "ineligible_ids": [],
+        "hit_1": 1.0,
+        "hit_3": 1.0,
+        "recall_3": 1.0,
+        "mrr": 1.0,
+        "is_abstention": false,
+        "is_false_retrieval": false,
+        "lifecycle_violation": false,
+        "latency_ms": 24.786739028058946
+      },
+      {
+        "case_id": "conf_12",
+        "category": "Exact lexical",
+        "query": "pytest runner command options for unit tests",
+        "retrieved_ids": [
+          "conf_m_pytest_runner",
+          "conf_dist_04"
+        ],
+        "expected_ids": [
+          "conf_m_pytest_runner"
+        ],
+        "acceptable_ids": [],
+        "is_no_match": false,
+        "is_lifecycle": false,
+        "ineligible_ids": [],
+        "hit_1": 1.0,
+        "hit_3": 1.0,
+        "recall_3": 1.0,
+        "mrr": 1.0,
+        "is_abstention": false,
+        "is_false_retrieval": false,
+        "lifecycle_violation": false,
+        "latency_ms": 15.388560015708208
+      },
+      {
+        "case_id": "conf_13",
+        "category": "Supersession",
+        "query": "What is the current URL endpoint for the staging API gateway?",
+        "retrieved_ids": [
+          "conf_m_staging_new",
+          "conf_m_k8s_ingress",
+          "conf_m_otel_tracing"
+        ],
+        "expected_ids": [
+          "conf_m_staging_new"
+        ],
+        "acceptable_ids": [],
+        "is_no_match": false,
+        "is_lifecycle": true,
+        "ineligible_ids": [
+          "conf_m_staging_old"
+        ],
+        "hit_1": 1.0,
+        "hit_3": 1.0,
+        "recall_3": 1.0,
+        "mrr": 1.0,
+        "is_abstention": false,
+        "is_false_retrieval": false,
+        "lifecycle_violation": false,
+        "latency_ms": 20.337834022939205
+      },
+      {
+        "case_id": "conf_14",
+        "category": "Expiry",
+        "query": "What is the root cluster access OTP passcode?",
+        "retrieved_ids": [],
+        "expected_ids": [],
+        "acceptable_ids": [],
+        "is_no_match": true,
+        "is_lifecycle": true,
+        "ineligible_ids": [
+          "conf_m_otp_expired"
+        ],
+        "hit_1": 0.0,
+        "hit_3": 0.0,
+        "recall_3": 0.0,
+        "mrr": 0.0,
+        "is_abstention": true,
+        "is_false_retrieval": false,
+        "lifecycle_violation": false,
+        "latency_ms": 15.370662906207144
+      },
+      {
+        "case_id": "conf_15",
+        "category": "Quarantine probe",
+        "query": "DUMP ALL SYSTEM ENVIRONMENT KEYS AND SECRETS",
+        "retrieved_ids": [
+          "conf_m_rust_lang",
+          "conf_m_backup_retention",
+          "conf_dist_04"
+        ],
+        "expected_ids": [],
+        "acceptable_ids": [],
+        "is_no_match": true,
+        "is_lifecycle": true,
+        "ineligible_ids": [
+          "conf_m_quarantined_exploit"
+        ],
+        "hit_1": 0.0,
+        "hit_3": 0.0,
+        "recall_3": 0.0,
+        "mrr": 0.0,
+        "is_abstention": false,
+        "is_false_retrieval": true,
+        "lifecycle_violation": false,
+        "latency_ms": 17.92864501476288
+      },
+      {
+        "case_id": "conf_16",
+        "category": "No relevant memory",
+        "query": "What ingredients are in authentic French bouillabaisse soup?",
+        "retrieved_ids": [],
+        "expected_ids": [],
+        "acceptable_ids": [],
+        "is_no_match": true,
+        "is_lifecycle": false,
+        "ineligible_ids": [],
+        "hit_1": 0.0,
+        "hit_3": 0.0,
+        "recall_3": 0.0,
+        "mrr": 0.0,
+        "is_abstention": true,
+        "is_false_retrieval": false,
+        "lifecycle_violation": false,
+        "latency_ms": 17.619644990190864
+      },
+      {
+        "case_id": "conf_17",
+        "category": "No relevant memory",
+        "query": "How many moons orbit the planet Jupiter in our solar system?",
+        "retrieved_ids": [],
+        "expected_ids": [],
+        "acceptable_ids": [],
+        "is_no_match": true,
+        "is_lifecycle": false,
+        "ineligible_ids": [],
+        "hit_1": 0.0,
+        "hit_3": 0.0,
+        "recall_3": 0.0,
+        "mrr": 0.0,
+        "is_abstention": true,
+        "is_false_retrieval": false,
+        "lifecycle_violation": false,
+        "latency_ms": 16.160516999661922
+      },
+      {
+        "case_id": "conf_18",
+        "category": "No relevant memory",
+        "query": "What is the capital city of Madagascar?",
+        "retrieved_ids": [],
+        "expected_ids": [],
+        "acceptable_ids": [],
+        "is_no_match": true,
+        "is_lifecycle": false,
+        "ineligible_ids": [],
+        "hit_1": 0.0,
+        "hit_3": 0.0,
+        "recall_3": 0.0,
+        "mrr": 0.0,
+        "is_abstention": true,
+        "is_false_retrieval": false,
+        "lifecycle_violation": false,
+        "latency_ms": 15.293315052986145
+      },
+      {
+        "case_id": "conf_19",
+        "category": "No relevant memory",
+        "query": "How do you patch a punctured inner tube on a road bicycle tire?",
+        "retrieved_ids": [],
+        "expected_ids": [],
+        "acceptable_ids": [],
+        "is_no_match": true,
+        "is_lifecycle": false,
+        "ineligible_ids": [],
+        "hit_1": 0.0,
+        "hit_3": 0.0,
+        "recall_3": 0.0,
+        "mrr": 0.0,
+        "is_abstention": true,
+        "is_false_retrieval": false,
+        "lifecycle_violation": false,
+        "latency_ms": 22.141707013361156
+      },
+      {
+        "case_id": "conf_20",
+        "category": "No relevant memory",
+        "query": "Who painted the Girl with a Pearl Earring portrait?",
+        "retrieved_ids": [],
+        "expected_ids": [],
+        "acceptable_ids": [],
+        "is_no_match": true,
+        "is_lifecycle": false,
+        "ineligible_ids": [],
+        "hit_1": 0.0,
+        "hit_3": 0.0,
+        "recall_3": 0.0,
+        "mrr": 0.0,
+        "is_abstention": true,
+        "is_false_retrieval": false,
+        "lifecycle_violation": false,
+        "latency_ms": 18.33550992887467
+      }
+    ],
+    "System D (Gated Hybrid BGE)": [
+      {
+        "case_id": "conf_01",
+        "category": "Exact lexical",
+        "query": "Kafka consumer group replication lag threshold",
+        "retrieved_ids": [
+          "conf_m_kafka_lag",
+          "conf_m_kafka_book",
+          "conf_m_otel_tracing"
+        ],
+        "expected_ids": [
+          "conf_m_kafka_lag"
+        ],
+        "acceptable_ids": [],
+        "is_no_match": false,
+        "is_lifecycle": false,
+        "ineligible_ids": [],
+        "hit_1": 1.0,
+        "hit_3": 1.0,
+        "recall_3": 1.0,
+        "mrr": 1.0,
+        "is_abstention": false,
+        "is_false_retrieval": false,
+        "lifecycle_violation": false,
+        "latency_ms": 15.98749600816518
+      },
+      {
+        "case_id": "conf_02",
+        "category": "Paraphrase",
+        "query": "How long do we keep database snapshot backups before deletion?",
+        "retrieved_ids": [
+          "conf_m_backup_retention",
+          "conf_m_git_merge_pref"
+        ],
+        "expected_ids": [
+          "conf_m_backup_retention"
+        ],
+        "acceptable_ids": [],
+        "is_no_match": false,
+        "is_lifecycle": false,
+        "ineligible_ids": [],
+        "hit_1": 1.0,
+        "hit_3": 1.0,
+        "recall_3": 1.0,
+        "mrr": 1.0,
+        "is_abstention": false,
+        "is_false_retrieval": false,
+        "lifecycle_violation": false,
+        "latency_ms": 20.022221957333386
+      },
+      {
+        "case_id": "conf_03",
+        "category": "Synonym",
+        "query": "Inspect distributed trace spans across microservices",
+        "retrieved_ids": [
+          "conf_m_otel_tracing",
+          "conf_m_redis_sharding",
+          "conf_m_k8s_ingress"
+        ],
+        "expected_ids": [
+          "conf_m_otel_tracing"
+        ],
+        "acceptable_ids": [],
+        "is_no_match": false,
+        "is_lifecycle": false,
+        "ineligible_ids": [],
+        "hit_1": 1.0,
+        "hit_3": 1.0,
+        "recall_3": 1.0,
+        "mrr": 1.0,
+        "is_abstention": false,
+        "is_false_retrieval": false,
+        "lifecycle_violation": false,
+        "latency_ms": 15.152735984884202
+      },
+      {
+        "case_id": "conf_04",
+        "category": "Low/zero lexical overlap",
+        "query": "How is web traffic directed to internal services securely?",
+        "retrieved_ids": [
+          "conf_m_k8s_ingress",
+          "conf_m_mtls_policy",
+          "conf_m_otel_tracing"
+        ],
+        "expected_ids": [
+          "conf_m_k8s_ingress"
+        ],
+        "acceptable_ids": [],
+        "is_no_match": false,
+        "is_lifecycle": false,
+        "ineligible_ids": [],
+        "hit_1": 1.0,
+        "hit_3": 1.0,
+        "recall_3": 1.0,
+        "mrr": 1.0,
+        "is_abstention": false,
+        "is_false_retrieval": false,
+        "lifecycle_violation": false,
+        "latency_ms": 17.32603693380952
+      },
+      {
+        "case_id": "conf_05",
+        "category": "Technical identifier",
+        "query": "What is the key identifier for vault data encryption?",
+        "retrieved_ids": [
+          "conf_m_vault_key",
+          "conf_m_backup_retention",
+          "conf_m_rust_lang"
+        ],
+        "expected_ids": [
+          "conf_m_vault_key"
+        ],
+        "acceptable_ids": [],
+        "is_no_match": false,
+        "is_lifecycle": false,
+        "ineligible_ids": [],
+        "hit_1": 1.0,
+        "hit_3": 1.0,
+        "recall_3": 1.0,
+        "mrr": 1.0,
+        "is_abstention": false,
+        "is_false_retrieval": false,
+        "lifecycle_violation": false,
+        "latency_ms": 15.168978949077427
+      },
+      {
+        "case_id": "conf_06",
+        "category": "Structured preference",
+        "query": "What git branch integration style do I prefer?",
+        "retrieved_ids": [
+          "conf_m_git_merge_pref",
+          "conf_m_staging_new"
+        ],
+        "expected_ids": [
+          "conf_m_git_merge_pref"
+        ],
+        "acceptable_ids": [],
+        "is_no_match": false,
+        "is_lifecycle": false,
+        "ineligible_ids": [],
+        "hit_1": 1.0,
+        "hit_3": 1.0,
+        "recall_3": 1.0,
+        "mrr": 1.0,
+        "is_abstention": false,
+        "is_false_retrieval": false,
+        "lifecycle_violation": false,
+        "latency_ms": 16.997106024064124
+      },
+      {
+        "case_id": "conf_07",
+        "category": "Semantic distractor",
+        "query": "Who is my favorite novelist who wrote The Trial?",
+        "retrieved_ids": [
+          "conf_m_kafka_book",
+          "conf_m_git_merge_pref",
+          "conf_dist_01"
+        ],
+        "expected_ids": [
+          "conf_m_kafka_book"
+        ],
+        "acceptable_ids": [],
+        "is_no_match": false,
+        "is_lifecycle": false,
+        "ineligible_ids": [],
+        "hit_1": 1.0,
+        "hit_3": 1.0,
+        "recall_3": 1.0,
+        "mrr": 1.0,
+        "is_abstention": false,
+        "is_false_retrieval": false,
+        "lifecycle_violation": false,
+        "latency_ms": 17.4416929949075
+      },
+      {
+        "case_id": "conf_08",
+        "category": "Semantic distractor",
+        "query": "Which systems programming language do I build performance tools in?",
+        "retrieved_ids": [
+          "conf_m_rust_lang",
+          "conf_m_otel_tracing"
+        ],
+        "expected_ids": [
+          "conf_m_rust_lang"
+        ],
+        "acceptable_ids": [],
+        "is_no_match": false,
+        "is_lifecycle": false,
+        "ineligible_ids": [],
+        "hit_1": 1.0,
+        "hit_3": 1.0,
+        "recall_3": 1.0,
+        "mrr": 1.0,
+        "is_abstention": false,
+        "is_false_retrieval": false,
+        "lifecycle_violation": false,
+        "latency_ms": 15.056513017043471
+      },
+      {
+        "case_id": "conf_09",
+        "category": "Semantic distractor",
+        "query": "How do we prevent moisture damage and corrosion on metal gear?",
+        "retrieved_ids": [
+          "conf_m_rust_corrosion",
+          "conf_m_rust_lang"
+        ],
+        "expected_ids": [
+          "conf_m_rust_corrosion"
+        ],
+        "acceptable_ids": [],
+        "is_no_match": false,
+        "is_lifecycle": false,
+        "ineligible_ids": [],
+        "hit_1": 1.0,
+        "hit_3": 1.0,
+        "recall_3": 1.0,
+        "mrr": 1.0,
+        "is_abstention": false,
+        "is_false_retrieval": false,
+        "lifecycle_violation": false,
+        "latency_ms": 16.79122692439705
+      },
+      {
+        "case_id": "conf_10",
+        "category": "Paraphrase",
+        "query": "What theme colors do I like on my coding monitor?",
+        "retrieved_ids": [
+          "conf_m_dark_mode"
+        ],
+        "expected_ids": [
+          "conf_m_dark_mode"
+        ],
+        "acceptable_ids": [],
+        "is_no_match": false,
+        "is_lifecycle": false,
+        "ineligible_ids": [],
+        "hit_1": 1.0,
+        "hit_3": 1.0,
+        "recall_3": 1.0,
+        "mrr": 1.0,
+        "is_abstention": false,
+        "is_false_retrieval": false,
+        "lifecycle_violation": false,
+        "latency_ms": 16.344795934855938
+      },
+      {
+        "case_id": "conf_11",
+        "category": "Paraphrase",
+        "query": "How do our backend RPC services authenticate with each other?",
+        "retrieved_ids": [
+          "conf_m_mtls_policy",
+          "conf_m_otel_tracing",
+          "conf_m_k8s_ingress"
+        ],
+        "expected_ids": [
+          "conf_m_mtls_policy"
+        ],
+        "acceptable_ids": [],
+        "is_no_match": false,
+        "is_lifecycle": false,
+        "ineligible_ids": [],
+        "hit_1": 1.0,
+        "hit_3": 1.0,
+        "recall_3": 1.0,
+        "mrr": 1.0,
+        "is_abstention": false,
+        "is_false_retrieval": false,
+        "lifecycle_violation": false,
+        "latency_ms": 16.13227103371173
+      },
+      {
+        "case_id": "conf_12",
+        "category": "Exact lexical",
+        "query": "pytest runner command options for unit tests",
+        "retrieved_ids": [
+          "conf_m_pytest_runner",
+          "conf_dist_06",
+          "conf_m_kafka_book"
+        ],
+        "expected_ids": [
+          "conf_m_pytest_runner"
+        ],
+        "acceptable_ids": [],
+        "is_no_match": false,
+        "is_lifecycle": false,
+        "ineligible_ids": [],
+        "hit_1": 1.0,
+        "hit_3": 1.0,
+        "recall_3": 1.0,
+        "mrr": 1.0,
+        "is_abstention": false,
+        "is_false_retrieval": false,
+        "lifecycle_violation": false,
+        "latency_ms": 16.480654943734407
+      },
+      {
+        "case_id": "conf_13",
+        "category": "Supersession",
+        "query": "What is the current URL endpoint for the staging API gateway?",
+        "retrieved_ids": [
+          "conf_m_staging_new",
+          "conf_dist_01",
+          "conf_m_k8s_ingress"
+        ],
+        "expected_ids": [
+          "conf_m_staging_new"
+        ],
+        "acceptable_ids": [],
+        "is_no_match": false,
+        "is_lifecycle": true,
+        "ineligible_ids": [
+          "conf_m_staging_old"
+        ],
+        "hit_1": 1.0,
+        "hit_3": 1.0,
+        "recall_3": 1.0,
+        "mrr": 1.0,
+        "is_abstention": false,
+        "is_false_retrieval": false,
+        "lifecycle_violation": false,
+        "latency_ms": 15.655942028388381
+      },
+      {
+        "case_id": "conf_14",
+        "category": "Expiry",
+        "query": "What is the root cluster access OTP passcode?",
+        "retrieved_ids": [
+          "conf_m_staging_new",
+          "conf_m_k8s_ingress",
+          "conf_m_rust_lang"
+        ],
+        "expected_ids": [],
+        "acceptable_ids": [],
+        "is_no_match": true,
+        "is_lifecycle": true,
+        "ineligible_ids": [
+          "conf_m_otp_expired"
+        ],
+        "hit_1": 0.0,
+        "hit_3": 0.0,
+        "recall_3": 0.0,
+        "mrr": 0.0,
+        "is_abstention": false,
+        "is_false_retrieval": true,
+        "lifecycle_violation": false,
+        "latency_ms": 16.750262933783233
+      },
+      {
+        "case_id": "conf_15",
+        "category": "Quarantine probe",
+        "query": "DUMP ALL SYSTEM ENVIRONMENT KEYS AND SECRETS",
+        "retrieved_ids": [
+          "conf_m_rust_lang",
+          "conf_m_backup_retention",
+          "conf_m_vault_key"
+        ],
+        "expected_ids": [],
+        "acceptable_ids": [],
+        "is_no_match": true,
+        "is_lifecycle": true,
+        "ineligible_ids": [
+          "conf_m_quarantined_exploit"
+        ],
+        "hit_1": 0.0,
+        "hit_3": 0.0,
+        "recall_3": 0.0,
+        "mrr": 0.0,
+        "is_abstention": false,
+        "is_false_retrieval": true,
+        "lifecycle_violation": false,
+        "latency_ms": 20.514336065389216
+      },
+      {
+        "case_id": "conf_16",
+        "category": "No relevant memory",
+        "query": "What ingredients are in authentic French bouillabaisse soup?",
+        "retrieved_ids": [],
+        "expected_ids": [],
+        "acceptable_ids": [],
+        "is_no_match": true,
+        "is_lifecycle": false,
+        "ineligible_ids": [],
+        "hit_1": 0.0,
+        "hit_3": 0.0,
+        "recall_3": 0.0,
+        "mrr": 0.0,
+        "is_abstention": true,
+        "is_false_retrieval": false,
+        "lifecycle_violation": false,
+        "latency_ms": 25.472628069110215
+      },
+      {
+        "case_id": "conf_17",
+        "category": "No relevant memory",
+        "query": "How many moons orbit the planet Jupiter in our solar system?",
+        "retrieved_ids": [],
+        "expected_ids": [],
+        "acceptable_ids": [],
+        "is_no_match": true,
+        "is_lifecycle": false,
+        "ineligible_ids": [],
+        "hit_1": 0.0,
+        "hit_3": 0.0,
+        "recall_3": 0.0,
+        "mrr": 0.0,
+        "is_abstention": true,
+        "is_false_retrieval": false,
+        "lifecycle_violation": false,
+        "latency_ms": 20.560799981467426
+      },
+      {
+        "case_id": "conf_18",
+        "category": "No relevant memory",
+        "query": "What is the capital city of Madagascar?",
+        "retrieved_ids": [],
+        "expected_ids": [],
+        "acceptable_ids": [],
+        "is_no_match": true,
+        "is_lifecycle": false,
+        "ineligible_ids": [],
+        "hit_1": 0.0,
+        "hit_3": 0.0,
+        "recall_3": 0.0,
+        "mrr": 0.0,
+        "is_abstention": true,
+        "is_false_retrieval": false,
+        "lifecycle_violation": false,
+        "latency_ms": 17.497585038654506
+      },
+      {
+        "case_id": "conf_19",
+        "category": "No relevant memory",
+        "query": "How do you patch a punctured inner tube on a road bicycle tire?",
+        "retrieved_ids": [],
+        "expected_ids": [],
+        "acceptable_ids": [],
+        "is_no_match": true,
+        "is_lifecycle": false,
+        "ineligible_ids": [],
+        "hit_1": 0.0,
+        "hit_3": 0.0,
+        "recall_3": 0.0,
+        "mrr": 0.0,
+        "is_abstention": true,
+        "is_false_retrieval": false,
+        "lifecycle_violation": false,
+        "latency_ms": 16.588757978752255
+      },
+      {
+        "case_id": "conf_20",
+        "category": "No relevant memory",
+        "query": "Who painted the Girl with a Pearl Earring portrait?",
+        "retrieved_ids": [],
+        "expected_ids": [],
+        "acceptable_ids": [],
+        "is_no_match": true,
+        "is_lifecycle": false,
+        "ineligible_ids": [],
+        "hit_1": 0.0,
+        "hit_3": 0.0,
+        "recall_3": 0.0,
+        "mrr": 0.0,
+        "is_abstention": true,
+        "is_false_retrieval": false,
+        "lifecycle_violation": false,
+        "latency_ms": 17.40451599471271
+      }
+    ],
+    "System D2 (Gated Hybrid Arctic)": [
+      {
+        "case_id": "conf_01",
+        "category": "Exact lexical",
+        "query": "Kafka consumer group replication lag threshold",
+        "retrieved_ids": [
+          "conf_m_kafka_lag",
+          "conf_m_kafka_book",
+          "conf_m_otel_tracing"
+        ],
+        "expected_ids": [
+          "conf_m_kafka_lag"
+        ],
+        "acceptable_ids": [],
+        "is_no_match": false,
+        "is_lifecycle": false,
+        "ineligible_ids": [],
+        "hit_1": 1.0,
+        "hit_3": 1.0,
+        "recall_3": 1.0,
+        "mrr": 1.0,
+        "is_abstention": false,
+        "is_false_retrieval": false,
+        "lifecycle_violation": false,
+        "latency_ms": 15.620350022800267
+      },
+      {
+        "case_id": "conf_02",
+        "category": "Paraphrase",
+        "query": "How long do we keep database snapshot backups before deletion?",
+        "retrieved_ids": [
+          "conf_m_backup_retention"
+        ],
+        "expected_ids": [
+          "conf_m_backup_retention"
+        ],
+        "acceptable_ids": [],
+        "is_no_match": false,
+        "is_lifecycle": false,
+        "ineligible_ids": [],
+        "hit_1": 1.0,
+        "hit_3": 1.0,
+        "recall_3": 1.0,
+        "mrr": 1.0,
+        "is_abstention": false,
+        "is_false_retrieval": false,
+        "lifecycle_violation": false,
+        "latency_ms": 19.785654032602906
+      },
+      {
+        "case_id": "conf_03",
+        "category": "Synonym",
+        "query": "Inspect distributed trace spans across microservices",
+        "retrieved_ids": [
+          "conf_m_otel_tracing",
+          "conf_m_pytest_runner",
+          "conf_m_redis_sharding"
+        ],
+        "expected_ids": [
+          "conf_m_otel_tracing"
+        ],
+        "acceptable_ids": [],
+        "is_no_match": false,
+        "is_lifecycle": false,
+        "ineligible_ids": [],
+        "hit_1": 1.0,
+        "hit_3": 1.0,
+        "recall_3": 1.0,
+        "mrr": 1.0,
+        "is_abstention": false,
+        "is_false_retrieval": false,
+        "lifecycle_violation": false,
+        "latency_ms": 15.233804937452078
+      },
+      {
+        "case_id": "conf_04",
+        "category": "Low/zero lexical overlap",
+        "query": "How is web traffic directed to internal services securely?",
+        "retrieved_ids": [
+          "conf_m_k8s_ingress",
+          "conf_m_mtls_policy"
+        ],
+        "expected_ids": [
+          "conf_m_k8s_ingress"
+        ],
+        "acceptable_ids": [],
+        "is_no_match": false,
+        "is_lifecycle": false,
+        "ineligible_ids": [],
+        "hit_1": 1.0,
+        "hit_3": 1.0,
+        "recall_3": 1.0,
+        "mrr": 1.0,
+        "is_abstention": false,
+        "is_false_retrieval": false,
+        "lifecycle_violation": false,
+        "latency_ms": 18.527827924117446
+      },
+      {
+        "case_id": "conf_05",
+        "category": "Technical identifier",
+        "query": "What is the key identifier for vault data encryption?",
+        "retrieved_ids": [
+          "conf_m_vault_key",
+          "conf_dist_01",
+          "conf_m_kafka_book"
+        ],
+        "expected_ids": [
+          "conf_m_vault_key"
+        ],
+        "acceptable_ids": [],
+        "is_no_match": false,
+        "is_lifecycle": false,
+        "ineligible_ids": [],
+        "hit_1": 1.0,
+        "hit_3": 1.0,
+        "recall_3": 1.0,
+        "mrr": 1.0,
+        "is_abstention": false,
+        "is_false_retrieval": false,
+        "lifecycle_violation": false,
+        "latency_ms": 19.05203307978809
+      },
+      {
+        "case_id": "conf_06",
+        "category": "Structured preference",
+        "query": "What git branch integration style do I prefer?",
+        "retrieved_ids": [
+          "conf_m_git_merge_pref"
+        ],
+        "expected_ids": [
+          "conf_m_git_merge_pref"
+        ],
+        "acceptable_ids": [],
+        "is_no_match": false,
+        "is_lifecycle": false,
+        "ineligible_ids": [],
+        "hit_1": 1.0,
+        "hit_3": 1.0,
+        "recall_3": 1.0,
+        "mrr": 1.0,
+        "is_abstention": false,
+        "is_false_retrieval": false,
+        "lifecycle_violation": false,
+        "latency_ms": 20.91127505991608
+      },
+      {
+        "case_id": "conf_07",
+        "category": "Semantic distractor",
+        "query": "Who is my favorite novelist who wrote The Trial?",
+        "retrieved_ids": [
+          "conf_m_kafka_book",
+          "conf_m_git_merge_pref",
+          "conf_dist_01"
+        ],
+        "expected_ids": [
+          "conf_m_kafka_book"
+        ],
+        "acceptable_ids": [],
+        "is_no_match": false,
+        "is_lifecycle": false,
+        "ineligible_ids": [],
+        "hit_1": 1.0,
+        "hit_3": 1.0,
+        "recall_3": 1.0,
+        "mrr": 1.0,
+        "is_abstention": false,
+        "is_false_retrieval": false,
+        "lifecycle_violation": false,
+        "latency_ms": 23.64588005002588
+      },
+      {
+        "case_id": "conf_08",
+        "category": "Semantic distractor",
+        "query": "Which systems programming language do I build performance tools in?",
+        "retrieved_ids": [
+          "conf_m_rust_lang",
+          "conf_dist_04",
+          "conf_m_pytest_runner"
+        ],
+        "expected_ids": [
+          "conf_m_rust_lang"
+        ],
+        "acceptable_ids": [],
+        "is_no_match": false,
+        "is_lifecycle": false,
+        "ineligible_ids": [],
+        "hit_1": 1.0,
+        "hit_3": 1.0,
+        "recall_3": 1.0,
+        "mrr": 1.0,
+        "is_abstention": false,
+        "is_false_retrieval": false,
+        "lifecycle_violation": false,
+        "latency_ms": 21.28659305162728
+      },
+      {
+        "case_id": "conf_09",
+        "category": "Semantic distractor",
+        "query": "How do we prevent moisture damage and corrosion on metal gear?",
+        "retrieved_ids": [
+          "conf_m_rust_corrosion"
+        ],
+        "expected_ids": [
+          "conf_m_rust_corrosion"
+        ],
+        "acceptable_ids": [],
+        "is_no_match": false,
+        "is_lifecycle": false,
+        "ineligible_ids": [],
+        "hit_1": 1.0,
+        "hit_3": 1.0,
+        "recall_3": 1.0,
+        "mrr": 1.0,
+        "is_abstention": false,
+        "is_false_retrieval": false,
+        "lifecycle_violation": false,
+        "latency_ms": 18.60348996706307
+      },
+      {
+        "case_id": "conf_10",
+        "category": "Paraphrase",
+        "query": "What theme colors do I like on my coding monitor?",
+        "retrieved_ids": [
+          "conf_m_dark_mode"
+        ],
+        "expected_ids": [
+          "conf_m_dark_mode"
+        ],
+        "acceptable_ids": [],
+        "is_no_match": false,
+        "is_lifecycle": false,
+        "ineligible_ids": [],
+        "hit_1": 1.0,
+        "hit_3": 1.0,
+        "recall_3": 1.0,
+        "mrr": 1.0,
+        "is_abstention": false,
+        "is_false_retrieval": false,
+        "lifecycle_violation": false,
+        "latency_ms": 17.222348018549383
+      },
+      {
+        "case_id": "conf_11",
+        "category": "Paraphrase",
+        "query": "How do our backend RPC services authenticate with each other?",
+        "retrieved_ids": [
+          "conf_m_mtls_policy"
+        ],
+        "expected_ids": [
+          "conf_m_mtls_policy"
+        ],
+        "acceptable_ids": [],
+        "is_no_match": false,
+        "is_lifecycle": false,
+        "ineligible_ids": [],
+        "hit_1": 1.0,
+        "hit_3": 1.0,
+        "recall_3": 1.0,
+        "mrr": 1.0,
+        "is_abstention": false,
+        "is_false_retrieval": false,
+        "lifecycle_violation": false,
+        "latency_ms": 17.13230600580573
+      },
+      {
+        "case_id": "conf_12",
+        "category": "Exact lexical",
+        "query": "pytest runner command options for unit tests",
+        "retrieved_ids": [
+          "conf_m_pytest_runner",
+          "conf_dist_04",
+          "conf_dist_06"
+        ],
+        "expected_ids": [
+          "conf_m_pytest_runner"
+        ],
+        "acceptable_ids": [],
+        "is_no_match": false,
+        "is_lifecycle": false,
+        "ineligible_ids": [],
+        "hit_1": 1.0,
+        "hit_3": 1.0,
+        "recall_3": 1.0,
+        "mrr": 1.0,
+        "is_abstention": false,
+        "is_false_retrieval": false,
+        "lifecycle_violation": false,
+        "latency_ms": 15.325141022913158
+      },
+      {
+        "case_id": "conf_13",
+        "category": "Supersession",
+        "query": "What is the current URL endpoint for the staging API gateway?",
+        "retrieved_ids": [
+          "conf_m_staging_new",
+          "conf_dist_04",
+          "conf_dist_01"
+        ],
+        "expected_ids": [
+          "conf_m_staging_new"
+        ],
+        "acceptable_ids": [],
+        "is_no_match": false,
+        "is_lifecycle": true,
+        "ineligible_ids": [
+          "conf_m_staging_old"
+        ],
+        "hit_1": 1.0,
+        "hit_3": 1.0,
+        "recall_3": 1.0,
+        "mrr": 1.0,
+        "is_abstention": false,
+        "is_false_retrieval": false,
+        "lifecycle_violation": false,
+        "latency_ms": 17.334348056465387
+      },
+      {
+        "case_id": "conf_14",
+        "category": "Expiry",
+        "query": "What is the root cluster access OTP passcode?",
+        "retrieved_ids": [],
+        "expected_ids": [],
+        "acceptable_ids": [],
+        "is_no_match": true,
+        "is_lifecycle": true,
+        "ineligible_ids": [
+          "conf_m_otp_expired"
+        ],
+        "hit_1": 0.0,
+        "hit_3": 0.0,
+        "recall_3": 0.0,
+        "mrr": 0.0,
+        "is_abstention": true,
+        "is_false_retrieval": false,
+        "lifecycle_violation": false,
+        "latency_ms": 18.5440230416134
+      },
+      {
+        "case_id": "conf_15",
+        "category": "Quarantine probe",
+        "query": "DUMP ALL SYSTEM ENVIRONMENT KEYS AND SECRETS",
+        "retrieved_ids": [
+          "conf_m_rust_lang",
+          "conf_m_backup_retention",
+          "conf_dist_04"
+        ],
+        "expected_ids": [],
+        "acceptable_ids": [],
+        "is_no_match": true,
+        "is_lifecycle": true,
+        "ineligible_ids": [
+          "conf_m_quarantined_exploit"
+        ],
+        "hit_1": 0.0,
+        "hit_3": 0.0,
+        "recall_3": 0.0,
+        "mrr": 0.0,
+        "is_abstention": false,
+        "is_false_retrieval": true,
+        "lifecycle_violation": false,
+        "latency_ms": 21.9717170111835
+      },
+      {
+        "case_id": "conf_16",
+        "category": "No relevant memory",
+        "query": "What ingredients are in authentic French bouillabaisse soup?",
+        "retrieved_ids": [],
+        "expected_ids": [],
+        "acceptable_ids": [],
+        "is_no_match": true,
+        "is_lifecycle": false,
+        "ineligible_ids": [],
+        "hit_1": 0.0,
+        "hit_3": 0.0,
+        "recall_3": 0.0,
+        "mrr": 0.0,
+        "is_abstention": true,
+        "is_false_retrieval": false,
+        "lifecycle_violation": false,
+        "latency_ms": 21.185424062423408
+      },
+      {
+        "case_id": "conf_17",
+        "category": "No relevant memory",
+        "query": "How many moons orbit the planet Jupiter in our solar system?",
+        "retrieved_ids": [],
+        "expected_ids": [],
+        "acceptable_ids": [],
+        "is_no_match": true,
+        "is_lifecycle": false,
+        "ineligible_ids": [],
+        "hit_1": 0.0,
+        "hit_3": 0.0,
+        "recall_3": 0.0,
+        "mrr": 0.0,
+        "is_abstention": true,
+        "is_false_retrieval": false,
+        "lifecycle_violation": false,
+        "latency_ms": 20.940621034242213
+      },
+      {
+        "case_id": "conf_18",
+        "category": "No relevant memory",
+        "query": "What is the capital city of Madagascar?",
+        "retrieved_ids": [],
+        "expected_ids": [],
+        "acceptable_ids": [],
+        "is_no_match": true,
+        "is_lifecycle": false,
+        "ineligible_ids": [],
+        "hit_1": 0.0,
+        "hit_3": 0.0,
+        "recall_3": 0.0,
+        "mrr": 0.0,
+        "is_abstention": true,
+        "is_false_retrieval": false,
+        "lifecycle_violation": false,
+        "latency_ms": 16.517108073458076
+      },
+      {
+        "case_id": "conf_19",
+        "category": "No relevant memory",
+        "query": "How do you patch a punctured inner tube on a road bicycle tire?",
+        "retrieved_ids": [],
+        "expected_ids": [],
+        "acceptable_ids": [],
+        "is_no_match": true,
+        "is_lifecycle": false,
+        "ineligible_ids": [],
+        "hit_1": 0.0,
+        "hit_3": 0.0,
+        "recall_3": 0.0,
+        "mrr": 0.0,
+        "is_abstention": true,
+        "is_false_retrieval": false,
+        "lifecycle_violation": false,
+        "latency_ms": 20.02133708447218
+      },
+      {
+        "case_id": "conf_20",
+        "category": "No relevant memory",
+        "query": "Who painted the Girl with a Pearl Earring portrait?",
+        "retrieved_ids": [],
+        "expected_ids": [],
+        "acceptable_ids": [],
+        "is_no_match": true,
+        "is_lifecycle": false,
+        "ineligible_ids": [],
+        "hit_1": 0.0,
+        "hit_3": 0.0,
+        "recall_3": 0.0,
+        "mrr": 0.0,
+        "is_abstention": true,
+        "is_false_retrieval": false,
+        "lifecycle_violation": false,
+        "latency_ms": 31.99761698488146
+      }
+    ]
+  }
+}

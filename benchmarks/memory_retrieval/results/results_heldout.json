@@ -1,0 +1,3601 @@
+{
+  "frozen_hyperparameters": {
+    "dense_model": "Snowflake/snowflake-arctic-embed-s",
+    "dense_revision": "default",
+    "dense_query_config": "qpname=query",
+    "dense_fingerprint": "Snowflake/snowflake-arctic-embed-s@default:dim=384:qpname=query:l2=1",
+    "dense_threshold": 0.55,
+    "sparse_min_coverage": 0.35,
+    "sparse_bm25_cutoff": -2.5,
+    "sparse_stopword_policy_version": "v1-standard-english-34",
+    "rrf_k": 10,
+    "sparse_weight": 1.0,
+    "dense_weight": 1.0,
+    "candidate_pool": 10,
+    "candidate_limit": null,
+    "enable_relevance_gate": true,
+    "index_readiness": "incremental",
+    "bge_comparator": {
+      "dense_model": "BAAI/bge-small-en-v1.5",
+      "dense_revision": "default",
+      "dense_query_config": "qpfx=cdf0ab26",
+      "dense_fingerprint": "BAAI/bge-small-en-v1.5@default:dim=384:qpfx=cdf0ab26:l2=1",
+      "dense_threshold": 0.55,
+      "bge_cold_load_sec": 7.038
+    },
+    "arctic_cold_load_sec": 0.126,
+    "calibration_timestamp": "2026-09-12T10:51:16.037460+00:00"
+  },
+  "heldout_summaries": {
+    "System A (Lexical)": {
+      "system_name": "System A (Lexical)",
+      "total_cases": 24,
+      "relevant_cases": 18,
+      "no_match_cases": 6,
+      "lifecycle_cases": 2,
+      "hit_1": 0.6111,
+      "hit_3": 0.7778,
+      "recall_3": 0.7778,
+      "mrr": 0.6759,
+      "abstention_accuracy": 0.0,
+      "false_retrieval_rate": 1.0,
+      "lifecycle_violations": 0,
+      "latency_median_ms": 0.57,
+      "latency_mean_ms": 0.58,
+      "latency_std_ms": 0.05,
+      "latency_p95_ms": 0.65,
+      "cold_load_seconds": 0.0,
+      "indexing_seconds": 0.0
+    },
+    "System B (BM25)": {
+      "system_name": "System B (BM25)",
+      "total_cases": 24,
+      "relevant_cases": 18,
+      "no_match_cases": 6,
+      "lifecycle_cases": 2,
+      "hit_1": 0.7222,
+      "hit_3": 0.8889,
+      "recall_3": 0.8889,
+      "mrr": 0.7963,
+      "abstention_accuracy": 0.0,
+      "false_retrieval_rate": 1.0,
+      "lifecycle_violations": 0,
+      "latency_median_ms": 0.61,
+      "latency_mean_ms": 0.63,
+      "latency_std_ms": 0.06,
+      "latency_p95_ms": 0.72,
+      "cold_load_seconds": 0.0,
+      "indexing_seconds": 0.0
+    },
+    "System C1 (Dense BGE)": {
+      "system_name": "System C1 (Dense BGE)",
+      "total_cases": 24,
+      "relevant_cases": 18,
+      "no_match_cases": 6,
+      "lifecycle_cases": 2,
+      "hit_1": 1.0,
+      "hit_3": 1.0,
+      "recall_3": 1.0,
+      "mrr": 1.0,
+      "abstention_accuracy": 0.6667,
+      "false_retrieval_rate": 0.3333,
+      "lifecycle_violations": 0,
+      "latency_median_ms": 17.08,
+      "latency_mean_ms": 17.77,
+      "latency_std_ms": 2.04,
+      "latency_p95_ms": 22.1,
+      "cold_load_seconds": 0.0,
+      "indexing_seconds": 0.0
+    },
+    "System C2 (Dense Arctic)": {
+      "system_name": "System C2 (Dense Arctic)",
+      "total_cases": 24,
+      "relevant_cases": 18,
+      "no_match_cases": 6,
+      "lifecycle_cases": 2,
+      "hit_1": 1.0,
+      "hit_3": 1.0,
+      "recall_3": 1.0,
+      "mrr": 1.0,
+      "abstention_accuracy": 0.8333,
+      "false_retrieval_rate": 0.1667,
+      "lifecycle_violations": 0,
+      "latency_median_ms": 17.44,
+      "latency_mean_ms": 18.31,
+      "latency_std_ms": 2.99,
+      "latency_p95_ms": 23.37,
+      "cold_load_seconds": 0.0,
+      "indexing_seconds": 0.0
+    },
+    "System D (Raw Hybrid RRF)": {
+      "system_name": "System D (Raw Hybrid RRF)",
+      "total_cases": 24,
+      "relevant_cases": 18,
+      "no_match_cases": 6,
+      "lifecycle_cases": 2,
+      "hit_1": 0.8333,
+      "hit_3": 1.0,
+      "recall_3": 1.0,
+      "mrr": 0.9167,
+      "abstention_accuracy": 0.0,
+      "false_retrieval_rate": 1.0,
+      "lifecycle_violations": 0,
+      "latency_median_ms": 20.71,
+      "latency_mean_ms": 21.26,
+      "latency_std_ms": 5.18,
+      "latency_p95_ms": 30.76,
+      "cold_load_seconds": 0.0,
+      "indexing_seconds": 0.0
+    },
+    "System D (Gated Hybrid RRF)": {
+      "system_name": "System D (Gated Hybrid RRF)",
+      "total_cases": 24,
+      "relevant_cases": 18,
+      "no_match_cases": 6,
+      "lifecycle_cases": 2,
+      "hit_1": 1.0,
+      "hit_3": 1.0,
+      "recall_3": 1.0,
+      "mrr": 1.0,
+      "abstention_accuracy": 0.6667,
+      "false_retrieval_rate": 0.3333,
+      "lifecycle_violations": 0,
+      "latency_median_ms": 17.37,
+      "latency_mean_ms": 17.46,
+      "latency_std_ms": 1.67,
+      "latency_p95_ms": 20.82,
+      "cold_load_seconds": 0.0,
+      "indexing_seconds": 0.0
+    }
+  },
+  "heldout_details": {
+    "System A (Lexical)": [
+      {
+        "case_id": "held_01",
+        "category": "Exact lexical",
+        "query": "Kubernetes pod restart policy",
+        "retrieved_ids": [
+          "held_m_cluster_new",
+          "held_m_k8s_restart"
+        ],
+        "expected_ids": [
+          "held_m_k8s_restart"
+        ],
+        "acceptable_ids": [],
+        "is_no_match": false,
+        "is_lifecycle": false,
+        "ineligible_ids": [],
+        "hit_1": 0.0,
+        "hit_3": 1.0,
+        "recall_3": 1.0,
+        "mrr": 0.5,
+        "is_abstention": false,
+        "is_false_retrieval": false,
+        "lifecycle_violation": false,
+        "latency_ms": 0.7019869517534971
+      },
+      {
+        "case_id": "held_02",
+        "category": "Paraphrase",
+        "query": "What hot caffeinated beverage do I drink in the morning?",
+        "retrieved_ids": [
+          "held_m_coffee_pref",
+          "held_m_java_code",
+          "held_dist_08"
+        ],
+        "expected_ids": [
+          "held_m_coffee_pref"
+        ],
+        "acceptable_ids": [],
+        "is_no_match": false,
+        "is_lifecycle": false,
+        "ineligible_ids": [],
+        "hit_1": 1.0,
+        "hit_3": 1.0,
+        "recall_3": 1.0,
+        "mrr": 1.0,
+        "is_abstention": false,
+        "is_false_retrieval": false,
+        "lifecycle_violation": false,
+        "latency_ms": 0.5991000216454268
+      },
+      {
+        "case_id": "held_03",
+        "category": "Low/zero lexical overlap",
+        "query": "How should I format terminal command prompts?",
+        "retrieved_ids": [
+          "held_m_theme_pref"
+        ],
+        "expected_ids": [
+          "held_m_zsh_prompt"
+        ],
+        "acceptable_ids": [],
+        "is_no_match": false,
+        "is_lifecycle": false,
+        "ineligible_ids": [],
+        "hit_1": 0.0,
+        "hit_3": 0.0,
+        "recall_3": 0.0,
+        "mrr": 0.0,
+        "is_abstention": false,
+        "is_false_retrieval": false,
+        "lifecycle_violation": false,
+        "latency_ms": 0.5058390088379383
+      },
+      {
+        "case_id": "held_04",
+        "category": "Synonym",
+        "query": "How to clone the git repository over encrypted shell?",
+        "retrieved_ids": [
+          "held_m_zsh_prompt",
+          "held_dist_13",
+          "held_dist_08"
+        ],
+        "expected_ids": [
+          "held_m_ssh_git"
+        ],
+        "acceptable_ids": [],
+        "is_no_match": false,
+        "is_lifecycle": false,
+        "ineligible_ids": [],
+        "hit_1": 0.0,
+        "hit_3": 0.0,
+        "recall_3": 0.0,
+        "mrr": 0.0,
+        "is_abstention": false,
+        "is_false_retrieval": false,
+        "lifecycle_violation": false,
+        "latency_ms": 0.5822340026497841
+      },
+      {
+        "case_id": "held_05",
+        "category": "Technical identifier",
+        "query": "Where are downloaded Hugging Face model weights stored?",
+        "retrieved_ids": [
+          "held_m_hf_home",
+          "held_m_aws_s3",
+          "held_m_java_island"
+        ],
+        "expected_ids": [
+          "held_m_hf_home"
+        ],
+        "acceptable_ids": [],
+        "is_no_match": false,
+        "is_lifecycle": false,
+        "ineligible_ids": [],
+        "hit_1": 1.0,
+        "hit_3": 1.0,
+        "recall_3": 1.0,
+        "mrr": 1.0,
+        "is_abstention": false,
+        "is_false_retrieval": false,
+        "lifecycle_violation": false,
+        "latency_ms": 0.5149950738996267
+      },
+      {
+        "case_id": "held_06",
+        "category": "Structured preference",
+        "query": "What theme should the terminal UI use?",
+        "retrieved_ids": [
+          "held_m_theme_pref",
+          "held_m_java_code",
+          "held_m_java_island"
+        ],
+        "expected_ids": [
+          "held_m_theme_pref"
+        ],
+        "acceptable_ids": [],
+        "is_no_match": false,
+        "is_lifecycle": false,
+        "ineligible_ids": [],
+        "hit_1": 1.0,
+        "hit_3": 1.0,
+        "recall_3": 1.0,
+        "mrr": 1.0,
+        "is_abstention": false,
+        "is_false_retrieval": false,
+        "lifecycle_violation": false,
+        "latency_ms": 0.6276000058278441
+      },
+      {
+        "case_id": "held_07",
+        "category": "Semantic distractor",
+        "query": "What fresh orchard fruit do I enjoy eating?",
+        "retrieved_ids": [
+          "held_m_apple_fruit"
+        ],
+        "expected_ids": [
+          "held_m_apple_fruit"
+        ],
+        "acceptable_ids": [],
+        "is_no_match": false,
+        "is_lifecycle": false,
+        "ineligible_ids": [],
+        "hit_1": 1.0,
+        "hit_3": 1.0,
+        "recall_3": 1.0,
+        "mrr": 1.0,
+        "is_abstention": false,
+        "is_false_retrieval": false,
+        "lifecycle_violation": false,
+        "latency_ms": 0.6257060449570417
+      },
+      {
+        "case_id": "held_08",
+        "category": "Semantic distractor",
+        "query": "What laptop model was issued for work?",
+        "retrieved_ids": [
+          "held_m_apple_laptop",
+          "held_m_apple_fruit",
+          "held_dist_10"
+        ],
+        "expected_ids": [
+          "held_m_apple_laptop"
+        ],
+        "acceptable_ids": [],
+        "is_no_match": false,
+        "is_lifecycle": false,
+        "ineligible_ids": [],
+        "hit_1": 1.0,
+        "hit_3": 1.0,
+        "recall_3": 1.0,
+        "mrr": 1.0,
+        "is_abstention": false,
+        "is_false_retrieval": false,
+        "lifecycle_violation": false,
+        "latency_ms": 0.5245159845799208
+      },
+      {
+        "case_id": "held_09",
+        "category": "Semantic distractor",
+        "query": "Which Indonesian volcanic island has Jakarta?",
+        "retrieved_ids": [
+          "held_m_java_island"
+        ],
+        "expected_ids": [
+          "held_m_java_island"
+        ],
+        "acceptable_ids": [],
+        "is_no_match": false,
+        "is_lifecycle": false,
+        "ineligible_ids": [],
+        "hit_1": 1.0,
+        "hit_3": 1.0,
+        "recall_3": 1.0,
+        "mrr": 1.0,
+        "is_abstention": false,
+        "is_false_retrieval": false,
+        "lifecycle_violation": false,
+        "latency_ms": 0.5422000540420413
+      },
+      {
+        "case_id": "held_10",
+        "category": "Semantic distractor",
+        "query": "What enterprise language runs on the JVM?",
+        "retrieved_ids": [
+          "held_dist_02",
+          "held_m_cluster_new",
+          "held_m_java_code"
+        ],
+        "expected_ids": [
+          "held_m_java_code"
+        ],
+        "acceptable_ids": [],
+        "is_no_match": false,
+        "is_lifecycle": false,
+        "ineligible_ids": [],
+        "hit_1": 0.0,
+        "hit_3": 1.0,
+        "recall_3": 1.0,
+        "mrr": 0.3333333333333333,
+        "is_abstention": false,
+        "is_false_retrieval": false,
+        "lifecycle_violation": false,
+        "latency_ms": 0.6339299725368619
+      },
+      {
+        "case_id": "held_11",
+        "category": "No relevant memory",
+        "query": "What is my passport identification number?",
+        "retrieved_ids": [
+          "held_m_java_code",
+          "held_m_java_island",
+          "held_m_apple_laptop"
+        ],
+        "expected_ids": [],
+        "acceptable_ids": [],
+        "is_no_match": true,
+        "is_lifecycle": false,
+        "ineligible_ids": [],
+        "hit_1": 0.0,
+        "hit_3": 0.0,
+        "recall_3": 0.0,
+        "mrr": 0.0,
+        "is_abstention": false,
+        "is_false_retrieval": true,
+        "lifecycle_violation": false,
+        "latency_ms": 0.5677290027961135
+      },
+      {
+        "case_id": "held_12",
+        "category": "No relevant memory",
+        "query": "Which national soccer team won the 1998 World Cup championship?",
+        "retrieved_ids": [
+          "held_m_java_code",
+          "held_m_java_island",
+          "held_m_apple_laptop"
+        ],
+        "expected_ids": [],
+        "acceptable_ids": [],
+        "is_no_match": true,
+        "is_lifecycle": false,
+        "ineligible_ids": [],
+        "hit_1": 0.0,
+        "hit_3": 0.0,
+        "recall_3": 0.0,
+        "mrr": 0.0,
+        "is_abstention": false,
+        "is_false_retrieval": true,
+        "lifecycle_violation": false,
+        "latency_ms": 0.5535769741982222
+      },
+      {
+        "case_id": "held_13",
+        "category": "No relevant memory",
+        "query": "What is my preferred brand of running shoes?",
+        "retrieved_ids": [
+          "held_m_java_code",
+          "held_m_java_island",
+          "held_m_apple_laptop"
+        ],
+        "expected_ids": [],
+        "acceptable_ids": [],
+        "is_no_match": true,
+        "is_lifecycle": false,
+        "ineligible_ids": [],
+        "hit_1": 0.0,
+        "hit_3": 0.0,
+        "recall_3": 0.0,
+        "mrr": 0.0,
+        "is_abstention": false,
+        "is_false_retrieval": true,
+        "lifecycle_violation": false,
+        "latency_ms": 0.56514295283705
+      },
+      {
+        "case_id": "held_14",
+        "category": "No relevant memory",
+        "query": "How many miles is it to the planet Mars at closest approach?",
+        "retrieved_ids": [
+          "held_m_pg_max_conn",
+          "held_m_java_code",
+          "held_m_java_island"
+        ],
+        "expected_ids": [],
+        "acceptable_ids": [],
+        "is_no_match": true,
+        "is_lifecycle": false,
+        "ineligible_ids": [],
+        "hit_1": 0.0,
+        "hit_3": 0.0,
+        "recall_3": 0.0,
+        "mrr": 0.0,
+        "is_abstention": false,
+        "is_false_retrieval": true,
+        "lifecycle_violation": false,
+        "latency_ms": 0.5378660280257463
+      },
+      {
+        "case_id": "held_15",
+        "category": "No relevant memory",
+        "query": "What is the root administrative password for the hashicorp vault server?",
+        "retrieved_ids": [
+          "held_m_java_code",
+          "held_m_java_island",
+          "held_m_apple_laptop"
+        ],
+        "expected_ids": [],
+        "acceptable_ids": [],
+        "is_no_match": true,
+        "is_lifecycle": false,
+        "ineligible_ids": [],
+        "hit_1": 0.0,
+        "hit_3": 0.0,
+        "recall_3": 0.0,
+        "mrr": 0.0,
+        "is_abstention": false,
+        "is_false_retrieval": true,
+        "lifecycle_violation": false,
+        "latency_ms": 0.5897399969398975
+      },
+      {
+        "case_id": "held_16",
+        "category": "Supersession",
+        "query": "Which production Kubernetes cluster receives deployments?",
+        "retrieved_ids": [
+          "held_m_cluster_new",
+          "held_m_pg_max_conn",
+          "held_m_k8s_restart"
+        ],
+        "expected_ids": [
+          "held_m_cluster_new"
+        ],
+        "acceptable_ids": [],
+        "is_no_match": false,
+        "is_lifecycle": true,
+        "ineligible_ids": [
+          "held_m_cluster_old"
+        ],
+        "hit_1": 1.0,
+        "hit_3": 1.0,
+        "recall_3": 1.0,
+        "mrr": 1.0,
+        "is_abstention": false,
+        "is_false_retrieval": false,
+        "lifecycle_violation": false,
+        "latency_ms": 0.6475389236584306
+      },
+      {
+        "case_id": "held_17",
+        "category": "Expiry",
+        "query": "What is the authorization token for the staging webhook?",
+        "retrieved_ids": [
+          "held_m_java_code",
+          "held_m_java_island",
+          "held_m_apple_laptop"
+        ],
+        "expected_ids": [],
+        "acceptable_ids": [],
+        "is_no_match": true,
+        "is_lifecycle": true,
+        "ineligible_ids": [
+          "held_m_webhook_token"
+        ],
+        "hit_1": 0.0,
+        "hit_3": 0.0,
+        "recall_3": 0.0,
+        "mrr": 0.0,
+        "is_abstention": false,
+        "is_false_retrieval": true,
+        "lifecycle_violation": false,
+        "latency_ms": 0.5245700012892485
+      },
+      {
+        "case_id": "held_18",
+        "category": "Paraphrase",
+        "query": "Which train takes me from Berlin to Munich fast?",
+        "retrieved_ids": [
+          "held_dist_08",
+          "held_dist_13",
+          "held_dist_03"
+        ],
+        "expected_ids": [
+          "held_m_ice_berlin"
+        ],
+        "acceptable_ids": [],
+        "is_no_match": false,
+        "is_lifecycle": false,
+        "ineligible_ids": [],
+        "hit_1": 0.0,
+        "hit_3": 0.0,
+        "recall_3": 0.0,
+        "mrr": 0.0,
+        "is_abstention": false,
+        "is_false_retrieval": false,
+        "lifecycle_violation": false,
+        "latency_ms": 0.6182569777593017
+      },
+      {
+        "case_id": "held_19",
+        "category": "Synonym",
+        "query": "How do we store backups in Amazon cloud storage?",
+        "retrieved_ids": [
+          "held_m_java_code",
+          "held_dist_03",
+          "held_m_zsh_prompt"
+        ],
+        "expected_ids": [
+          "held_m_aws_s3"
+        ],
+        "acceptable_ids": [],
+        "is_no_match": false,
+        "is_lifecycle": false,
+        "ineligible_ids": [],
+        "hit_1": 0.0,
+        "hit_3": 0.0,
+        "recall_3": 0.0,
+        "mrr": 0.0,
+        "is_abstention": false,
+        "is_false_retrieval": false,
+        "lifecycle_violation": false,
+        "latency_ms": 0.5198389990255237
+      },
+      {
+        "case_id": "held_20",
+        "category": "Technical identifier",
+        "query": "What minimum cryptographic security protocol is mandated for HTTP?",
+        "retrieved_ids": [
+          "held_m_tls_version",
+          "held_m_java_code",
+          "held_m_java_island"
+        ],
+        "expected_ids": [
+          "held_m_tls_version"
+        ],
+        "acceptable_ids": [],
+        "is_no_match": false,
+        "is_lifecycle": false,
+        "ineligible_ids": [],
+        "hit_1": 1.0,
+        "hit_3": 1.0,
+        "recall_3": 1.0,
+        "mrr": 1.0,
+        "is_abstention": false,
+        "is_false_retrieval": false,
+        "lifecycle_violation": false,
+        "latency_ms": 0.5817180499434471
+      },
+      {
+        "case_id": "held_21",
+        "category": "Structured preference",
+        "query": "What timezone should timestamps be displayed in?",
+        "retrieved_ids": [
+          "held_m_tz_pref",
+          "held_m_java_code",
+          "held_dist_13"
+        ],
+        "expected_ids": [
+          "held_m_tz_pref"
+        ],
+        "acceptable_ids": [],
+        "is_no_match": false,
+        "is_lifecycle": false,
+        "ineligible_ids": [],
+        "hit_1": 1.0,
+        "hit_3": 1.0,
+        "recall_3": 1.0,
+        "mrr": 1.0,
+        "is_abstention": false,
+        "is_false_retrieval": false,
+        "lifecycle_violation": false,
+        "latency_ms": 0.5828919820487499
+      },
+      {
+        "case_id": "held_22",
+        "category": "Paraphrase",
+        "query": "How to free up machine disk space from old container layers?",
+        "retrieved_ids": [
+          "held_m_podman_clean",
+          "held_dist_08",
+          "held_dist_13"
+        ],
+        "expected_ids": [
+          "held_m_podman_clean"
+        ],
+        "acceptable_ids": [],
+        "is_no_match": false,
+        "is_lifecycle": false,
+        "ineligible_ids": [],
+        "hit_1": 1.0,
+        "hit_3": 1.0,
+        "recall_3": 1.0,
+        "mrr": 1.0,
+        "is_abstention": false,
+        "is_false_retrieval": false,
+        "lifecycle_violation": false,
+        "latency_ms": 0.6105670472607017
+      },
+      {
+        "case_id": "held_23",
+        "category": "Low/zero lexical overlap",
+        "query": "How should Python dependency versions be locked down?",
+        "retrieved_ids": [
+          "held_dist_13",
+          "held_dist_11",
+          "held_m_py_lock"
+        ],
+        "expected_ids": [
+          "held_m_py_lock"
+        ],
+        "acceptable_ids": [],
+        "is_no_match": false,
+        "is_lifecycle": false,
+        "ineligible_ids": [],
+        "hit_1": 0.0,
+        "hit_3": 1.0,
+        "recall_3": 1.0,
+        "mrr": 0.3333333333333333,
+        "is_abstention": false,
+        "is_false_retrieval": false,
+        "lifecycle_violation": false,
+        "latency_ms": 0.561234075576067
+      },
+      {
+        "case_id": "held_24",
+        "category": "Exact lexical",
+        "query": "PostgreSQL maximum connections parameter",
+        "retrieved_ids": [
+          "held_m_pg_max_conn",
+          "held_m_tls_version"
+        ],
+        "expected_ids": [
+          "held_m_pg_max_conn"
+        ],
+        "acceptable_ids": [],
+        "is_no_match": false,
+        "is_lifecycle": false,
+        "ineligible_ids": [],
+        "hit_1": 1.0,
+        "hit_3": 1.0,
+        "recall_3": 1.0,
+        "mrr": 1.0,
+        "is_abstention": false,
+        "is_false_retrieval": false,
+        "lifecycle_violation": false,
+        "latency_ms": 0.5080749979242682
+      }
+    ],
+    "System B (BM25)": [
+      {
+        "case_id": "held_01",
+        "category": "Exact lexical",
+        "query": "Kubernetes pod restart policy",
+        "retrieved_ids": [
+          "held_m_k8s_restart",
+          "held_m_cluster_new"
+        ],
+        "expected_ids": [
+          "held_m_k8s_restart"
+        ],
+        "acceptable_ids": [],
+        "is_no_match": false,
+        "is_lifecycle": false,
+        "ineligible_ids": [],
+        "hit_1": 1.0,
+        "hit_3": 1.0,
+        "recall_3": 1.0,
+        "mrr": 1.0,
+        "is_abstention": false,
+        "is_false_retrieval": false,
+        "lifecycle_violation": false,
+        "latency_ms": 0.696709961630404
+      },
+      {
+        "case_id": "held_02",
+        "category": "Paraphrase",
+        "query": "What hot caffeinated beverage do I drink in the morning?",
+        "retrieved_ids": [
+          "held_m_coffee_pref",
+          "held_dist_08",
+          "held_m_aws_s3"
+        ],
+        "expected_ids": [
+          "held_m_coffee_pref"
+        ],
+        "acceptable_ids": [],
+        "is_no_match": false,
+        "is_lifecycle": false,
+        "ineligible_ids": [],
+        "hit_1": 1.0,
+        "hit_3": 1.0,
+        "recall_3": 1.0,
+        "mrr": 1.0,
+        "is_abstention": false,
+        "is_false_retrieval": false,
+        "lifecycle_violation": false,
+        "latency_ms": 0.7121439557522535
+      },
+      {
+        "case_id": "held_03",
+        "category": "Low/zero lexical overlap",
+        "query": "How should I format terminal command prompts?",
+        "retrieved_ids": [
+          "held_m_theme_pref"
+        ],
+        "expected_ids": [
+          "held_m_zsh_prompt"
+        ],
+        "acceptable_ids": [],
+        "is_no_match": false,
+        "is_lifecycle": false,
+        "ineligible_ids": [],
+        "hit_1": 0.0,
+        "hit_3": 0.0,
+        "recall_3": 0.0,
+        "mrr": 0.0,
+        "is_abstention": false,
+        "is_false_retrieval": false,
+        "lifecycle_violation": false,
+        "latency_ms": 0.5466829752549529
+      },
+      {
+        "case_id": "held_04",
+        "category": "Synonym",
+        "query": "How to clone the git repository over encrypted shell?",
+        "retrieved_ids": [
+          "held_m_zsh_prompt",
+          "held_m_ssh_git",
+          "held_m_aws_s3"
+        ],
+        "expected_ids": [
+          "held_m_ssh_git"
+        ],
+        "acceptable_ids": [],
+        "is_no_match": false,
+        "is_lifecycle": false,
+        "ineligible_ids": [],
+        "hit_1": 0.0,
+        "hit_3": 1.0,
+        "recall_3": 1.0,
+        "mrr": 0.5,
+        "is_abstention": false,
+        "is_false_retrieval": false,
+        "lifecycle_violation": false,
+        "latency_ms": 0.7190089672803879
+      },
+      {
+        "case_id": "held_05",
+        "category": "Technical identifier",
+        "query": "Where are downloaded Hugging Face model weights stored?",
+        "retrieved_ids": [
+          "held_m_hf_home",
+          "held_m_aws_s3",
+          "held_m_java_island"
+        ],
+        "expected_ids": [
+          "held_m_hf_home"
+        ],
+        "acceptable_ids": [],
+        "is_no_match": false,
+        "is_lifecycle": false,
+        "ineligible_ids": [],
+        "hit_1": 1.0,
+        "hit_3": 1.0,
+        "recall_3": 1.0,
+        "mrr": 1.0,
+        "is_abstention": false,
+        "is_false_retrieval": false,
+        "lifecycle_violation": false,
+        "latency_ms": 0.6101200124248862
+      },
+      {
+        "case_id": "held_06",
+        "category": "Structured preference",
+        "query": "What theme should the terminal UI use?",
+        "retrieved_ids": [
+          "held_m_theme_pref",
+          "held_m_coffee_pref",
+          "held_dist_02"
+        ],
+        "expected_ids": [
+          "held_m_theme_pref"
+        ],
+        "acceptable_ids": [],
+        "is_no_match": false,
+        "is_lifecycle": false,
+        "ineligible_ids": [],
+        "hit_1": 1.0,
+        "hit_3": 1.0,
+        "recall_3": 1.0,
+        "mrr": 1.0,
+        "is_abstention": false,
+        "is_false_retrieval": false,
+        "lifecycle_violation": false,
+        "latency_ms": 0.5797810154035687
+      },
+      {
+        "case_id": "held_07",
+        "category": "Semantic distractor",
+        "query": "What fresh orchard fruit do I enjoy eating?",
+        "retrieved_ids": [
+          "held_m_apple_fruit"
+        ],
+        "expected_ids": [
+          "held_m_apple_fruit"
+        ],
+        "acceptable_ids": [],
+        "is_no_match": false,
+        "is_lifecycle": false,
+        "ineligible_ids": [],
+        "hit_1": 1.0,
+        "hit_3": 1.0,
+        "recall_3": 1.0,
+        "mrr": 1.0,
+        "is_abstention": false,
+        "is_false_retrieval": false,
+        "lifecycle_violation": false,
+        "latency_ms": 0.5461599212139845
+      },
+      {
+        "case_id": "held_08",
+        "category": "Semantic distractor",
+        "query": "What laptop model was issued for work?",
+        "retrieved_ids": [
+          "held_m_apple_laptop",
+          "held_m_hf_home",
+          "held_m_k8s_restart"
+        ],
+        "expected_ids": [
+          "held_m_apple_laptop"
+        ],
+        "acceptable_ids": [],
+        "is_no_match": false,
+        "is_lifecycle": false,
+        "ineligible_ids": [],
+        "hit_1": 1.0,
+        "hit_3": 1.0,
+        "recall_3": 1.0,
+        "mrr": 1.0,
+        "is_abstention": false,
+        "is_false_retrieval": false,
+        "lifecycle_violation": false,
+        "latency_ms": 0.6672260351479053
+      },
+      {
+        "case_id": "held_09",
+        "category": "Semantic distractor",
+        "query": "Which Indonesian volcanic island has Jakarta?",
+        "retrieved_ids": [
+          "held_m_java_island"
+        ],
+        "expected_ids": [
+          "held_m_java_island"
+        ],
+        "acceptable_ids": [],
+        "is_no_match": false,
+        "is_lifecycle": false,
+        "ineligible_ids": [],
+        "hit_1": 1.0,
+        "hit_3": 1.0,
+        "recall_3": 1.0,
+        "mrr": 1.0,
+        "is_abstention": false,
+        "is_false_retrieval": false,
+        "lifecycle_violation": false,
+        "latency_ms": 0.5985749885439873
+      },
+      {
+        "case_id": "held_10",
+        "category": "Semantic distractor",
+        "query": "What enterprise language runs on the JVM?",
+        "retrieved_ids": [
+          "held_m_ice_berlin",
+          "held_dist_02",
+          "held_dist_05"
+        ],
+        "expected_ids": [
+          "held_m_java_code"
+        ],
+        "acceptable_ids": [],
+        "is_no_match": false,
+        "is_lifecycle": false,
+        "ineligible_ids": [],
+        "hit_1": 0.0,
+        "hit_3": 0.0,
+        "recall_3": 0.0,
+        "mrr": 0.0,
+        "is_abstention": false,
+        "is_false_retrieval": false,
+        "lifecycle_violation": false,
+        "latency_ms": 0.5801939405500889
+      },
+      {
+        "case_id": "held_11",
+        "category": "No relevant memory",
+        "query": "What is my passport identification number?",
+        "retrieved_ids": [
+          "held_m_apple_fruit",
+          "held_m_java_island",
+          "held_dist_02"
+        ],
+        "expected_ids": [],
+        "acceptable_ids": [],
+        "is_no_match": true,
+        "is_lifecycle": false,
+        "ineligible_ids": [],
+        "hit_1": 0.0,
+        "hit_3": 0.0,
+        "recall_3": 0.0,
+        "mrr": 0.0,
+        "is_abstention": false,
+        "is_false_retrieval": true,
+        "lifecycle_violation": false,
+        "latency_ms": 0.6471520755439997
+      },
+      {
+        "case_id": "held_12",
+        "category": "No relevant memory",
+        "query": "Which national soccer team won the 1998 World Cup championship?",
+        "retrieved_ids": [
+          "held_dist_07",
+          "held_m_coffee_pref",
+          "held_dist_02"
+        ],
+        "expected_ids": [],
+        "acceptable_ids": [],
+        "is_no_match": true,
+        "is_lifecycle": false,
+        "ineligible_ids": [],
+        "hit_1": 0.0,
+        "hit_3": 0.0,
+        "recall_3": 0.0,
+        "mrr": 0.0,
+        "is_abstention": false,
+        "is_false_retrieval": true,
+        "lifecycle_violation": false,
+        "latency_ms": 0.6045249756425619
+      },
+      {
+        "case_id": "held_13",
+        "category": "No relevant memory",
+        "query": "What is my preferred brand of running shoes?",
+        "retrieved_ids": [
+          "held_m_podman_clean",
+          "held_m_apple_fruit",
+          "held_m_tz_pref"
+        ],
+        "expected_ids": [],
+        "acceptable_ids": [],
+        "is_no_match": true,
+        "is_lifecycle": false,
+        "ineligible_ids": [],
+        "hit_1": 0.0,
+        "hit_3": 0.0,
+        "recall_3": 0.0,
+        "mrr": 0.0,
+        "is_abstention": false,
+        "is_false_retrieval": true,
+        "lifecycle_violation": false,
+        "latency_ms": 0.7510388968512416
+      },
+      {
+        "case_id": "held_14",
+        "category": "No relevant memory",
+        "query": "How many miles is it to the planet Mars at closest approach?",
+        "retrieved_ids": [
+          "held_dist_05",
+          "held_m_pg_max_conn",
+          "held_dist_09"
+        ],
+        "expected_ids": [],
+        "acceptable_ids": [],
+        "is_no_match": true,
+        "is_lifecycle": false,
+        "ineligible_ids": [],
+        "hit_1": 0.0,
+        "hit_3": 0.0,
+        "recall_3": 0.0,
+        "mrr": 0.0,
+        "is_abstention": false,
+        "is_false_retrieval": true,
+        "lifecycle_violation": false,
+        "latency_ms": 0.6558389868587255
+      },
+      {
+        "case_id": "held_15",
+        "category": "No relevant memory",
+        "query": "What is the root administrative password for the hashicorp vault server?",
+        "retrieved_ids": [
+          "held_dist_10",
+          "held_m_k8s_restart",
+          "held_dist_07"
+        ],
+        "expected_ids": [],
+        "acceptable_ids": [],
+        "is_no_match": true,
+        "is_lifecycle": false,
+        "ineligible_ids": [],
+        "hit_1": 0.0,
+        "hit_3": 0.0,
+        "recall_3": 0.0,
+        "mrr": 0.0,
+        "is_abstention": false,
+        "is_false_retrieval": true,
+        "lifecycle_violation": false,
+        "latency_ms": 0.6961269536986947
+      },
+      {
+        "case_id": "held_16",
+        "category": "Supersession",
+        "query": "Which production Kubernetes cluster receives deployments?",
+        "retrieved_ids": [
+          "held_m_cluster_new",
+          "held_m_k8s_restart",
+          "held_m_pg_max_conn"
+        ],
+        "expected_ids": [
+          "held_m_cluster_new"
+        ],
+        "acceptable_ids": [],
+        "is_no_match": false,
+        "is_lifecycle": true,
+        "ineligible_ids": [
+          "held_m_cluster_old"
+        ],
+        "hit_1": 1.0,
+        "hit_3": 1.0,
+        "recall_3": 1.0,
+        "mrr": 1.0,
+        "is_abstention": false,
+        "is_false_retrieval": false,
+        "lifecycle_violation": false,
+        "latency_ms": 0.5889030871912837
+      },
+      {
+        "case_id": "held_17",
+        "category": "Expiry",
+        "query": "What is the authorization token for the staging webhook?",
+        "retrieved_ids": [
+          "held_dist_10",
+          "held_m_k8s_restart",
+          "held_dist_07"
+        ],
+        "expected_ids": [],
+        "acceptable_ids": [],
+        "is_no_match": true,
+        "is_lifecycle": true,
+        "ineligible_ids": [
+          "held_m_webhook_token"
+        ],
+        "hit_1": 0.0,
+        "hit_3": 0.0,
+        "recall_3": 0.0,
+        "mrr": 0.0,
+        "is_abstention": false,
+        "is_false_retrieval": true,
+        "lifecycle_violation": false,
+        "latency_ms": 0.6428420310840011
+      },
+      {
+        "case_id": "held_18",
+        "category": "Paraphrase",
+        "query": "Which train takes me from Berlin to Munich fast?",
+        "retrieved_ids": [
+          "held_dist_08",
+          "held_dist_03",
+          "held_m_ice_berlin"
+        ],
+        "expected_ids": [
+          "held_m_ice_berlin"
+        ],
+        "acceptable_ids": [],
+        "is_no_match": false,
+        "is_lifecycle": false,
+        "ineligible_ids": [],
+        "hit_1": 0.0,
+        "hit_3": 1.0,
+        "recall_3": 1.0,
+        "mrr": 0.3333333333333333,
+        "is_abstention": false,
+        "is_false_retrieval": false,
+        "lifecycle_violation": false,
+        "latency_ms": 0.6892710225656629
+      },
+      {
+        "case_id": "held_19",
+        "category": "Synonym",
+        "query": "How do we store backups in Amazon cloud storage?",
+        "retrieved_ids": [
+          "held_m_podman_clean",
+          "held_m_aws_s3",
+          "held_dist_03"
+        ],
+        "expected_ids": [
+          "held_m_aws_s3"
+        ],
+        "acceptable_ids": [],
+        "is_no_match": false,
+        "is_lifecycle": false,
+        "ineligible_ids": [],
+        "hit_1": 0.0,
+        "hit_3": 1.0,
+        "recall_3": 1.0,
+        "mrr": 0.5,
+        "is_abstention": false,
+        "is_false_retrieval": false,
+        "lifecycle_violation": false,
+        "latency_ms": 0.6172038847580552
+      },
+      {
+        "case_id": "held_20",
+        "category": "Technical identifier",
+        "query": "What minimum cryptographic security protocol is mandated for HTTP?",
+        "retrieved_ids": [
+          "held_m_tls_version",
+          "held_m_k8s_restart",
+          "held_dist_07"
+        ],
+        "expected_ids": [
+          "held_m_tls_version"
+        ],
+        "acceptable_ids": [],
+        "is_no_match": false,
+        "is_lifecycle": false,
+        "ineligible_ids": [],
+        "hit_1": 1.0,
+        "hit_3": 1.0,
+        "recall_3": 1.0,
+        "mrr": 1.0,
+        "is_abstention": false,
+        "is_false_retrieval": false,
+        "lifecycle_violation": false,
+        "latency_ms": 0.5909770261496305
+      },
+      {
+        "case_id": "held_21",
+        "category": "Structured preference",
+        "query": "What timezone should timestamps be displayed in?",
+        "retrieved_ids": [
+          "held_m_tz_pref",
+          "held_dist_11",
+          "held_dist_13"
+        ],
+        "expected_ids": [
+          "held_m_tz_pref"
+        ],
+        "acceptable_ids": [],
+        "is_no_match": false,
+        "is_lifecycle": false,
+        "ineligible_ids": [],
+        "hit_1": 1.0,
+        "hit_3": 1.0,
+        "recall_3": 1.0,
+        "mrr": 1.0,
+        "is_abstention": false,
+        "is_false_retrieval": false,
+        "lifecycle_violation": false,
+        "latency_ms": 0.7196229416877031
+      },
+      {
+        "case_id": "held_22",
+        "category": "Paraphrase",
+        "query": "How to free up machine disk space from old container layers?",
+        "retrieved_ids": [
+          "held_m_podman_clean",
+          "held_dist_08",
+          "held_dist_06"
+        ],
+        "expected_ids": [
+          "held_m_podman_clean"
+        ],
+        "acceptable_ids": [],
+        "is_no_match": false,
+        "is_lifecycle": false,
+        "ineligible_ids": [],
+        "hit_1": 1.0,
+        "hit_3": 1.0,
+        "recall_3": 1.0,
+        "mrr": 1.0,
+        "is_abstention": false,
+        "is_false_retrieval": false,
+        "lifecycle_violation": false,
+        "latency_ms": 0.6034419639036059
+      },
+      {
+        "case_id": "held_23",
+        "category": "Low/zero lexical overlap",
+        "query": "How should Python dependency versions be locked down?",
+        "retrieved_ids": [
+          "held_m_py_lock",
+          "held_dist_11",
+          "held_dist_13"
+        ],
+        "expected_ids": [
+          "held_m_py_lock"
+        ],
+        "acceptable_ids": [],
+        "is_no_match": false,
+        "is_lifecycle": false,
+        "ineligible_ids": [],
+        "hit_1": 1.0,
+        "hit_3": 1.0,
+        "recall_3": 1.0,
+        "mrr": 1.0,
+        "is_abstention": false,
+        "is_false_retrieval": false,
+        "lifecycle_violation": false,
+        "latency_ms": 0.5612149834632874
+      },
+      {
+        "case_id": "held_24",
+        "category": "Exact lexical",
+        "query": "PostgreSQL maximum connections parameter",
+        "retrieved_ids": [
+          "held_m_pg_max_conn",
+          "held_m_tls_version"
+        ],
+        "expected_ids": [
+          "held_m_pg_max_conn"
+        ],
+        "acceptable_ids": [],
+        "is_no_match": false,
+        "is_lifecycle": false,
+        "ineligible_ids": [],
+        "hit_1": 1.0,
+        "hit_3": 1.0,
+        "recall_3": 1.0,
+        "mrr": 1.0,
+        "is_abstention": false,
+        "is_false_retrieval": false,
+        "lifecycle_violation": false,
+        "latency_ms": 0.5900749238207936
+      }
+    ],
+    "System C1 (Dense BGE)": [
+      {
+        "case_id": "held_01",
+        "category": "Exact lexical",
+        "query": "Kubernetes pod restart policy",
+        "retrieved_ids": [
+          "held_m_k8s_restart",
+          "held_m_cluster_new",
+          "held_m_podman_clean"
+        ],
+        "expected_ids": [
+          "held_m_k8s_restart"
+        ],
+        "acceptable_ids": [],
+        "is_no_match": false,
+        "is_lifecycle": false,
+        "ineligible_ids": [],
+        "hit_1": 1.0,
+        "hit_3": 1.0,
+        "recall_3": 1.0,
+        "mrr": 1.0,
+        "is_abstention": false,
+        "is_false_retrieval": false,
+        "lifecycle_violation": false,
+        "latency_ms": 15.372312045656145
+      },
+      {
+        "case_id": "held_02",
+        "category": "Paraphrase",
+        "query": "What hot caffeinated beverage do I drink in the morning?",
+        "retrieved_ids": [
+          "held_m_coffee_pref"
+        ],
+        "expected_ids": [
+          "held_m_coffee_pref"
+        ],
+        "acceptable_ids": [],
+        "is_no_match": false,
+        "is_lifecycle": false,
+        "ineligible_ids": [],
+        "hit_1": 1.0,
+        "hit_3": 1.0,
+        "recall_3": 1.0,
+        "mrr": 1.0,
+        "is_abstention": false,
+        "is_false_retrieval": false,
+        "lifecycle_violation": false,
+        "latency_ms": 19.413422094658017
+      },
+      {
+        "case_id": "held_03",
+        "category": "Low/zero lexical overlap",
+        "query": "How should I format terminal command prompts?",
+        "retrieved_ids": [
+          "held_m_zsh_prompt",
+          "held_m_theme_pref"
+        ],
+        "expected_ids": [
+          "held_m_zsh_prompt"
+        ],
+        "acceptable_ids": [],
+        "is_no_match": false,
+        "is_lifecycle": false,
+        "ineligible_ids": [],
+        "hit_1": 1.0,
+        "hit_3": 1.0,
+        "recall_3": 1.0,
+        "mrr": 1.0,
+        "is_abstention": false,
+        "is_false_retrieval": false,
+        "lifecycle_violation": false,
+        "latency_ms": 15.735173947177827
+      },
+      {
+        "case_id": "held_04",
+        "category": "Synonym",
+        "query": "How to clone the git repository over encrypted shell?",
+        "retrieved_ids": [
+          "held_m_ssh_git",
+          "held_m_aws_s3",
+          "held_m_zsh_prompt"
+        ],
+        "expected_ids": [
+          "held_m_ssh_git"
+        ],
+        "acceptable_ids": [],
+        "is_no_match": false,
+        "is_lifecycle": false,
+        "ineligible_ids": [],
+        "hit_1": 1.0,
+        "hit_3": 1.0,
+        "recall_3": 1.0,
+        "mrr": 1.0,
+        "is_abstention": false,
+        "is_false_retrieval": false,
+        "lifecycle_violation": false,
+        "latency_ms": 19.760680967010558
+      },
+      {
+        "case_id": "held_05",
+        "category": "Technical identifier",
+        "query": "Where are downloaded Hugging Face model weights stored?",
+        "retrieved_ids": [
+          "held_m_hf_home"
+        ],
+        "expected_ids": [
+          "held_m_hf_home"
+        ],
+        "acceptable_ids": [],
+        "is_no_match": false,
+        "is_lifecycle": false,
+        "ineligible_ids": [],
+        "hit_1": 1.0,
+        "hit_3": 1.0,
+        "recall_3": 1.0,
+        "mrr": 1.0,
+        "is_abstention": false,
+        "is_false_retrieval": false,
+        "lifecycle_violation": false,
+        "latency_ms": 14.950903947465122
+      },
+      {
+        "case_id": "held_06",
+        "category": "Structured preference",
+        "query": "What theme should the terminal UI use?",
+        "retrieved_ids": [
+          "held_m_theme_pref",
+          "held_m_zsh_prompt"
+        ],
+        "expected_ids": [
+          "held_m_theme_pref"
+        ],
+        "acceptable_ids": [],
+        "is_no_match": false,
+        "is_lifecycle": false,
+        "ineligible_ids": [],
+        "hit_1": 1.0,
+        "hit_3": 1.0,
+        "recall_3": 1.0,
+        "mrr": 1.0,
+        "is_abstention": false,
+        "is_false_retrieval": false,
+        "lifecycle_violation": false,
+        "latency_ms": 16.679967986419797
+      },
+      {
+        "case_id": "held_07",
+        "category": "Semantic distractor",
+        "query": "What fresh orchard fruit do I enjoy eating?",
+        "retrieved_ids": [
+          "held_m_apple_fruit"
+        ],
+        "expected_ids": [
+          "held_m_apple_fruit"
+        ],
+        "acceptable_ids": [],
+        "is_no_match": false,
+        "is_lifecycle": false,
+        "ineligible_ids": [],
+        "hit_1": 1.0,
+        "hit_3": 1.0,
+        "recall_3": 1.0,
+        "mrr": 1.0,
+        "is_abstention": false,
+        "is_false_retrieval": false,
+        "lifecycle_violation": false,
+        "latency_ms": 16.420121071860194
+      },
+      {
+        "case_id": "held_08",
+        "category": "Semantic distractor",
+        "query": "What laptop model was issued for work?",
+        "retrieved_ids": [
+          "held_m_apple_laptop"
+        ],
+        "expected_ids": [
+          "held_m_apple_laptop"
+        ],
+        "acceptable_ids": [],
+        "is_no_match": false,
+        "is_lifecycle": false,
+        "ineligible_ids": [],
+        "hit_1": 1.0,
+        "hit_3": 1.0,
+        "recall_3": 1.0,
+        "mrr": 1.0,
+        "is_abstention": false,
+        "is_false_retrieval": false,
+        "lifecycle_violation": false,
+        "latency_ms": 15.99336403887719
+      },
+      {
+        "case_id": "held_09",
+        "category": "Semantic distractor",
+        "query": "Which Indonesian volcanic island has Jakarta?",
+        "retrieved_ids": [
+          "held_m_java_island"
+        ],
+        "expected_ids": [
+          "held_m_java_island"
+        ],
+        "acceptable_ids": [],
+        "is_no_match": false,
+        "is_lifecycle": false,
+        "ineligible_ids": [],
+        "hit_1": 1.0,
+        "hit_3": 1.0,
+        "recall_3": 1.0,
+        "mrr": 1.0,
+        "is_abstention": false,
+        "is_false_retrieval": false,
+        "lifecycle_violation": false,
+        "latency_ms": 16.77411305718124
+      },
+      {
+        "case_id": "held_10",
+        "category": "Semantic distractor",
+        "query": "What enterprise language runs on the JVM?",
+        "retrieved_ids": [
+          "held_m_java_code",
+          "held_m_cluster_new"
+        ],
+        "expected_ids": [
+          "held_m_java_code"
+        ],
+        "acceptable_ids": [],
+        "is_no_match": false,
+        "is_lifecycle": false,
+        "ineligible_ids": [],
+        "hit_1": 1.0,
+        "hit_3": 1.0,
+        "recall_3": 1.0,
+        "mrr": 1.0,
+        "is_abstention": false,
+        "is_false_retrieval": false,
+        "lifecycle_violation": false,
+        "latency_ms": 18.800007994286716
+      },
+      {
+        "case_id": "held_11",
+        "category": "No relevant memory",
+        "query": "What is my passport identification number?",
+        "retrieved_ids": [],
+        "expected_ids": [],
+        "acceptable_ids": [],
+        "is_no_match": true,
+        "is_lifecycle": false,
+        "ineligible_ids": [],
+        "hit_1": 0.0,
+        "hit_3": 0.0,
+        "recall_3": 0.0,
+        "mrr": 0.0,
+        "is_abstention": true,
+        "is_false_retrieval": false,
+        "lifecycle_violation": false,
+        "latency_ms": 16.40213909558952
+      },
+      {
+        "case_id": "held_12",
+        "category": "No relevant memory",
+        "query": "Which national soccer team won the 1998 World Cup championship?",
+        "retrieved_ids": [],
+        "expected_ids": [],
+        "acceptable_ids": [],
+        "is_no_match": true,
+        "is_lifecycle": false,
+        "ineligible_ids": [],
+        "hit_1": 0.0,
+        "hit_3": 0.0,
+        "recall_3": 0.0,
+        "mrr": 0.0,
+        "is_abstention": true,
+        "is_false_retrieval": false,
+        "lifecycle_violation": false,
+        "latency_ms": 18.475611926987767
+      },
+      {
+        "case_id": "held_13",
+        "category": "No relevant memory",
+        "query": "What is my preferred brand of running shoes?",
+        "retrieved_ids": [],
+        "expected_ids": [],
+        "acceptable_ids": [],
+        "is_no_match": true,
+        "is_lifecycle": false,
+        "ineligible_ids": [],
+        "hit_1": 0.0,
+        "hit_3": 0.0,
+        "recall_3": 0.0,
+        "mrr": 0.0,
+        "is_abstention": true,
+        "is_false_retrieval": false,
+        "lifecycle_violation": false,
+        "latency_ms": 15.95832803286612
+      },
+      {
+        "case_id": "held_14",
+        "category": "No relevant memory",
+        "query": "How many miles is it to the planet Mars at closest approach?",
+        "retrieved_ids": [],
+        "expected_ids": [],
+        "acceptable_ids": [],
+        "is_no_match": true,
+        "is_lifecycle": false,
+        "ineligible_ids": [],
+        "hit_1": 0.0,
+        "hit_3": 0.0,
+        "recall_3": 0.0,
+        "mrr": 0.0,
+        "is_abstention": true,
+        "is_false_retrieval": false,
+        "lifecycle_violation": false,
+        "latency_ms": 20.29306103941053
+      },
+      {
+        "case_id": "held_15",
+        "category": "No relevant memory",
+        "query": "What is the root administrative password for the hashicorp vault server?",
+        "retrieved_ids": [
+          "held_m_ssh_git",
+          "held_dist_12",
+          "held_m_aws_s3"
+        ],
+        "expected_ids": [],
+        "acceptable_ids": [],
+        "is_no_match": true,
+        "is_lifecycle": false,
+        "ineligible_ids": [],
+        "hit_1": 0.0,
+        "hit_3": 0.0,
+        "recall_3": 0.0,
+        "mrr": 0.0,
+        "is_abstention": false,
+        "is_false_retrieval": true,
+        "lifecycle_violation": false,
+        "latency_ms": 22.0999950543046
+      },
+      {
+        "case_id": "held_16",
+        "category": "Supersession",
+        "query": "Which production Kubernetes cluster receives deployments?",
+        "retrieved_ids": [
+          "held_m_cluster_new",
+          "held_m_k8s_restart",
+          "held_m_java_code"
+        ],
+        "expected_ids": [
+          "held_m_cluster_new"
+        ],
+        "acceptable_ids": [],
+        "is_no_match": false,
+        "is_lifecycle": true,
+        "ineligible_ids": [
+          "held_m_cluster_old"
+        ],
+        "hit_1": 1.0,
+        "hit_3": 1.0,
+        "recall_3": 1.0,
+        "mrr": 1.0,
+        "is_abstention": false,
+        "is_false_retrieval": false,
+        "lifecycle_violation": false,
+        "latency_ms": 19.455749075859785
+      },
+      {
+        "case_id": "held_17",
+        "category": "Expiry",
+        "query": "What is the authorization token for the staging webhook?",
+        "retrieved_ids": [
+          "held_m_ssh_git",
+          "held_dist_05",
+          "held_m_tls_version"
+        ],
+        "expected_ids": [],
+        "acceptable_ids": [],
+        "is_no_match": true,
+        "is_lifecycle": true,
+        "ineligible_ids": [
+          "held_m_webhook_token"
+        ],
+        "hit_1": 0.0,
+        "hit_3": 0.0,
+        "recall_3": 0.0,
+        "mrr": 0.0,
+        "is_abstention": false,
+        "is_false_retrieval": true,
+        "lifecycle_violation": false,
+        "latency_ms": 19.134290982037783
+      },
+      {
+        "case_id": "held_18",
+        "category": "Paraphrase",
+        "query": "Which train takes me from Berlin to Munich fast?",
+        "retrieved_ids": [
+          "held_m_ice_berlin"
+        ],
+        "expected_ids": [
+          "held_m_ice_berlin"
+        ],
+        "acceptable_ids": [],
+        "is_no_match": false,
+        "is_lifecycle": false,
+        "ineligible_ids": [],
+        "hit_1": 1.0,
+        "hit_3": 1.0,
+        "recall_3": 1.0,
+        "mrr": 1.0,
+        "is_abstention": false,
+        "is_false_retrieval": false,
+        "lifecycle_violation": false,
+        "latency_ms": 18.32944108173251
+      },
+      {
+        "case_id": "held_19",
+        "category": "Synonym",
+        "query": "How do we store backups in Amazon cloud storage?",
+        "retrieved_ids": [
+          "held_m_aws_s3",
+          "held_m_podman_clean",
+          "held_m_hf_home"
+        ],
+        "expected_ids": [
+          "held_m_aws_s3"
+        ],
+        "acceptable_ids": [],
+        "is_no_match": false,
+        "is_lifecycle": false,
+        "ineligible_ids": [],
+        "hit_1": 1.0,
+        "hit_3": 1.0,
+        "recall_3": 1.0,
+        "mrr": 1.0,
+        "is_abstention": false,
+        "is_false_retrieval": false,
+        "lifecycle_violation": false,
+        "latency_ms": 16.89026306848973
+      },
+      {
+        "case_id": "held_20",
+        "category": "Technical identifier",
+        "query": "What minimum cryptographic security protocol is mandated for HTTP?",
+        "retrieved_ids": [
+          "held_m_tls_version",
+          "held_dist_12",
+          "held_m_ssh_git"
+        ],
+        "expected_ids": [
+          "held_m_tls_version"
+        ],
+        "acceptable_ids": [],
+        "is_no_match": false,
+        "is_lifecycle": false,
+        "ineligible_ids": [],
+        "hit_1": 1.0,
+        "hit_3": 1.0,
+        "recall_3": 1.0,
+        "mrr": 1.0,
+        "is_abstention": false,
+        "is_false_retrieval": false,
+        "lifecycle_violation": false,
+        "latency_ms": 18.234099028632045
+      },
+      {
+        "case_id": "held_21",
+        "category": "Structured preference",
+        "query": "What timezone should timestamps be displayed in?",
+        "retrieved_ids": [
+          "held_m_tz_pref",
+          "held_m_zsh_prompt"
+        ],
+        "expected_ids": [
+          "held_m_tz_pref"
+        ],
+        "acceptable_ids": [],
+        "is_no_match": false,
+        "is_lifecycle": false,
+        "ineligible_ids": [],
+        "hit_1": 1.0,
+        "hit_3": 1.0,
+        "recall_3": 1.0,
+        "mrr": 1.0,
+        "is_abstention": false,
+        "is_false_retrieval": false,
+        "lifecycle_violation": false,
+        "latency_ms": 16.670354991219938
+      },
+      {
+        "case_id": "held_22",
+        "category": "Paraphrase",
+        "query": "How to free up machine disk space from old container layers?",
+        "retrieved_ids": [
+          "held_m_podman_clean",
+          "held_m_hf_home",
+          "held_m_aws_s3"
+        ],
+        "expected_ids": [
+          "held_m_podman_clean"
+        ],
+        "acceptable_ids": [],
+        "is_no_match": false,
+        "is_lifecycle": false,
+        "ineligible_ids": [],
+        "hit_1": 1.0,
+        "hit_3": 1.0,
+        "recall_3": 1.0,
+        "mrr": 1.0,
+        "is_abstention": false,
+        "is_false_retrieval": false,
+        "lifecycle_violation": false,
+        "latency_ms": 22.10847206879407
+      },
+      {
+        "case_id": "held_23",
+        "category": "Low/zero lexical overlap",
+        "query": "How should Python dependency versions be locked down?",
+        "retrieved_ids": [
+          "held_m_py_lock",
+          "held_m_k8s_restart",
+          "held_m_pg_max_conn"
+        ],
+        "expected_ids": [
+          "held_m_py_lock"
+        ],
+        "acceptable_ids": [],
+        "is_no_match": false,
+        "is_lifecycle": false,
+        "ineligible_ids": [],
+        "hit_1": 1.0,
+        "hit_3": 1.0,
+        "recall_3": 1.0,
+        "mrr": 1.0,
+        "is_abstention": false,
+        "is_false_retrieval": false,
+        "lifecycle_violation": false,
+        "latency_ms": 17.278215033002198
+      },
+      {
+        "case_id": "held_24",
+        "category": "Exact lexical",
+        "query": "PostgreSQL maximum connections parameter",
+        "retrieved_ids": [
+          "held_m_pg_max_conn",
+          "held_m_hf_home",
+          "held_dist_12"
+        ],
+        "expected_ids": [
+          "held_m_pg_max_conn"
+        ],
+        "acceptable_ids": [],
+        "is_no_match": false,
+        "is_lifecycle": false,
+        "ineligible_ids": [],
+        "hit_1": 1.0,
+        "hit_3": 1.0,
+        "recall_3": 1.0,
+        "mrr": 1.0,
+        "is_abstention": false,
+        "is_false_retrieval": false,
+        "lifecycle_violation": false,
+        "latency_ms": 15.264743939042091
+      }
+    ],
+    "System C2 (Dense Arctic)": [
+      {
+        "case_id": "held_01",
+        "category": "Exact lexical",
+        "query": "Kubernetes pod restart policy",
+        "retrieved_ids": [
+          "held_m_k8s_restart",
+          "held_m_cluster_new",
+          "held_m_podman_clean"
+        ],
+        "expected_ids": [
+          "held_m_k8s_restart"
+        ],
+        "acceptable_ids": [],
+        "is_no_match": false,
+        "is_lifecycle": false,
+        "ineligible_ids": [],
+        "hit_1": 1.0,
+        "hit_3": 1.0,
+        "recall_3": 1.0,
+        "mrr": 1.0,
+        "is_abstention": false,
+        "is_false_retrieval": false,
+        "lifecycle_violation": false,
+        "latency_ms": 15.664065023884177
+      },
+      {
+        "case_id": "held_02",
+        "category": "Paraphrase",
+        "query": "What hot caffeinated beverage do I drink in the morning?",
+        "retrieved_ids": [
+          "held_m_coffee_pref",
+          "held_m_apple_fruit",
+          "held_dist_08"
+        ],
+        "expected_ids": [
+          "held_m_coffee_pref"
+        ],
+        "acceptable_ids": [],
+        "is_no_match": false,
+        "is_lifecycle": false,
+        "ineligible_ids": [],
+        "hit_1": 1.0,
+        "hit_3": 1.0,
+        "recall_3": 1.0,
+        "mrr": 1.0,
+        "is_abstention": false,
+        "is_false_retrieval": false,
+        "lifecycle_violation": false,
+        "latency_ms": 24.506474961526692
+      },
+      {
+        "case_id": "held_03",
+        "category": "Low/zero lexical overlap",
+        "query": "How should I format terminal command prompts?",
+        "retrieved_ids": [
+          "held_m_zsh_prompt",
+          "held_m_theme_pref",
+          "held_dist_02"
+        ],
+        "expected_ids": [
+          "held_m_zsh_prompt"
+        ],
+        "acceptable_ids": [],
+        "is_no_match": false,
+        "is_lifecycle": false,
+        "ineligible_ids": [],
+        "hit_1": 1.0,
+        "hit_3": 1.0,
+        "recall_3": 1.0,
+        "mrr": 1.0,
+        "is_abstention": false,
+        "is_false_retrieval": false,
+        "lifecycle_violation": false,
+        "latency_ms": 15.675071044825017
+      },
+      {
+        "case_id": "held_04",
+        "category": "Synonym",
+        "query": "How to clone the git repository over encrypted shell?",
+        "retrieved_ids": [
+          "held_m_ssh_git",
+          "held_dist_06",
+          "held_m_zsh_prompt"
+        ],
+        "expected_ids": [
+          "held_m_ssh_git"
+        ],
+        "acceptable_ids": [],
+        "is_no_match": false,
+        "is_lifecycle": false,
+        "ineligible_ids": [],
+        "hit_1": 1.0,
+        "hit_3": 1.0,
+        "recall_3": 1.0,
+        "mrr": 1.0,
+        "is_abstention": false,
+        "is_false_retrieval": false,
+        "lifecycle_violation": false,
+        "latency_ms": 15.63712302595377
+      },
+      {
+        "case_id": "held_05",
+        "category": "Technical identifier",
+        "query": "Where are downloaded Hugging Face model weights stored?",
+        "retrieved_ids": [
+          "held_m_hf_home",
+          "held_m_aws_s3",
+          "held_dist_05"
+        ],
+        "expected_ids": [
+          "held_m_hf_home"
+        ],
+        "acceptable_ids": [],
+        "is_no_match": false,
+        "is_lifecycle": false,
+        "ineligible_ids": [],
+        "hit_1": 1.0,
+        "hit_3": 1.0,
+        "recall_3": 1.0,
+        "mrr": 1.0,
+        "is_abstention": false,
+        "is_false_retrieval": false,
+        "lifecycle_violation": false,
+        "latency_ms": 15.42067201808095
+      },
+      {
+        "case_id": "held_06",
+        "category": "Structured preference",
+        "query": "What theme should the terminal UI use?",
+        "retrieved_ids": [
+          "held_m_theme_pref",
+          "held_m_tz_pref",
+          "held_m_zsh_prompt"
+        ],
+        "expected_ids": [
+          "held_m_theme_pref"
+        ],
+        "acceptable_ids": [],
+        "is_no_match": false,
+        "is_lifecycle": false,
+        "ineligible_ids": [],
+        "hit_1": 1.0,
+        "hit_3": 1.0,
+        "recall_3": 1.0,
+        "mrr": 1.0,
+        "is_abstention": false,
+        "is_false_retrieval": false,
+        "lifecycle_violation": false,
+        "latency_ms": 15.35325893200934
+      },
+      {
+        "case_id": "held_07",
+        "category": "Semantic distractor",
+        "query": "What fresh orchard fruit do I enjoy eating?",
+        "retrieved_ids": [
+          "held_m_apple_fruit"
+        ],
+        "expected_ids": [
+          "held_m_apple_fruit"
+        ],
+        "acceptable_ids": [],
+        "is_no_match": false,
+        "is_lifecycle": false,
+        "ineligible_ids": [],
+        "hit_1": 1.0,
+        "hit_3": 1.0,
+        "recall_3": 1.0,
+        "mrr": 1.0,
+        "is_abstention": false,
+        "is_false_retrieval": false,
+        "lifecycle_violation": false,
+        "latency_ms": 15.142096090130508
+      },
+      {
+        "case_id": "held_08",
+        "category": "Semantic distractor",
+        "query": "What laptop model was issued for work?",
+        "retrieved_ids": [
+          "held_m_apple_laptop",
+          "held_dist_06",
+          "held_dist_01"
+        ],
+        "expected_ids": [
+          "held_m_apple_laptop"
+        ],
+        "acceptable_ids": [],
+        "is_no_match": false,
+        "is_lifecycle": false,
+        "ineligible_ids": [],
+        "hit_1": 1.0,
+        "hit_3": 1.0,
+        "recall_3": 1.0,
+        "mrr": 1.0,
+        "is_abstention": false,
+        "is_false_retrieval": false,
+        "lifecycle_violation": false,
+        "latency_ms": 17.230379045940936
+      },
+      {
+        "case_id": "held_09",
+        "category": "Semantic distractor",
+        "query": "Which Indonesian volcanic island has Jakarta?",
+        "retrieved_ids": [
+          "held_m_java_island"
+        ],
+        "expected_ids": [
+          "held_m_java_island"
+        ],
+        "acceptable_ids": [],
+        "is_no_match": false,
+        "is_lifecycle": false,
+        "ineligible_ids": [],
+        "hit_1": 1.0,
+        "hit_3": 1.0,
+        "recall_3": 1.0,
+        "mrr": 1.0,
+        "is_abstention": false,
+        "is_false_retrieval": false,
+        "lifecycle_violation": false,
+        "latency_ms": 15.664282022044063
+      },
+      {
+        "case_id": "held_10",
+        "category": "Semantic distractor",
+        "query": "What enterprise language runs on the JVM?",
+        "retrieved_ids": [
+          "held_m_java_code",
+          "held_m_java_island",
+          "held_dist_07"
+        ],
+        "expected_ids": [
+          "held_m_java_code"
+        ],
+        "acceptable_ids": [],
+        "is_no_match": false,
+        "is_lifecycle": false,
+        "ineligible_ids": [],
+        "hit_1": 1.0,
+        "hit_3": 1.0,
+        "recall_3": 1.0,
+        "mrr": 1.0,
+        "is_abstention": false,
+        "is_false_retrieval": false,
+        "lifecycle_violation": false,
+        "latency_ms": 19.639941048808396
+      },
+      {
+        "case_id": "held_11",
+        "category": "No relevant memory",
+        "query": "What is my passport identification number?",
+        "retrieved_ids": [],
+        "expected_ids": [],
+        "acceptable_ids": [],
+        "is_no_match": true,
+        "is_lifecycle": false,
+        "ineligible_ids": [],
+        "hit_1": 0.0,
+        "hit_3": 0.0,
+        "recall_3": 0.0,
+        "mrr": 0.0,
+        "is_abstention": true,
+        "is_false_retrieval": false,
+        "lifecycle_violation": false,
+        "latency_ms": 15.24190604686737
+      },
+      {
+        "case_id": "held_12",
+        "category": "No relevant memory",
+        "query": "Which national soccer team won the 1998 World Cup championship?",
+        "retrieved_ids": [],
+        "expected_ids": [],
+        "acceptable_ids": [],
+        "is_no_match": true,
+        "is_lifecycle": false,
+        "ineligible_ids": [],
+        "hit_1": 0.0,
+        "hit_3": 0.0,
+        "recall_3": 0.0,
+        "mrr": 0.0,
+        "is_abstention": true,
+        "is_false_retrieval": false,
+        "lifecycle_violation": false,
+        "latency_ms": 16.478728037327528
+      },
+      {
+        "case_id": "held_13",
+        "category": "No relevant memory",
+        "query": "What is my preferred brand of running shoes?",
+        "retrieved_ids": [],
+        "expected_ids": [],
+        "acceptable_ids": [],
+        "is_no_match": true,
+        "is_lifecycle": false,
+        "ineligible_ids": [],
+        "hit_1": 0.0,
+        "hit_3": 0.0,
+        "recall_3": 0.0,
+        "mrr": 0.0,
+        "is_abstention": true,
+        "is_false_retrieval": false,
+        "lifecycle_violation": false,
+        "latency_ms": 15.29784093145281
+      },
+      {
+        "case_id": "held_14",
+        "category": "No relevant memory",
+        "query": "How many miles is it to the planet Mars at closest approach?",
+        "retrieved_ids": [],
+        "expected_ids": [],
+        "acceptable_ids": [],
+        "is_no_match": true,
+        "is_lifecycle": false,
+        "ineligible_ids": [],
+        "hit_1": 0.0,
+        "hit_3": 0.0,
+        "recall_3": 0.0,
+        "mrr": 0.0,
+        "is_abstention": true,
+        "is_false_retrieval": false,
+        "lifecycle_violation": false,
+        "latency_ms": 20.394227001816034
+      },
+      {
+        "case_id": "held_15",
+        "category": "No relevant memory",
+        "query": "What is the root administrative password for the hashicorp vault server?",
+        "retrieved_ids": [
+          "held_m_ssh_git"
+        ],
+        "expected_ids": [],
+        "acceptable_ids": [],
+        "is_no_match": true,
+        "is_lifecycle": false,
+        "ineligible_ids": [],
+        "hit_1": 0.0,
+        "hit_3": 0.0,
+        "recall_3": 0.0,
+        "mrr": 0.0,
+        "is_abstention": false,
+        "is_false_retrieval": true,
+        "lifecycle_violation": false,
+        "latency_ms": 17.544050002470613
+      },
+      {
+        "case_id": "held_16",
+        "category": "Supersession",
+        "query": "Which production Kubernetes cluster receives deployments?",
+        "retrieved_ids": [
+          "held_m_cluster_new",
+          "held_m_k8s_restart",
+          "held_m_aws_s3"
+        ],
+        "expected_ids": [
+          "held_m_cluster_new"
+        ],
+        "acceptable_ids": [],
+        "is_no_match": false,
+        "is_lifecycle": true,
+        "ineligible_ids": [
+          "held_m_cluster_old"
+        ],
+        "hit_1": 1.0,
+        "hit_3": 1.0,
+        "recall_3": 1.0,
+        "mrr": 1.0,
+        "is_abstention": false,
+        "is_false_retrieval": false,
+        "lifecycle_violation": false,
+        "latency_ms": 17.338128993287683
+      },
+      {
+        "case_id": "held_17",
+        "category": "Expiry",
+        "query": "What is the authorization token for the staging webhook?",
+        "retrieved_ids": [],
+        "expected_ids": [],
+        "acceptable_ids": [],
+        "is_no_match": true,
+        "is_lifecycle": true,
+        "ineligible_ids": [
+          "held_m_webhook_token"
+        ],
+        "hit_1": 0.0,
+        "hit_3": 0.0,
+        "recall_3": 0.0,
+        "mrr": 0.0,
+        "is_abstention": true,
+        "is_false_retrieval": false,
+        "lifecycle_violation": false,
+        "latency_ms": 22.66651496756822
+      },
+      {
+        "case_id": "held_18",
+        "category": "Paraphrase",
+        "query": "Which train takes me from Berlin to Munich fast?",
+        "retrieved_ids": [
+          "held_m_ice_berlin"
+        ],
+        "expected_ids": [
+          "held_m_ice_berlin"
+        ],
+        "acceptable_ids": [],
+        "is_no_match": false,
+        "is_lifecycle": false,
+        "ineligible_ids": [],
+        "hit_1": 1.0,
+        "hit_3": 1.0,
+        "recall_3": 1.0,
+        "mrr": 1.0,
+        "is_abstention": false,
+        "is_false_retrieval": false,
+        "lifecycle_violation": false,
+        "latency_ms": 19.905133987776935
+      },
+      {
+        "case_id": "held_19",
+        "category": "Synonym",
+        "query": "How do we store backups in Amazon cloud storage?",
+        "retrieved_ids": [
+          "held_m_aws_s3",
+          "held_m_hf_home"
+        ],
+        "expected_ids": [
+          "held_m_aws_s3"
+        ],
+        "acceptable_ids": [],
+        "is_no_match": false,
+        "is_lifecycle": false,
+        "ineligible_ids": [],
+        "hit_1": 1.0,
+        "hit_3": 1.0,
+        "recall_3": 1.0,
+        "mrr": 1.0,
+        "is_abstention": false,
+        "is_false_retrieval": false,
+        "lifecycle_violation": false,
+        "latency_ms": 19.33618390467018
+      },
+      {
+        "case_id": "held_20",
+        "category": "Technical identifier",
+        "query": "What minimum cryptographic security protocol is mandated for HTTP?",
+        "retrieved_ids": [
+          "held_m_tls_version"
+        ],
+        "expected_ids": [
+          "held_m_tls_version"
+        ],
+        "acceptable_ids": [],
+        "is_no_match": false,
+        "is_lifecycle": false,
+        "ineligible_ids": [],
+        "hit_1": 1.0,
+        "hit_3": 1.0,
+        "recall_3": 1.0,
+        "mrr": 1.0,
+        "is_abstention": false,
+        "is_false_retrieval": false,
+        "lifecycle_violation": false,
+        "latency_ms": 22.672918043099344
+      },
+      {
+        "case_id": "held_21",
+        "category": "Structured preference",
+        "query": "What timezone should timestamps be displayed in?",
+        "retrieved_ids": [
+          "held_m_tz_pref",
+          "held_dist_01"
+        ],
+        "expected_ids": [
+          "held_m_tz_pref"
+        ],
+        "acceptable_ids": [],
+        "is_no_match": false,
+        "is_lifecycle": false,
+        "ineligible_ids": [],
+        "hit_1": 1.0,
+        "hit_3": 1.0,
+        "recall_3": 1.0,
+        "mrr": 1.0,
+        "is_abstention": false,
+        "is_false_retrieval": false,
+        "lifecycle_violation": false,
+        "latency_ms": 23.37408997118473
+      },
+      {
+        "case_id": "held_22",
+        "category": "Paraphrase",
+        "query": "How to free up machine disk space from old container layers?",
+        "retrieved_ids": [
+          "held_m_podman_clean"
+        ],
+        "expected_ids": [
+          "held_m_podman_clean"
+        ],
+        "acceptable_ids": [],
+        "is_no_match": false,
+        "is_lifecycle": false,
+        "ineligible_ids": [],
+        "hit_1": 1.0,
+        "hit_3": 1.0,
+        "recall_3": 1.0,
+        "mrr": 1.0,
+        "is_abstention": false,
+        "is_false_retrieval": false,
+        "lifecycle_violation": false,
+        "latency_ms": 22.087004967033863
+      },
+      {
+        "case_id": "held_23",
+        "category": "Low/zero lexical overlap",
+        "query": "How should Python dependency versions be locked down?",
+        "retrieved_ids": [
+          "held_m_py_lock",
+          "held_m_tls_version",
+          "held_m_theme_pref"
+        ],
+        "expected_ids": [
+          "held_m_py_lock"
+        ],
+        "acceptable_ids": [],
+        "is_no_match": false,
+        "is_lifecycle": false,
+        "ineligible_ids": [],
+        "hit_1": 1.0,
+        "hit_3": 1.0,
+        "recall_3": 1.0,
+        "mrr": 1.0,
+        "is_abstention": false,
+        "is_false_retrieval": false,
+        "lifecycle_violation": false,
+        "latency_ms": 18.587743979878724
+      },
+      {
+        "case_id": "held_24",
+        "category": "Exact lexical",
+        "query": "PostgreSQL maximum connections parameter",
+        "retrieved_ids": [
+          "held_m_pg_max_conn",
+          "held_m_tls_version"
+        ],
+        "expected_ids": [
+          "held_m_pg_max_conn"
+        ],
+        "acceptable_ids": [],
+        "is_no_match": false,
+        "is_lifecycle": false,
+        "ineligible_ids": [],
+        "hit_1": 1.0,
+        "hit_3": 1.0,
+        "recall_3": 1.0,
+        "mrr": 1.0,
+        "is_abstention": false,
+        "is_false_retrieval": false,
+        "lifecycle_violation": false,
+        "latency_ms": 18.585131037980318
+      }
+    ],
+    "System D (Raw Hybrid RRF)": [
+      {
+        "case_id": "held_01",
+        "category": "Exact lexical",
+        "query": "Kubernetes pod restart policy",
+        "retrieved_ids": [
+          "held_m_k8s_restart",
+          "held_m_cluster_new",
+          "held_m_podman_clean"
+        ],
+        "expected_ids": [
+          "held_m_k8s_restart"
+        ],
+        "acceptable_ids": [],
+        "is_no_match": false,
+        "is_lifecycle": false,
+        "ineligible_ids": [],
+        "hit_1": 1.0,
+        "hit_3": 1.0,
+        "recall_3": 1.0,
+        "mrr": 1.0,
+        "is_abstention": false,
+        "is_false_retrieval": false,
+        "lifecycle_violation": false,
+        "latency_ms": 16.079846071079373
+      },
+      {
+        "case_id": "held_02",
+        "category": "Paraphrase",
+        "query": "What hot caffeinated beverage do I drink in the morning?",
+        "retrieved_ids": [
+          "held_m_coffee_pref",
+          "held_dist_08",
+          "held_m_aws_s3"
+        ],
+        "expected_ids": [
+          "held_m_coffee_pref"
+        ],
+        "acceptable_ids": [],
+        "is_no_match": false,
+        "is_lifecycle": false,
+        "ineligible_ids": [],
+        "hit_1": 1.0,
+        "hit_3": 1.0,
+        "recall_3": 1.0,
+        "mrr": 1.0,
+        "is_abstention": false,
+        "is_false_retrieval": false,
+        "lifecycle_violation": false,
+        "latency_ms": 20.666327909566462
+      },
+      {
+        "case_id": "held_03",
+        "category": "Low/zero lexical overlap",
+        "query": "How should I format terminal command prompts?",
+        "retrieved_ids": [
+          "held_m_theme_pref",
+          "held_m_zsh_prompt"
+        ],
+        "expected_ids": [
+          "held_m_zsh_prompt"
+        ],
+        "acceptable_ids": [],
+        "is_no_match": false,
+        "is_lifecycle": false,
+        "ineligible_ids": [],
+        "hit_1": 0.0,
+        "hit_3": 1.0,
+        "recall_3": 1.0,
+        "mrr": 0.5,
+        "is_abstention": false,
+        "is_false_retrieval": false,
+        "lifecycle_violation": false,
+        "latency_ms": 16.490853973664343
+      },
+      {
+        "case_id": "held_04",
+        "category": "Synonym",
+        "query": "How to clone the git repository over encrypted shell?",
+        "retrieved_ids": [
+          "held_m_ssh_git",
+          "held_m_zsh_prompt",
+          "held_m_aws_s3"
+        ],
+        "expected_ids": [
+          "held_m_ssh_git"
+        ],
+        "acceptable_ids": [],
+        "is_no_match": false,
+        "is_lifecycle": false,
+        "ineligible_ids": [],
+        "hit_1": 1.0,
+        "hit_3": 1.0,
+        "recall_3": 1.0,
+        "mrr": 1.0,
+        "is_abstention": false,
+        "is_false_retrieval": false,
+        "lifecycle_violation": false,
+        "latency_ms": 27.31603500433266
+      },
+      {
+        "case_id": "held_05",
+        "category": "Technical identifier",
+        "query": "Where are downloaded Hugging Face model weights stored?",
+        "retrieved_ids": [
+          "held_m_hf_home",
+          "held_m_aws_s3",
+          "held_m_java_island"
+        ],
+        "expected_ids": [
+          "held_m_hf_home"
+        ],
+        "acceptable_ids": [],
+        "is_no_match": false,
+        "is_lifecycle": false,
+        "ineligible_ids": [],
+        "hit_1": 1.0,
+        "hit_3": 1.0,
+        "recall_3": 1.0,
+        "mrr": 1.0,
+        "is_abstention": false,
+        "is_false_retrieval": false,
+        "lifecycle_violation": false,
+        "latency_ms": 16.65498490910977
+      },
+      {
+        "case_id": "held_06",
+        "category": "Structured preference",
+        "query": "What theme should the terminal UI use?",
+        "retrieved_ids": [
+          "held_m_theme_pref",
+          "held_m_zsh_prompt",
+          "held_m_coffee_pref"
+        ],
+        "expected_ids": [
+          "held_m_theme_pref"
+        ],
+        "acceptable_ids": [],
+        "is_no_match": false,
+        "is_lifecycle": false,
+        "ineligible_ids": [],
+        "hit_1": 1.0,
+        "hit_3": 1.0,
+        "recall_3": 1.0,
+        "mrr": 1.0,
+        "is_abstention": false,
+        "is_false_retrieval": false,
+        "lifecycle_violation": false,
+        "latency_ms": 17.723753000609577
+      },
+      {
+        "case_id": "held_07",
+        "category": "Semantic distractor",
+        "query": "What fresh orchard fruit do I enjoy eating?",
+        "retrieved_ids": [
+          "held_m_apple_fruit"
+        ],
+        "expected_ids": [
+          "held_m_apple_fruit"
+        ],
+        "acceptable_ids": [],
+        "is_no_match": false,
+        "is_lifecycle": false,
+        "ineligible_ids": [],
+        "hit_1": 1.0,
+        "hit_3": 1.0,
+        "recall_3": 1.0,
+        "mrr": 1.0,
+        "is_abstention": false,
+        "is_false_retrieval": false,
+        "lifecycle_violation": false,
+        "latency_ms": 15.88021800853312
+      },
+      {
+        "case_id": "held_08",
+        "category": "Semantic distractor",
+        "query": "What laptop model was issued for work?",
+        "retrieved_ids": [
+          "held_m_apple_laptop",
+          "held_m_hf_home",
+          "held_m_k8s_restart"
+        ],
+        "expected_ids": [
+          "held_m_apple_laptop"
+        ],
+        "acceptable_ids": [],
+        "is_no_match": false,
+        "is_lifecycle": false,
+        "ineligible_ids": [],
+        "hit_1": 1.0,
+        "hit_3": 1.0,
+        "recall_3": 1.0,
+        "mrr": 1.0,
+        "is_abstention": false,
+        "is_false_retrieval": false,
+        "lifecycle_violation": false,
+        "latency_ms": 16.468832036480308
+      },
+      {
+        "case_id": "held_09",
+        "category": "Semantic distractor",
+        "query": "Which Indonesian volcanic island has Jakarta?",
+        "retrieved_ids": [
+          "held_m_java_island"
+        ],
+        "expected_ids": [
+          "held_m_java_island"
+        ],
+        "acceptable_ids": [],
+        "is_no_match": false,
+        "is_lifecycle": false,
+        "ineligible_ids": [],
+        "hit_1": 1.0,
+        "hit_3": 1.0,
+        "recall_3": 1.0,
+        "mrr": 1.0,
+        "is_abstention": false,
+        "is_false_retrieval": false,
+        "lifecycle_violation": false,
+        "latency_ms": 20.7479998935014
+      },
+      {
+        "case_id": "held_10",
+        "category": "Semantic distractor",
+        "query": "What enterprise language runs on the JVM?",
+        "retrieved_ids": [
+          "held_m_cluster_new",
+          "held_m_java_code",
+          "held_m_ice_berlin"
+        ],
+        "expected_ids": [
+          "held_m_java_code"
+        ],
+        "acceptable_ids": [],
+        "is_no_match": false,
+        "is_lifecycle": false,
+        "ineligible_ids": [],
+        "hit_1": 0.0,
+        "hit_3": 1.0,
+        "recall_3": 1.0,
+        "mrr": 0.5,
+        "is_abstention": false,
+        "is_false_retrieval": false,
+        "lifecycle_violation": false,
+        "latency_ms": 25.405611959286034
+      },
+      {
+        "case_id": "held_11",
+        "category": "No relevant memory",
+        "query": "What is my passport identification number?",
+        "retrieved_ids": [
+          "held_m_apple_fruit",
+          "held_m_java_island",
+          "held_dist_02"
+        ],
+        "expected_ids": [],
+        "acceptable_ids": [],
+        "is_no_match": true,
+        "is_lifecycle": false,
+        "ineligible_ids": [],
+        "hit_1": 0.0,
+        "hit_3": 0.0,
+        "recall_3": 0.0,
+        "mrr": 0.0,
+        "is_abstention": false,
+        "is_false_retrieval": true,
+        "lifecycle_violation": false,
+        "latency_ms": 19.868397968821228
+      },
+      {
+        "case_id": "held_12",
+        "category": "No relevant memory",
+        "query": "Which national soccer team won the 1998 World Cup championship?",
+        "retrieved_ids": [
+          "held_dist_07",
+          "held_m_coffee_pref",
+          "held_dist_02"
+        ],
+        "expected_ids": [],
+        "acceptable_ids": [],
+        "is_no_match": true,
+        "is_lifecycle": false,
+        "ineligible_ids": [],
+        "hit_1": 0.0,
+        "hit_3": 0.0,
+        "recall_3": 0.0,
+        "mrr": 0.0,
+        "is_abstention": false,
+        "is_false_retrieval": true,
+        "lifecycle_violation": false,
+        "latency_ms": 20.82773798611015
+      },
+      {
+        "case_id": "held_13",
+        "category": "No relevant memory",
+        "query": "What is my preferred brand of running shoes?",
+        "retrieved_ids": [
+          "held_m_podman_clean",
+          "held_m_apple_fruit",
+          "held_m_tz_pref"
+        ],
+        "expected_ids": [],
+        "acceptable_ids": [],
+        "is_no_match": true,
+        "is_lifecycle": false,
+        "ineligible_ids": [],
+        "hit_1": 0.0,
+        "hit_3": 0.0,
+        "recall_3": 0.0,
+        "mrr": 0.0,
+        "is_abstention": false,
+        "is_false_retrieval": true,
+        "lifecycle_violation": false,
+        "latency_ms": 20.679390989243984
+      },
+      {
+        "case_id": "held_14",
+        "category": "No relevant memory",
+        "query": "How many miles is it to the planet Mars at closest approach?",
+        "retrieved_ids": [
+          "held_dist_05",
+          "held_m_pg_max_conn",
+          "held_dist_09"
+        ],
+        "expected_ids": [],
+        "acceptable_ids": [],
+        "is_no_match": true,
+        "is_lifecycle": false,
+        "ineligible_ids": [],
+        "hit_1": 0.0,
+        "hit_3": 0.0,
+        "recall_3": 0.0,
+        "mrr": 0.0,
+        "is_abstention": false,
+        "is_false_retrieval": true,
+        "lifecycle_violation": false,
+        "latency_ms": 21.62366290576756
+      },
+      {
+        "case_id": "held_15",
+        "category": "No relevant memory",
+        "query": "What is the root administrative password for the hashicorp vault server?",
+        "retrieved_ids": [
+          "held_dist_10",
+          "held_m_ssh_git",
+          "held_dist_12"
+        ],
+        "expected_ids": [],
+        "acceptable_ids": [],
+        "is_no_match": true,
+        "is_lifecycle": false,
+        "ineligible_ids": [],
+        "hit_1": 0.0,
+        "hit_3": 0.0,
+        "recall_3": 0.0,
+        "mrr": 0.0,
+        "is_abstention": false,
+        "is_false_retrieval": true,
+        "lifecycle_violation": false,
+        "latency_ms": 35.37945298012346
+      },
+      {
+        "case_id": "held_16",
+        "category": "Supersession",
+        "query": "Which production Kubernetes cluster receives deployments?",
+        "retrieved_ids": [
+          "held_m_cluster_new",
+          "held_m_k8s_restart",
+          "held_m_java_code"
+        ],
+        "expected_ids": [
+          "held_m_cluster_new"
+        ],
+        "acceptable_ids": [],
+        "is_no_match": false,
+        "is_lifecycle": true,
+        "ineligible_ids": [
+          "held_m_cluster_old"
+        ],
+        "hit_1": 1.0,
+        "hit_3": 1.0,
+        "recall_3": 1.0,
+        "mrr": 1.0,
+        "is_abstention": false,
+        "is_false_retrieval": false,
+        "lifecycle_violation": false,
+        "latency_ms": 28.434461099095643
+      },
+      {
+        "case_id": "held_17",
+        "category": "Expiry",
+        "query": "What is the authorization token for the staging webhook?",
+        "retrieved_ids": [
+          "held_dist_10",
+          "held_m_ssh_git",
+          "held_dist_05"
+        ],
+        "expected_ids": [],
+        "acceptable_ids": [],
+        "is_no_match": true,
+        "is_lifecycle": true,
+        "ineligible_ids": [
+          "held_m_webhook_token"
+        ],
+        "hit_1": 0.0,
+        "hit_3": 0.0,
+        "recall_3": 0.0,
+        "mrr": 0.0,
+        "is_abstention": false,
+        "is_false_retrieval": true,
+        "lifecycle_violation": false,
+        "latency_ms": 30.75908205937594
+      },
+      {
+        "case_id": "held_18",
+        "category": "Paraphrase",
+        "query": "Which train takes me from Berlin to Munich fast?",
+        "retrieved_ids": [
+          "held_m_ice_berlin",
+          "held_dist_08",
+          "held_dist_03"
+        ],
+        "expected_ids": [
+          "held_m_ice_berlin"
+        ],
+        "acceptable_ids": [],
+        "is_no_match": false,
+        "is_lifecycle": false,
+        "ineligible_ids": [],
+        "hit_1": 1.0,
+        "hit_3": 1.0,
+        "recall_3": 1.0,
+        "mrr": 1.0,
+        "is_abstention": false,
+        "is_false_retrieval": false,
+        "lifecycle_violation": false,
+        "latency_ms": 18.691365025006235
+      },
+      {
+        "case_id": "held_19",
+        "category": "Synonym",
+        "query": "How do we store backups in Amazon cloud storage?",
+        "retrieved_ids": [
+          "held_m_podman_clean",
+          "held_m_aws_s3",
+          "held_dist_03"
+        ],
+        "expected_ids": [
+          "held_m_aws_s3"
+        ],
+        "acceptable_ids": [],
+        "is_no_match": false,
+        "is_lifecycle": false,
+        "ineligible_ids": [],
+        "hit_1": 0.0,
+        "hit_3": 1.0,
+        "recall_3": 1.0,
+        "mrr": 0.5,
+        "is_abstention": false,
+        "is_false_retrieval": false,
+        "lifecycle_violation": false,
+        "latency_ms": 20.89152706321329
+      },
+      {
+        "case_id": "held_20",
+        "category": "Technical identifier",
+        "query": "What minimum cryptographic security protocol is mandated for HTTP?",
+        "retrieved_ids": [
+          "held_m_tls_version",
+          "held_m_py_lock",
+          "held_dist_12"
+        ],
+        "expected_ids": [
+          "held_m_tls_version"
+        ],
+        "acceptable_ids": [],
+        "is_no_match": false,
+        "is_lifecycle": false,
+        "ineligible_ids": [],
+        "hit_1": 1.0,
+        "hit_3": 1.0,
+        "recall_3": 1.0,
+        "mrr": 1.0,
+        "is_abstention": false,
+        "is_false_retrieval": false,
+        "lifecycle_violation": false,
+        "latency_ms": 23.92789104487747
+      },
+      {
+        "case_id": "held_21",
+        "category": "Structured preference",
+        "query": "What timezone should timestamps be displayed in?",
+        "retrieved_ids": [
+          "held_m_tz_pref",
+          "held_m_zsh_prompt",
+          "held_dist_11"
+        ],
+        "expected_ids": [
+          "held_m_tz_pref"
+        ],
+        "acceptable_ids": [],
+        "is_no_match": false,
+        "is_lifecycle": false,
+        "ineligible_ids": [],
+        "hit_1": 1.0,
+        "hit_3": 1.0,
+        "recall_3": 1.0,
+        "mrr": 1.0,
+        "is_abstention": false,
+        "is_false_retrieval": false,
+        "lifecycle_violation": false,
+        "latency_ms": 23.27565394807607
+      },
+      {
+        "case_id": "held_22",
+        "category": "Paraphrase",
+        "query": "How to free up machine disk space from old container layers?",
+        "retrieved_ids": [
+          "held_m_podman_clean",
+          "held_dist_08",
+          "held_m_hf_home"
+        ],
+        "expected_ids": [
+          "held_m_podman_clean"
+        ],
+        "acceptable_ids": [],
+        "is_no_match": false,
+        "is_lifecycle": false,
+        "ineligible_ids": [],
+        "hit_1": 1.0,
+        "hit_3": 1.0,
+        "recall_3": 1.0,
+        "mrr": 1.0,
+        "is_abstention": false,
+        "is_false_retrieval": false,
+        "lifecycle_violation": false,
+        "latency_ms": 21.442795055918396
+      },
+      {
+        "case_id": "held_23",
+        "category": "Low/zero lexical overlap",
+        "query": "How should Python dependency versions be locked down?",
+        "retrieved_ids": [
+          "held_m_py_lock",
+          "held_dist_11",
+          "held_m_k8s_restart"
+        ],
+        "expected_ids": [
+          "held_m_py_lock"
+        ],
+        "acceptable_ids": [],
+        "is_no_match": false,
+        "is_lifecycle": false,
+        "ineligible_ids": [],
+        "hit_1": 1.0,
+        "hit_3": 1.0,
+        "recall_3": 1.0,
+        "mrr": 1.0,
+        "is_abstention": false,
+        "is_false_retrieval": false,
+        "lifecycle_violation": false,
+        "latency_ms": 15.432738000527024
+      },
+      {
+        "case_id": "held_24",
+        "category": "Exact lexical",
+        "query": "PostgreSQL maximum connections parameter",
+        "retrieved_ids": [
+          "held_m_pg_max_conn",
+          "held_m_hf_home",
+          "held_m_tls_version"
+        ],
+        "expected_ids": [
+          "held_m_pg_max_conn"
+        ],
+        "acceptable_ids": [],
+        "is_no_match": false,
+        "is_lifecycle": false,
+        "ineligible_ids": [],
+        "hit_1": 1.0,
+        "hit_3": 1.0,
+        "recall_3": 1.0,
+        "mrr": 1.0,
+        "is_abstention": false,
+        "is_false_retrieval": false,
+        "lifecycle_violation": false,
+        "latency_ms": 15.528783085756004
+      }
+    ],
+    "System D (Gated Hybrid RRF)": [
+      {
+        "case_id": "held_01",
+        "category": "Exact lexical",
+        "query": "Kubernetes pod restart policy",
+        "retrieved_ids": [
+          "held_m_k8s_restart",
+          "held_m_cluster_new",
+          "held_m_podman_clean"
+        ],
+        "expected_ids": [
+          "held_m_k8s_restart"
+        ],
+        "acceptable_ids": [],
+        "is_no_match": false,
+        "is_lifecycle": false,
+        "ineligible_ids": [],
+        "hit_1": 1.0,
+        "hit_3": 1.0,
+        "recall_3": 1.0,
+        "mrr": 1.0,
+        "is_abstention": false,
+        "is_false_retrieval": false,
+        "lifecycle_violation": false,
+        "latency_ms": 15.019693062640727
+      },
+      {
+        "case_id": "held_02",
+        "category": "Paraphrase",
+        "query": "What hot caffeinated beverage do I drink in the morning?",
+        "retrieved_ids": [
+          "held_m_coffee_pref"
+        ],
+        "expected_ids": [
+          "held_m_coffee_pref"
+        ],
+        "acceptable_ids": [],
+        "is_no_match": false,
+        "is_lifecycle": false,
+        "ineligible_ids": [],
+        "hit_1": 1.0,
+        "hit_3": 1.0,
+        "recall_3": 1.0,
+        "mrr": 1.0,
+        "is_abstention": false,
+        "is_false_retrieval": false,
+        "lifecycle_violation": false,
+        "latency_ms": 15.686830971390009
+      },
+      {
+        "case_id": "held_03",
+        "category": "Low/zero lexical overlap",
+        "query": "How should I format terminal command prompts?",
+        "retrieved_ids": [
+          "held_m_zsh_prompt",
+          "held_m_theme_pref"
+        ],
+        "expected_ids": [
+          "held_m_zsh_prompt"
+        ],
+        "acceptable_ids": [],
+        "is_no_match": false,
+        "is_lifecycle": false,
+        "ineligible_ids": [],
+        "hit_1": 1.0,
+        "hit_3": 1.0,
+        "recall_3": 1.0,
+        "mrr": 1.0,
+        "is_abstention": false,
+        "is_false_retrieval": false,
+        "lifecycle_violation": false,
+        "latency_ms": 17.93431001715362
+      },
+      {
+        "case_id": "held_04",
+        "category": "Synonym",
+        "query": "How to clone the git repository over encrypted shell?",
+        "retrieved_ids": [
+          "held_m_ssh_git",
+          "held_m_aws_s3",
+          "held_m_zsh_prompt"
+        ],
+        "expected_ids": [
+          "held_m_ssh_git"
+        ],
+        "acceptable_ids": [],
+        "is_no_match": false,
+        "is_lifecycle": false,
+        "ineligible_ids": [],
+        "hit_1": 1.0,
+        "hit_3": 1.0,
+        "recall_3": 1.0,
+        "mrr": 1.0,
+        "is_abstention": false,
+        "is_false_retrieval": false,
+        "lifecycle_violation": false,
+        "latency_ms": 20.823059952817857
+      },
+      {
+        "case_id": "held_05",
+        "category": "Technical identifier",
+        "query": "Where are downloaded Hugging Face model weights stored?",
+        "retrieved_ids": [
+          "held_m_hf_home",
+          "held_m_aws_s3",
+          "held_m_java_island"
+        ],
+        "expected_ids": [
+          "held_m_hf_home"
+        ],
+        "acceptable_ids": [],
+        "is_no_match": false,
+        "is_lifecycle": false,
+        "ineligible_ids": [],
+        "hit_1": 1.0,
+        "hit_3": 1.0,
+        "recall_3": 1.0,
+        "mrr": 1.0,
+        "is_abstention": false,
+        "is_false_retrieval": false,
+        "lifecycle_violation": false,
+        "latency_ms": 15.51636098884046
+      },
+      {
+        "case_id": "held_06",
+        "category": "Structured preference",
+        "query": "What theme should the terminal UI use?",
+        "retrieved_ids": [
+          "held_m_theme_pref",
+          "held_m_zsh_prompt",
+          "held_m_coffee_pref"
+        ],
+        "expected_ids": [
+          "held_m_theme_pref"
+        ],
+        "acceptable_ids": [],
+        "is_no_match": false,
+        "is_lifecycle": false,
+        "ineligible_ids": [],
+        "hit_1": 1.0,
+        "hit_3": 1.0,
+        "recall_3": 1.0,
+        "mrr": 1.0,
+        "is_abstention": false,
+        "is_false_retrieval": false,
+        "lifecycle_violation": false,
+        "latency_ms": 18.559805932454765
+      },
+      {
+        "case_id": "held_07",
+        "category": "Semantic distractor",
+        "query": "What fresh orchard fruit do I enjoy eating?",
+        "retrieved_ids": [
+          "held_m_apple_fruit"
+        ],
+        "expected_ids": [
+          "held_m_apple_fruit"
+        ],
+        "acceptable_ids": [],
+        "is_no_match": false,
+        "is_lifecycle": false,
+        "ineligible_ids": [],
+        "hit_1": 1.0,
+        "hit_3": 1.0,
+        "recall_3": 1.0,
+        "mrr": 1.0,
+        "is_abstention": false,
+        "is_false_retrieval": false,
+        "lifecycle_violation": false,
+        "latency_ms": 18.472924013622105
+      },
+      {
+        "case_id": "held_08",
+        "category": "Semantic distractor",
+        "query": "What laptop model was issued for work?",
+        "retrieved_ids": [
+          "held_m_apple_laptop"
+        ],
+        "expected_ids": [
+          "held_m_apple_laptop"
+        ],
+        "acceptable_ids": [],
+        "is_no_match": false,
+        "is_lifecycle": false,
+        "ineligible_ids": [],
+        "hit_1": 1.0,
+        "hit_3": 1.0,
+        "recall_3": 1.0,
+        "mrr": 1.0,
+        "is_abstention": false,
+        "is_false_retrieval": false,
+        "lifecycle_violation": false,
+        "latency_ms": 15.890558017417789
+      },
+      {
+        "case_id": "held_09",
+        "category": "Semantic distractor",
+        "query": "Which Indonesian volcanic island has Jakarta?",
+        "retrieved_ids": [
+          "held_m_java_island"
+        ],
+        "expected_ids": [
+          "held_m_java_island"
+        ],
+        "acceptable_ids": [],
+        "is_no_match": false,
+        "is_lifecycle": false,
+        "ineligible_ids": [],
+        "hit_1": 1.0,
+        "hit_3": 1.0,
+        "recall_3": 1.0,
+        "mrr": 1.0,
+        "is_abstention": false,
+        "is_false_retrieval": false,
+        "lifecycle_violation": false,
+        "latency_ms": 16.066546086221933
+      },
+      {
+        "case_id": "held_10",
+        "category": "Semantic distractor",
+        "query": "What enterprise language runs on the JVM?",
+        "retrieved_ids": [
+          "held_m_java_code",
+          "held_m_cluster_new"
+        ],
+        "expected_ids": [
+          "held_m_java_code"
+        ],
+        "acceptable_ids": [],
+        "is_no_match": false,
+        "is_lifecycle": false,
+        "ineligible_ids": [],
+        "hit_1": 1.0,
+        "hit_3": 1.0,
+        "recall_3": 1.0,
+        "mrr": 1.0,
+        "is_abstention": false,
+        "is_false_retrieval": false,
+        "lifecycle_violation": false,
+        "latency_ms": 17.11804699152708
+      },
+      {
+        "case_id": "held_11",
+        "category": "No relevant memory",
+        "query": "What is my passport identification number?",
+        "retrieved_ids": [],
+        "expected_ids": [],
+        "acceptable_ids": [],
+        "is_no_match": true,
+        "is_lifecycle": false,
+        "ineligible_ids": [],
+        "hit_1": 0.0,
+        "hit_3": 0.0,
+        "recall_3": 0.0,
+        "mrr": 0.0,
+        "is_abstention": true,
+        "is_false_retrieval": false,
+        "lifecycle_violation": false,
+        "latency_ms": 16.921309987083077
+      },
+      {
+        "case_id": "held_12",
+        "category": "No relevant memory",
+        "query": "Which national soccer team won the 1998 World Cup championship?",
+        "retrieved_ids": [],
+        "expected_ids": [],
+        "acceptable_ids": [],
+        "is_no_match": true,
+        "is_lifecycle": false,
+        "ineligible_ids": [],
+        "hit_1": 0.0,
+        "hit_3": 0.0,
+        "recall_3": 0.0,
+        "mrr": 0.0,
+        "is_abstention": true,
+        "is_false_retrieval": false,
+        "lifecycle_violation": false,
+        "latency_ms": 16.060921014286578
+      },
+      {
+        "case_id": "held_13",
+        "category": "No relevant memory",
+        "query": "What is my preferred brand of running shoes?",
+        "retrieved_ids": [],
+        "expected_ids": [],
+        "acceptable_ids": [],
+        "is_no_match": true,
+        "is_lifecycle": false,
+        "ineligible_ids": [],
+        "hit_1": 0.0,
+        "hit_3": 0.0,
+        "recall_3": 0.0,
+        "mrr": 0.0,
+        "is_abstention": true,
+        "is_false_retrieval": false,
+        "lifecycle_violation": false,
+        "latency_ms": 17.394302994944155
+      },
+      {
+        "case_id": "held_14",
+        "category": "No relevant memory",
+        "query": "How many miles is it to the planet Mars at closest approach?",
+        "retrieved_ids": [],
+        "expected_ids": [],
+        "acceptable_ids": [],
+        "is_no_match": true,
+        "is_lifecycle": false,
+        "ineligible_ids": [],
+        "hit_1": 0.0,
+        "hit_3": 0.0,
+        "recall_3": 0.0,
+        "mrr": 0.0,
+        "is_abstention": true,
+        "is_false_retrieval": false,
+        "lifecycle_violation": false,
+        "latency_ms": 18.50810693576932
+      },
+      {
+        "case_id": "held_15",
+        "category": "No relevant memory",
+        "query": "What is the root administrative password for the hashicorp vault server?",
+        "retrieved_ids": [
+          "held_m_ssh_git",
+          "held_dist_12",
+          "held_m_aws_s3"
+        ],
+        "expected_ids": [],
+        "acceptable_ids": [],
+        "is_no_match": true,
+        "is_lifecycle": false,
+        "ineligible_ids": [],
+        "hit_1": 0.0,
+        "hit_3": 0.0,
+        "recall_3": 0.0,
+        "mrr": 0.0,
+        "is_abstention": false,
+        "is_false_retrieval": true,
+        "lifecycle_violation": false,
+        "latency_ms": 17.861288972198963
+      },
+      {
+        "case_id": "held_16",
+        "category": "Supersession",
+        "query": "Which production Kubernetes cluster receives deployments?",
+        "retrieved_ids": [
+          "held_m_cluster_new",
+          "held_m_k8s_restart",
+          "held_m_java_code"
+        ],
+        "expected_ids": [
+          "held_m_cluster_new"
+        ],
+        "acceptable_ids": [],
+        "is_no_match": false,
+        "is_lifecycle": true,
+        "ineligible_ids": [
+          "held_m_cluster_old"
+        ],
+        "hit_1": 1.0,
+        "hit_3": 1.0,
+        "recall_3": 1.0,
+        "mrr": 1.0,
+        "is_abstention": false,
+        "is_false_retrieval": false,
+        "lifecycle_violation": false,
+        "latency_ms": 15.728918020613492
+      },
+      {
+        "case_id": "held_17",
+        "category": "Expiry",
+        "query": "What is the authorization token for the staging webhook?",
+        "retrieved_ids": [
+          "held_m_ssh_git",
+          "held_dist_05",
+          "held_m_tls_version"
+        ],
+        "expected_ids": [],
+        "acceptable_ids": [],
+        "is_no_match": true,
+        "is_lifecycle": true,
+        "ineligible_ids": [
+          "held_m_webhook_token"
+        ],
+        "hit_1": 0.0,
+        "hit_3": 0.0,
+        "recall_3": 0.0,
+        "mrr": 0.0,
+        "is_abstention": false,
+        "is_false_retrieval": true,
+        "lifecycle_violation": false,
+        "latency_ms": 21.044461987912655
+      },
+      {
+        "case_id": "held_18",
+        "category": "Paraphrase",
+        "query": "Which train takes me from Berlin to Munich fast?",
+        "retrieved_ids": [
+          "held_m_ice_berlin"
+        ],
+        "expected_ids": [
+          "held_m_ice_berlin"
+        ],
+        "acceptable_ids": [],
+        "is_no_match": false,
+        "is_lifecycle": false,
+        "ineligible_ids": [],
+        "hit_1": 1.0,
+        "hit_3": 1.0,
+        "recall_3": 1.0,
+        "mrr": 1.0,
+        "is_abstention": false,
+        "is_false_retrieval": false,
+        "lifecycle_violation": false,
+        "latency_ms": 15.448962105438113
+      },
+      {
+        "case_id": "held_19",
+        "category": "Synonym",
+        "query": "How do we store backups in Amazon cloud storage?",
+        "retrieved_ids": [
+          "held_m_aws_s3",
+          "held_m_podman_clean",
+          "held_m_hf_home"
+        ],
+        "expected_ids": [
+          "held_m_aws_s3"
+        ],
+        "acceptable_ids": [],
+        "is_no_match": false,
+        "is_lifecycle": false,
+        "ineligible_ids": [],
+        "hit_1": 1.0,
+        "hit_3": 1.0,
+        "recall_3": 1.0,
+        "mrr": 1.0,
+        "is_abstention": false,
+        "is_false_retrieval": false,
+        "lifecycle_violation": false,
+        "latency_ms": 19.408501917496324
+      },
+      {
+        "case_id": "held_20",
+        "category": "Technical identifier",
+        "query": "What minimum cryptographic security protocol is mandated for HTTP?",
+        "retrieved_ids": [
+          "held_m_tls_version",
+          "held_dist_12",
+          "held_m_ssh_git"
+        ],
+        "expected_ids": [
+          "held_m_tls_version"
+        ],
+        "acceptable_ids": [],
+        "is_no_match": false,
+        "is_lifecycle": false,
+        "ineligible_ids": [],
+        "hit_1": 1.0,
+        "hit_3": 1.0,
+        "recall_3": 1.0,
+        "mrr": 1.0,
+        "is_abstention": false,
+        "is_false_retrieval": false,
+        "lifecycle_violation": false,
+        "latency_ms": 17.35018496401608
+      },
+      {
+        "case_id": "held_21",
+        "category": "Structured preference",
+        "query": "What timezone should timestamps be displayed in?",
+        "retrieved_ids": [
+          "held_m_tz_pref",
+          "held_m_zsh_prompt",
+          "held_dist_11"
+        ],
+        "expected_ids": [
+          "held_m_tz_pref"
+        ],
+        "acceptable_ids": [],
+        "is_no_match": false,
+        "is_lifecycle": false,
+        "ineligible_ids": [],
+        "hit_1": 1.0,
+        "hit_3": 1.0,
+        "recall_3": 1.0,
+        "mrr": 1.0,
+        "is_abstention": false,
+        "is_false_retrieval": false,
+        "lifecycle_violation": false,
+        "latency_ms": 19.73842503502965
+      },
+      {
+        "case_id": "held_22",
+        "category": "Paraphrase",
+        "query": "How to free up machine disk space from old container layers?",
+        "retrieved_ids": [
+          "held_m_podman_clean",
+          "held_m_hf_home",
+          "held_m_aws_s3"
+        ],
+        "expected_ids": [
+          "held_m_podman_clean"
+        ],
+        "acceptable_ids": [],
+        "is_no_match": false,
+        "is_lifecycle": false,
+        "ineligible_ids": [],
+        "hit_1": 1.0,
+        "hit_3": 1.0,
+        "recall_3": 1.0,
+        "mrr": 1.0,
+        "is_abstention": false,
+        "is_false_retrieval": false,
+        "lifecycle_violation": false,
+        "latency_ms": 17.962135025300086
+      },
+      {
+        "case_id": "held_23",
+        "category": "Low/zero lexical overlap",
+        "query": "How should Python dependency versions be locked down?",
+        "retrieved_ids": [
+          "held_m_py_lock",
+          "held_m_k8s_restart",
+          "held_m_pg_max_conn"
+        ],
+        "expected_ids": [
+          "held_m_py_lock"
+        ],
+        "acceptable_ids": [],
+        "is_no_match": false,
+        "is_lifecycle": false,
+        "ineligible_ids": [],
+        "hit_1": 1.0,
+        "hit_3": 1.0,
+        "recall_3": 1.0,
+        "mrr": 1.0,
+        "is_abstention": false,
+        "is_false_retrieval": false,
+        "lifecycle_violation": false,
+        "latency_ms": 17.722589895129204
+      },
+      {
+        "case_id": "held_24",
+        "category": "Exact lexical",
+        "query": "PostgreSQL maximum connections parameter",
+        "retrieved_ids": [
+          "held_m_pg_max_conn",
+          "held_m_hf_home",
+          "held_m_tls_version"
+        ],
+        "expected_ids": [
+          "held_m_pg_max_conn"
+        ],
+        "acceptable_ids": [],
+        "is_no_match": false,
+        "is_lifecycle": false,
+        "ineligible_ids": [],
+        "hit_1": 1.0,
+        "hit_3": 1.0,
+        "recall_3": 1.0,
+        "mrr": 1.0,
+        "is_abstention": false,
+        "is_false_retrieval": false,
+        "lifecycle_violation": false,
+        "latency_ms": 16.82637701742351
+      }
+    ]
+  }
+}
