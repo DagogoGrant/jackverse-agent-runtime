@@ -531,7 +531,8 @@ def main() -> None:
         print("Usage: python -m harness [OPTIONS]")
         print("")
         print("Options:")
-        print("  doctor           Run LLM provider diagnostic and connectivity checks")
+        print("  doctor           Run LLM provider configuration diagnostic checks")
+        print("  doctor --live    Perform live connectivity, authentication, and tool-call checks")
         print("  --tui, tui       Launch the Live Operator Console (Textual TUI)")
         print("  --help, -h       Show this help message and exit")
         print("")
@@ -550,12 +551,13 @@ def main() -> None:
     )
 
     if any(arg == "doctor" for arg in sys.argv[1:]):
+        live_probe = any(arg in ("--live", "-l") for arg in sys.argv[1:])
         try:
             config = load_config(config_path)
         except Exception as e:
             print(f"Error loading configuration from '{config_path}': {e}", file=sys.stderr)
             sys.exit(1)
-        report = run_llm_diagnostics(config.llm)
+        report = run_llm_diagnostics(config.llm, live=live_probe)
         print(report.render())
         sys.exit(0 if report.all_passed else 1)
 
