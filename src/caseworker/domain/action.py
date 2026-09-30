@@ -100,7 +100,7 @@ class Action:
         return self.action_type.value if isinstance(self.action_type, ActionType) else str(self.action_type)
 
     def compute_fingerprint(self) -> str:
-        """Compute tamper-proof SHA-256 fingerprint for approval binding.
+        """Compute parameter-bound, tamper-evident SHA-256 fingerprint for approval binding.
 
         Binds:
         - Schema version (act_fp_v1)

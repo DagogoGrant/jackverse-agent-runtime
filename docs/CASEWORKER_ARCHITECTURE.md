@@ -8,7 +8,7 @@
 
 Modern AI agents often operate as ephemeral chat sessions or ungrounded script runners. When faced with complex, long-running personal or professional objectives—such as landing a new job, relocating to a new country, securing a research grant, or disputing an unfair charge—users are forced to micromanage every intermediate prompt, track spreadsheets manually, and worry whether the agent will execute consequential real-world actions without oversight.
 
-**JackVerse Caseworker** is a governed, long-running case management system built on top of the **JackVerse Agent Runtime**. It transforms open-ended user goals into structured, durable cases with explicit lifecycles, tamper-proof human approvals, deduplicated opportunity tracking, and verifiable personal context.
+**JackVerse Caseworker** is a governed, long-running case management system built on top of the **JackVerse Agent Runtime**. It transforms open-ended user goals into structured, durable cases with explicit lifecycles, tamper-evident human approvals, deduplicated opportunity tracking, and verifiable personal context.
 
 ```text
 ┌──────────────────────────────────────────────────────────┐
@@ -36,7 +36,7 @@ To prevent conceptual blur, JackVerse Caseworker enforces strict boundaries betw
 | **Case** | One concrete, trackable unit of work with a dedicated goal, status machine, and verifiable outcome. | *"Apply to Anthropic Research Engineer (Req #4021)."* |
 | **Opportunity** | An external lead or prospect discovered for the user, deduplicated by content fingerprint. | *Job posting, grant announcement, or apartment listing.* |
 | **Action** | A single real-world operational step proposed or taken in service of a Case, evaluated for risk. | *Draft cover letter, send inquiry email, or submit application form.* |
-| **Approval** | Durable, tamper-proof user authorization bound cryptographically to an Action's exact parameters. | *Explicit human sign-off required prior to submitting official application.* |
+| **Approval** | Durable, parameter-bound user authorization bound cryptographically to an Action's exact parameters. | *Explicit human sign-off required prior to submitting official application.* |
 | **ContextFact** | Persistent, provenance-tracked personal memory (education, preferences, constraints) with purpose gating. | *Passport country, target salary range, or visa sponsorship need.* |
 | **DomainEvent** | Immutable, sequentially ordered record of aggregate state transitions. | *`mission.created`, `case.status_changed`, `action.proposed`.* |
 
@@ -208,7 +208,10 @@ Consequential actions (such as submitting official applications, committing fund
    ])
    fingerprint = compute_sha256(canonical)
    ```
-3. **Tamper Invalidation**: The `Approval` record binds to this exact fingerprint. If an agent or attacker alters `action.parameters` or `action.description` after approval is requested, `approval.is_valid_for(action)` immediately evaluates to `False`, and `approval.approve(action)` raises `ApprovalValidationError`.
+3. **Idempotency & Execution Safety**:
+   Action `idempotency_key` provides an idempotency foundation for retry-safe execution within the database boundary. True external exactly-once or at-most-once behavior will depend on the eventual execution adapter and external provider capabilities.
+
+4. **Tamper Detection & Invalidation**: The `Approval` record binds to this exact fingerprint. If an agent or attacker alters `action.parameters` or `action.description` after approval is requested, `approval.is_valid_for(action)` immediately evaluates to `False`, and `approval.approve(action)` raises `ApprovalValidationError`.
 
 ---
 
@@ -228,18 +231,18 @@ Personal facts stored in `ContextFact` are governed by privacy controls:
 The Caseworker vision will unfold across 14 systematic phases:
 
 ```text
-Phase 1:  Domain Foundation & Persistence (Completed - Milestone 1)
-Phase 2:  Personal Context Vault & Ingestion Pipeline
-Phase 3:  Research & Opportunity Discovery Engine
-Phase 4:  Intake & Case Formulation
-Phase 5:  Action Planning & Dependency DAG
-Phase 6:  Human-in-the-Loop Approval & Governance Integration
-Phase 7:  Deterministic Action Execution Engine (Tools & Browser)
-Phase 8:  Document Generation & Verification
-Phase 9:  External Communication & Monitoring
-Phase 10: Multi-Case Orchestration & Mission Synthesis
-Phase 11: Real-Time Event Projections & Activity Timeline
-Phase 12: Caseworker REST/WebSocket API & Web UI
-Phase 13: Self-Healing & Adaptive Escalation
-Phase 14: Enterprise Multi-Tenant & Compliance Hardening
+Phase 1:  Domain Foundation                 (COMPLETE)
+Phase 2:  Personal Context Vault + Claim Ledger
+Phase 3:  API Service Layer
+Phase 4:  Consumer Web UI
+Phase 5:  Opportunity Discovery Engine
+Phase 6:  Governed Async Subagents
+Phase 7:  Planning / Dependency DAG
+Phase 8:  Durable Workflows + HITL
+Phase 9:  Browser / Connector Action Layer
+Phase 10: Application & Document Engine
+Phase 11: Communication / Tracking
+Phase 12: Evals + Replay
+Phase 13: Security Hardening
+Phase 14: Multi-user Production Hardening
 ```
