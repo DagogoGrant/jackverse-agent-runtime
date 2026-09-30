@@ -6,7 +6,7 @@ from datetime import datetime
 from typing import TYPE_CHECKING
 
 from caseworker.domain.enums import CaseStatus, CaseType
-from caseworker.domain.errors import EntityNotFoundError
+from caseworker.domain.errors import DomainValidationError, EntityNotFoundError
 from caseworker.domain.events import (
     make_case_created_event,
     make_case_resolved_event,
@@ -41,6 +41,11 @@ class CaseService:
                 mission = uow.missions.get_by_id(mission_id)
                 if mission is None:
                     raise EntityNotFoundError("Mission", mission_id)
+                if mission.user_id != user_id:
+                    raise DomainValidationError(
+                        f"Mission '{mission_id}' belongs to user '{mission.user_id}', not '{user_id}'."
+                    )
+
 
             case = Case(
                 user_id=user_id,

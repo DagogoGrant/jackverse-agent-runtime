@@ -178,6 +178,23 @@ class ContextFact:
             d["source_reference"] = "[REDACTED]"
         return d
 
+    def to_audit_payload(self) -> dict[str, Any]:
+        """Serialize ContextFact for domain events, strictly omitting raw values and private references."""
+        return {
+            "fact_id": self.fact_id,
+            "user_id": self.user_id,
+            "namespace": self.namespace,
+            "key": self.key,
+            "source_type": self.source_type.value,
+            "source_id": self.source_id,
+            "confidence": self.confidence,
+            "verification_status": self.verification_status.value,
+            "sensitivity": self.sensitivity.value,
+            "allowed_purposes": list(self.allowed_purposes),
+            "version": self.version,
+        }
+
+
     def __repr__(self) -> str:
         val_display = "[REDACTED]" if self.sensitivity == SensitivityLevel.SENSITIVE else repr(self.value)
         return (

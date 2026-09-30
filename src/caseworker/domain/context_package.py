@@ -18,7 +18,7 @@ from caseworker.domain.types import (
     now_utc,
     to_iso_utc,
 )
-from caseworker.domain.vault_policy import ContextAccessPolicy
+from caseworker.domain.vault_policy import AccessDecision, ContextAccessPolicy
 
 CONTEXT_PACKAGE_SCHEMA_V1 = "ctx_pkg_v1"
 
@@ -124,7 +124,7 @@ class ContextPackageBuilder:
     def __init__(self, policy: ContextAccessPolicy | None = None) -> None:
         self.policy = policy or ContextAccessPolicy()
 
-    def build(
+    def build_with_report(
         self,
         user_id: str,
         purpose: str,
@@ -132,12 +132,14 @@ class ContextPackageBuilder:
         namespaces: list[str] | None = None,
         expires_at: datetime | None = None,
         require_verified: bool = False,
-    ) -> ContextPackage:
-        """Filter facts and produce a deterministic ContextPackage for the target task."""
+    ) -> tuple[ContextPackage, list[AccessDecision], list[AccessDecision]]:
+        """Filter facts and produce a deterministic ContextPackage along with granted and denied audit decisions."""
         filtered_facts: list[ContextFact] = []
+        granted_decisions: list[AccessDecision] = []
+        denied_decisions: list[AccessDecision] = []
 
         for fact in available_facts:
-            # 1. User ownership check
+            # 1. User ownership check (cross-user facts silently dropped from candidates)
             if fact.user_id != user_id:
                 continue
 
@@ -154,11 +156,14 @@ class ContextPackageBuilder:
             )
             if decision.is_granted:
                 filtered_facts.append(fact)
+                granted_decisions.append(decision)
+            else:
+                denied_decisions.append(decision)
 
         # Deterministic order
         filtered_facts.sort(key=lambda f: (f.namespace, f.key, f.fact_id))
 
-        return ContextPackage(
+        package = ContextPackage(
             user_id=user_id,
             purpose=purpose,
             facts=filtered_facts,
@@ -168,3 +173,25 @@ class ContextPackageBuilder:
                 "fact_count": len(filtered_facts),
             },
         )
+        return package, granted_decisions, denied_decisions
+
+    def build(
+        self,
+        user_id: str,
+        purpose: str,
+        available_facts: list[ContextFact],
+        namespaces: list[str] | None = None,
+        expires_at: datetime | None = None,
+        require_verified: bool = False,
+    ) -> ContextPackage:
+        """Filter facts and produce a deterministic ContextPackage for the target task."""
+        package, _, _ = self.build_with_report(
+            user_id=user_id,
+            purpose=purpose,
+            available_facts=available_facts,
+            namespaces=namespaces,
+            expires_at=expires_at,
+            require_verified=require_verified,
+        )
+        return package
+

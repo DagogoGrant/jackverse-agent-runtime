@@ -7,7 +7,7 @@ from datetime import datetime
 from typing import Any
 import uuid
 
-from caseworker.domain.types import ensure_utc, from_iso_utc, now_utc, to_iso_utc
+from caseworker.domain.types import compute_sha256, ensure_utc, from_iso_utc, now_utc, to_iso_utc
 
 
 @dataclass(frozen=True)
@@ -357,6 +357,7 @@ def make_context_fact_rejected_event(
 
 def make_context_access_granted_event(
     user_id: str,
+    aggregate_version: int,
     purpose: str,
     fact_ids: list[str],
     namespaces: list[str],
@@ -365,29 +366,40 @@ def make_context_access_granted_event(
         event_type="context.access_granted",
         aggregate_type="context_vault",
         aggregate_id=user_id,
-        aggregate_version=1,
+        aggregate_version=aggregate_version,
         user_id=user_id,
         payload={
             "purpose": purpose,
-            "accessed_fact_ids": fact_ids,
-            "namespaces": namespaces,
+            "accessed_fact_ids": list(fact_ids),
+            "namespaces": list(namespaces),
         },
     )
 
 
 def make_context_access_denied_event(
     user_id: str,
+    aggregate_version: int,
     purpose: str,
     fact_id: str,
     reason: str,
+    reason_code: str = "DENIED",
+    namespace: str = "",
+    key: str = "",
 ) -> DomainEvent:
     return DomainEvent(
         event_type="context.access_denied",
         aggregate_type="context_vault",
         aggregate_id=user_id,
-        aggregate_version=1,
+        aggregate_version=aggregate_version,
         user_id=user_id,
-        payload={"purpose": purpose, "fact_id": fact_id, "reason": reason},
+        payload={
+            "purpose": purpose,
+            "fact_id": fact_id,
+            "reason": reason,
+            "reason_code": reason_code,
+            "namespace": namespace,
+            "key": key,
+        },
     )
 
 
@@ -410,12 +422,13 @@ def make_claim_proposed_event(
         payload={
             "claim_id": claim_id,
             "purpose": purpose,
-            "text": text,
-            "supporting_fact_ids": supporting_fact_ids,
+            "claim_text_hash": compute_sha256(text.strip()),
+            "supporting_fact_ids": list(supporting_fact_ids),
             "case_id": case_id,
             "mission_id": mission_id,
         },
     )
+
 
 
 def make_claim_status_changed_event(

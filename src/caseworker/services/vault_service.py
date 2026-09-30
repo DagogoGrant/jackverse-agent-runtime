@@ -15,6 +15,7 @@ from caseworker.domain.context_package import ContextPackage, ContextPackageBuil
 from caseworker.domain.enums import SensitivityLevel, SourceType, VerificationStatus
 from caseworker.domain.errors import DomainValidationError, EntityNotFoundError
 from caseworker.domain.events import (
+    make_context_access_denied_event,
     make_context_access_granted_event,
     make_context_fact_created_event,
     make_context_fact_rejected_event,
@@ -22,6 +23,7 @@ from caseworker.domain.events import (
     make_context_fact_verified_event,
     make_context_source_registered_event,
 )
+
 from caseworker.domain.source import ContextSource
 from caseworker.domain.vault_policy import ContextAccessPolicy
 
@@ -154,9 +156,10 @@ class ContextVaultService:
                 fact_id=fact.fact_id,
                 user_id=fact.user_id,
                 aggregate_version=fact.version,
-                payload=fact.to_safe_dict(),
+                payload=fact.to_audit_payload(),
             )
             uow.events.append(event)
+
 
         return fact
 
@@ -190,6 +193,11 @@ class ContextVaultService:
                 source = uow.sources.get_by_id(target_source_id)
                 if source is None:
                     raise EntityNotFoundError("ContextSource", target_source_id)
+                if source.user_id != old_fact.user_id:
+                    raise DomainValidationError(
+                        f"ContextSource '{target_source_id}' belongs to user '{source.user_id}', "
+                        f"not user '{old_fact.user_id}'."
+                    )
 
             target_source_type = (
                 new_source_type
@@ -221,9 +229,10 @@ class ContextVaultService:
                 fact_id=new_fact.fact_id,
                 user_id=new_fact.user_id,
                 aggregate_version=new_fact.version,
-                payload=new_fact.to_safe_dict(),
+                payload=new_fact.to_audit_payload(),
             )
             uow.events.append(new_event)
+
 
             old_fact.supersede(new_fact.fact_id)
             uow.context.save(old_fact)
@@ -323,10 +332,10 @@ class ContextVaultService:
         expires_at: datetime | None = None,
         require_verified: bool = False,
     ) -> ContextPackage:
-        """Build a verifiable, purpose-scoped ContextPackage with audit logging."""
+        """Build a verifiable, purpose-scoped ContextPackage with comprehensive audit logging."""
         with self.storage.unit_of_work() as uow:
             all_facts = uow.context.list_active(user_id=user_id)
-            pkg = self.builder.build(
+            pkg, granted_decisions, denied_decisions = self.builder.build_with_report(
                 user_id=user_id,
                 purpose=purpose,
                 available_facts=all_facts,
@@ -335,16 +344,35 @@ class ContextVaultService:
                 require_verified=require_verified,
             )
 
+            current_version = uow.events.get_next_aggregate_version("context_vault", user_id)
+
             if pkg.facts:
-                event = make_context_access_granted_event(
+                granted_event = make_context_access_granted_event(
                     user_id=user_id,
+                    aggregate_version=current_version,
                     purpose=purpose,
                     fact_ids=[f.fact_id for f in pkg.facts],
                     namespaces=list(namespaces or []),
                 )
-                uow.events.append(event)
+                uow.events.append(granted_event)
+                current_version += 1
+
+            for decision in denied_decisions:
+                denied_event = make_context_access_denied_event(
+                    user_id=user_id,
+                    aggregate_version=current_version,
+                    purpose=purpose,
+                    fact_id=decision.fact_id,
+                    reason=decision.reason,
+                    reason_code=decision.reason_code,
+                    namespace=decision.namespace,
+                    key=decision.key,
+                )
+                uow.events.append(denied_event)
+                current_version += 1
 
         return pkg
+
 
     # -------------------------------------------------------------------------
     # Profile Completeness

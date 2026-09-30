@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING
 from caseworker.domain.claim import Claim
 from caseworker.domain.claim_policy import ClaimVerificationPolicy
 from caseworker.domain.enums import ClaimStatus
-from caseworker.domain.errors import EntityNotFoundError
+from caseworker.domain.errors import DomainValidationError, EntityNotFoundError
 from caseworker.domain.events import (
     make_claim_proposed_event,
     make_claim_status_changed_event,
@@ -44,11 +44,34 @@ class ClaimLedgerService:
                 case = uow.cases.get_by_id(case_id)
                 if case is None:
                     raise EntityNotFoundError("Case", case_id)
+                if case.user_id != user_id:
+                    raise DomainValidationError(
+                        f"Case '{case_id}' belongs to user '{case.user_id}', not '{user_id}'."
+                    )
 
             if mission_id is not None:
                 mission = uow.missions.get_by_id(mission_id)
                 if mission is None:
                     raise EntityNotFoundError("Mission", mission_id)
+                if mission.user_id != user_id:
+                    raise DomainValidationError(
+                        f"Mission '{mission_id}' belongs to user '{mission.user_id}', not '{user_id}'."
+                    )
+
+            if case_id is not None and mission_id is not None:
+                if case.mission_id != mission_id:
+                    raise DomainValidationError(
+                        f"Case '{case_id}' is associated with mission '{case.mission_id}', not '{mission_id}'."
+                    )
+
+            for fid in supporting_fact_ids:
+                fact = uow.context.get_by_id(fid)
+                if fact is None:
+                    raise EntityNotFoundError("ContextFact", fid)
+                if fact.user_id != user_id:
+                    raise DomainValidationError(
+                        f"Supporting fact '{fid}' belongs to user '{fact.user_id}', not '{user_id}'."
+                    )
 
             claim = Claim(
                 user_id=user_id,

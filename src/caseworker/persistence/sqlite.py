@@ -1341,6 +1341,20 @@ class SQLiteEventStore(EventStore):
         )
         return [self._row_to_event(r) for r in cur.fetchall()]
 
+    def get_next_aggregate_version(self, aggregate_type: str, aggregate_id: str) -> int:
+        cur = self.conn.cursor()
+        cur.execute(
+            """
+            SELECT COALESCE(MAX(aggregate_version), 0) + 1
+            FROM domain_events
+            WHERE aggregate_type = ? AND aggregate_id = ?
+            """,
+            (aggregate_type, aggregate_id),
+        )
+        row = cur.fetchone()
+        return int(row[0]) if row and row[0] is not None else 1
+
+
 
 class SQLiteCaseworkerUnitOfWork(CaseworkerUnitOfWork):
     """Transaction / Unit-of-Work boundary using SQLite."""

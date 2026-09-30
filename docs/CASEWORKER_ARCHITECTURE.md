@@ -314,6 +314,39 @@ stateDiagram-v2
 4. **Verification Threshold**: Facts must meet the minimum verification rank required by the purpose (e.g. `USER_VERIFIED` for job/housing applications).
 5. **Contradiction Detection**: If two or more active supporting facts declare conflicting values for the same normalized `(namespace, key)`, the policy evaluates the claim to `ClaimStatus.CONFLICTED`.
 
+### 7.3 Milestone 2.1: Security & Integrity Hardening Pass
+
+Following the initial delivery of the Personal Context Vault and Claim Ledger, Milestone 2.1 introduced critical security and integrity guarantees prior to exposing HTTP/API endpoints:
+
+1. **Deterministic Monotonic Access Versioning**: Context access events (`context.access_granted` and `context.access_denied`) were previously initialized with hardcoded version 1, triggering uniqueness collisions on SQLite's `UNIQUE(aggregate_type, aggregate_id, aggregate_version)` index during repeated evaluations. The persistence layer now features `EventStore.get_next_aggregate_version(aggregate_type, aggregate_id)`:
+   ```sql
+   SELECT COALESCE(MAX(aggregate_version), 0) + 1 
+   FROM domain_events 
+   WHERE aggregate_type = ? AND aggregate_id = ?
+   ```
+   Executing within the atomic `BEGIN IMMEDIATE` transaction of `CaseworkerUnitOfWork`, this leverages the composite index `idx_events_aggregate_version` to provide an $O(1)$ deterministic sequence (`1, 2, 3...`) per user vault without auxiliary sequence tables.
+
+2. **Structured Denied Access Auditing**: Denied context access evaluations are recorded with standard machine-readable reason codes:
+   - `PURPOSE_REQUIRED`: Missing or whitespace-only purpose string.
+   - `FACT_REJECTED`: Fact was marked rejected by user.
+   - `FACT_SUPERSEDED`: Fact was replaced by a newer revision.
+   - `FACT_EXPIRED`: Fact TTL has elapsed.
+   - `LOW_CONFIDENCE`: Fact confidence score fell below policy threshold.
+   - `UNVERIFIED_FACT`: Fact lacked verification status required by the purpose.
+   - `PURPOSE_NOT_AUTHORIZED`: Purpose is not authorized in fact's `allowed_purposes`.
+   - `SENSITIVE_FACT_RESTRICTED`: Fact sensitivity is `SENSITIVE` without explicit purpose authorization.
+
+3. **Event Payload Privacy Minimization**: The event store acts as an immutable audit log, never a secondary plaintext repository for sensitive PII or credentials:
+   - `claim.proposed` events store `claim_text_hash` (SHA-256) instead of raw assertion text.
+   - `context_fact.created` events store `fact.to_audit_payload()`, which omits raw fact values and private source references.
+   - `context_source.registered` events omit private authentication tokens and arbitrary metadata.
+
+4. **Multi-Tenant Ownership & Relationship Validation**:
+   - `ContextVaultService.supersede_fact()` enforces `source.user_id == old_fact.user_id`.
+   - `ClaimLedgerService.propose_claim()` enforces `case.user_id == user_id`, `mission.user_id == user_id`, `case.mission_id == mission_id`, and `supporting_fact.user_id == user_id`.
+   - `CaseService.create_case()` enforces `mission.user_id == user_id`.
+   - Any violation triggers an immediate `DomainValidationError` and atomic transaction rollback.
+
 ---
 
 ## 8. 14-Phase Implementation Roadmap
@@ -323,6 +356,7 @@ The Caseworker vision unfolds across 14 systematic phases:
 ```text
 Phase 1:  Domain Foundation                     (COMPLETE)
 Phase 2:  Personal Context Vault + Claim Ledger  (COMPLETE)
+Milestone 2.1: Security & Integrity Hardening   (COMPLETE)
 Phase 3:  API Service Layer
 Phase 4:  Consumer Web UI
 Phase 5:  Opportunity Discovery Engine

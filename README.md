@@ -107,6 +107,7 @@ flowchart TD
 - **Personal Context Vault**: Stores user facts with explicit provenance (`ContextSource`), confidence scoring, sensitivity boundaries (`SensitivityLevel.SENSITIVE`), lifecycle validation, and cryptographic package generation (`ContextPackage`).
 - **Claim Ledger**: Guarantees that *"the LLM must never be allowed to invent personal facts."* Every external assertion is grounded in active, authorized, verified ContextFacts before submission, detecting contradictions (`ClaimStatus.CONFLICTED`) and enforcing purpose-specific verification thresholds.
 - **Transactional State + Immutable Event Log**: Atomic domain mutations and `DomainEvents` committed in a single Unit-of-Work boundary over SQLite (current state is stored directly; the event log provides audit history, deterministic sequencing, and future replay foundations).
+- **Security & Integrity Hardening (Milestone 2.1)**: Deterministic monotonic sequence versioning for context access streams, structured reason-coded denied-access audits, strict cross-user ownership isolation, and privacy-hardened event payloads (hashing assertions and omitting raw PII).
 
 See the complete [Caseworker Architecture Specification](docs/CASEWORKER_ARCHITECTURE.md) for full details.
 

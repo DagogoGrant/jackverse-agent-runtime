@@ -218,6 +218,11 @@ class EventStore(Protocol):
         """Retrieve recent events for a user."""
         ...
 
+    def get_next_aggregate_version(self, aggregate_type: str, aggregate_id: str) -> int:
+        """Return the next strictly monotonic aggregate version for an aggregate stream."""
+        ...
+
+
 
 @runtime_checkable
 class CaseworkerUnitOfWork(Protocol):

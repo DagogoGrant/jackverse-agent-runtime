@@ -90,6 +90,18 @@ class ContextSource:
             d["metadata"] = {"redacted": True}
         return d
 
+    def to_audit_payload(self) -> dict[str, Any]:
+        """Serialize ContextSource for domain events, strictly omitting raw references and metadata."""
+        return {
+            "source_id": self.source_id,
+            "user_id": self.user_id,
+            "source_type": self.source_type.value,
+            "title": self.title,
+            "sensitivity": self.sensitivity.value,
+            "version": self.version,
+        }
+
+
     def __repr__(self) -> str:
         ref_display = "[REDACTED]" if self.sensitivity == SensitivityLevel.SENSITIVE else repr(self.source_reference)
         return (
