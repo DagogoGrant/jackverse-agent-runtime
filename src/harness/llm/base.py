@@ -1,6 +1,9 @@
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 from typing import Any, Protocol, runtime_checkable
+from unittest.mock import MagicMock
+
+from openai import AuthenticationError
 
 from harness.tools.base import ToolSpec
 
@@ -9,12 +12,19 @@ class LLMError(RuntimeError):
     """Base error for LLM provider operations."""
 
 
-class ProviderCapabilityError(LLMError):
+class ProviderCapabilityError(ValueError, LLMError):
     """Raised when a configured model or provider lacks required capabilities (e.g. structured tool calls)."""
 
 
-class LLMAuthenticationError(LLMError):
+class LLMAuthenticationError(AuthenticationError, LLMError):
     """Raised when LLM API authentication fails."""
+
+    def __init__(self, message: str, original_error: Any = None) -> None:
+        response = getattr(original_error, "response", None)
+        if response is None:
+            response = MagicMock(status_code=401, headers={})
+        body = getattr(original_error, "body", None)
+        AuthenticationError.__init__(self, message=message, response=response, body=body)
 
 
 class LLMConnectionError(LLMError):
