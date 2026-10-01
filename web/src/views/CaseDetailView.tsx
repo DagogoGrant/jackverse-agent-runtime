@@ -9,7 +9,10 @@ import {
   useTransitionCase,
   useResolveCase,
   useProposeClaim,
+  useEvaluateClaim,
 } from '../hooks/useCaseworker';
+import { apiRequest } from '../api/client';
+import type { Claim } from '../api/types';
 import { TextureBadge } from '../components/ui/TextureBadge';
 import { TactileButton } from '../components/ui/TactileButton';
 
@@ -17,7 +20,7 @@ export const CaseDetailView: React.FC = () => {
   const { caseId } = useParams<{ caseId: string }>();
   const navigate = useNavigate();
 
-  const { data: caseData, isLoading, error } = useCase(caseId);
+  const { data: caseData, isLoading, error, refetch: refetchCase } = useCase(caseId);
   const { data: actions, isLoading: actionsLoading } = useCaseActions(caseId);
   const { data: claims, isLoading: claimsLoading } = useClaims({ case_id: caseId });
   const { data: eventsData } = useEvents();
@@ -25,6 +28,7 @@ export const CaseDetailView: React.FC = () => {
   const transitionCase = useTransitionCase();
   const resolveCase = useResolveCase();
   const proposeClaim = useProposeClaim();
+  const evaluateClaim = useEvaluateClaim();
 
   const [concurrencyNotice, setConcurrencyNotice] = useState<string | null>(null);
   const [resolveOutcome, setResolveOutcome] = useState('');
@@ -34,6 +38,7 @@ export const CaseDetailView: React.FC = () => {
   const [showClaimForm, setShowClaimForm] = useState(false);
   const [claimText, setClaimText] = useState('');
   const [claimPurpose, setClaimPurpose] = useState('job_application');
+  const [supportingFactsInput, setSupportingFactsInput] = useState('');
 
   if (isLoading) {
     return (
@@ -72,6 +77,7 @@ export const CaseDetailView: React.FC = () => {
     } catch (err: any) {
       if (err.name === 'PreconditionFailedError' || err.status === 412) {
         setConcurrencyNotice("This changed elsewhere. We've loaded the latest version.");
+        refetchCase();
       } else {
         setConcurrencyNotice(err.message || 'Transition failed');
       }
@@ -102,19 +108,46 @@ export const CaseDetailView: React.FC = () => {
   const handleProposeClaim = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!caseId || !claimText.trim()) return;
+    setConcurrencyNotice(null);
+    const factIds = supportingFactsInput
+      .split(/[\s,]+/)
+      .map((s) => s.trim())
+      .filter((s) => s.length > 0);
+
     try {
       await proposeClaim.mutateAsync({
         purpose: claimPurpose,
         text: claimText.trim(),
         case_id: caseId,
         mission_id: caseItem.mission_id || undefined,
-        supporting_fact_ids: [],
+        supporting_fact_ids: factIds,
         auto_evaluate: true,
       });
       setClaimText('');
+      setSupportingFactsInput('');
       setShowClaimForm(false);
     } catch (err: any) {
       setConcurrencyNotice(err.message || 'Failed to propose claim');
+    }
+  };
+
+  const handleEvaluateClaim = async (claimId: string) => {
+    setConcurrencyNotice(null);
+    try {
+      const res = await apiRequest<Claim>(`/claims/${claimId}`);
+      if (!res.etag) {
+        throw new Error('Claim response missing ETag header');
+      }
+      await evaluateClaim.mutateAsync({
+        claimId,
+        etag: res.etag,
+      });
+    } catch (err: any) {
+      if (err.name === 'PreconditionFailedError' || err.status === 412) {
+        setConcurrencyNotice("This changed elsewhere. We've loaded the latest version.");
+      } else {
+        setConcurrencyNotice(err.message || 'Claim evaluation failed');
+      }
     }
   };
 
@@ -335,6 +368,18 @@ export const CaseDetailView: React.FC = () => {
                     <option value="general">General</option>
                   </select>
                 </div>
+                <div className="space-y-1">
+                  <label className="font-machine text-[11px] uppercase text-grey-500">
+                    Supporting Fact IDs (optional, space or comma-separated)
+                  </label>
+                  <input
+                    type="text"
+                    value={supportingFactsInput}
+                    onChange={(e) => setSupportingFactsInput(e.target.value)}
+                    placeholder="e.g. fact_abc123 fact_xyz789"
+                    className="w-full bg-canvas border border-grey-700 px-3 py-1.5 text-xs text-pure font-machine outline-none"
+                  />
+                </div>
                 <textarea
                   value={claimText}
                   onChange={(e) => setClaimText(e.target.value)}
@@ -348,7 +393,7 @@ export const CaseDetailView: React.FC = () => {
                     Cancel
                   </TactileButton>
                   <TactileButton type="submit" variant="primary" size="sm" loading={proposeClaim.isPending}>
-                    Propose & Evaluate →
+                    Propose Claim →
                   </TactileButton>
                 </div>
               </form>
@@ -366,11 +411,23 @@ export const CaseDetailView: React.FC = () => {
                   <div key={cl.claim_id} className="py-4 space-y-2">
                     <div className="flex items-center justify-between font-machine text-xs">
                       <span className="text-grey-500">{cl.claim_id.slice(0, 8)}</span>
-                      <TextureBadge status={cl.status} />
+                      <div className="flex items-center gap-2">
+                        <TextureBadge status={cl.status} />
+                        {cl.status !== 'supported' && (
+                          <TactileButton
+                            variant="outline"
+                            size="sm"
+                            loading={evaluateClaim.isPending}
+                            onClick={() => handleEvaluateClaim(cl.claim_id)}
+                          >
+                            Evaluate Claim →
+                          </TactileButton>
+                        )}
+                      </div>
                     </div>
                     <p className="text-sm text-pure">{cl.text}</p>
                     <div className="font-machine text-[11px] text-grey-500">
-                      PURPOSE: {cl.purpose} · FACTS LINKED: {cl.supporting_fact_ids.length}
+                      PURPOSE: {cl.purpose} · FACTS LINKED: {cl.supporting_fact_ids?.length || 0}
                     </div>
                   </div>
                 ))}
@@ -433,7 +490,7 @@ export const CaseDetailView: React.FC = () => {
               caseEvents.map((ev) => (
                 <div key={ev.event_id} className="pb-3 border-b border-grey-700/50 space-y-1">
                   <div className="text-grey-500">
-                    {new Date(ev.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                    {new Date(ev.occurred_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                   </div>
                   <div className="text-pure font-bold">{ev.event_type}</div>
                   <div className="text-grey-500 text-[11px] truncate">

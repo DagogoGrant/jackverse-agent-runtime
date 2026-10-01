@@ -7,11 +7,13 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "preview": "vite preview",
-    "lint": "tsc --noEmit",
-    "typecheck": "tsc --noEmit",
+    "lint": "eslint src",
+    "typecheck": "tsc -b --noEmit",
     "test": "vitest run",
     "test:e2e": "playwright test",
-    "seed": "tsx scripts/seed-demo.ts"
+    "seed": "tsx scripts/seed-demo.ts",
+    "api:generate": "python3 ../scripts/export_caseworker_openapi.py && npx openapi-typescript openapi.json -o src/api/generated-schema.d.ts",
+    "api:check": "python3 ../scripts/export_caseworker_openapi.py && npx openapi-typescript openapi.json -o src/api/generated-schema.d.ts && git diff --exit-code -- openapi.json src/api/generated-schema.d.ts"
   },
   "dependencies": {
     "@fontsource/geist-mono": "^5.3.0",
@@ -27,6 +29,7 @@
     "tailwind-merge": "^2.6.0"
   },
   "devDependencies": {
+    "@eslint/js": "^10.0.1",
     "@playwright/test": "^1.49.1",
     "@testing-library/jest-dom": "^6.6.3",
     "@testing-library/react": "^16.1.0",
@@ -35,11 +38,16 @@
     "@types/react-dom": "^19.0.2",
     "@vitejs/plugin-react": "^4.3.4",
     "autoprefixer": "^10.4.20",
+    "eslint": "^10.11.0",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "eslint-plugin-react-refresh": "^0.5.7",
     "jsdom": "^25.0.1",
+    "openapi-typescript": "^7.13.0",
     "postcss": "^8.4.49",
     "tailwindcss": "^3.4.17",
     "tsx": "^4.19.2",
     "typescript": "^5.7.2",
+    "typescript-eslint": "^8.71.0",
     "vite": "^6.0.5",
     "vitest": "^2.1.8"
   }

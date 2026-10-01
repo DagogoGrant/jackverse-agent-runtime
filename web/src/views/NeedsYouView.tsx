@@ -1,20 +1,27 @@
 import React, { useState } from 'react';
-import { useApprovals, useApproveAction, useRejectAction } from '../hooks/useCaseworker';
+import {
+  useApprovals,
+  useApproval,
+  useAction,
+  useApproveApproval,
+  useRejectApproval,
+} from '../hooks/useCaseworker';
 import { DragToAuthorize } from '../components/ui/DragToAuthorize';
 import { TactileButton } from '../components/ui/TactileButton';
 import { TextureBadge } from '../components/ui/TextureBadge';
 import { ShieldCheck, AlertTriangle, ChevronDown, ChevronUp } from 'lucide-react';
-import { Approval } from '../api/types';
+import type { Approval } from '../api/types';
 
 export const NeedsYouView: React.FC = () => {
-  const { data: approvals, isLoading } = useApprovals();
-  const approveAction = useApproveAction();
-  const rejectAction = useRejectAction();
+  const { data: approvals, isLoading: listLoading, refetch: refetchApprovals } = useApprovals();
+  const approveApproval = useApproveApproval();
+  const rejectApproval = useRejectApproval();
 
   const [selectedApprovalId, setSelectedApprovalId] = useState<string | null>(null);
   const [showParameters, setShowParameters] = useState(true);
   const [concurrencyNotice, setConcurrencyNotice] = useState<string | null>(null);
   const [filter, setFilter] = useState<'pending' | 'all'>('pending');
+  const [authorizedNotice, setAuthorizedNotice] = useState<string | null>(null);
 
   const allApprovals = approvals || [];
   const filtered = allApprovals.filter((a) => {
@@ -22,45 +29,79 @@ export const NeedsYouView: React.FC = () => {
     return true;
   });
 
-  // Pick first pending if none selected
-  const activeApproval: Approval | undefined =
+  // Pick first item if none selected or selection not in filtered list
+  const activeSummary: Approval | undefined =
     filtered.find((a) => a.approval_id === selectedApprovalId) || filtered[0];
 
-  const handleApprove = async (approval: Approval) => {
+  const effectiveApprovalId = activeSummary?.approval_id || null;
+
+  // Fetch full Approval (with authoritative ETag)
+  const {
+    data: approvalData,
+    isLoading: approvalLoading,
+    refetch: refetchCurrentApproval,
+  } = useApproval(effectiveApprovalId);
+
+  // Fetch associated Action details
+  const activeApproval = approvalData?.approval || activeSummary;
+  const approvalEtag = approvalData?.etag;
+  const {
+    data: actionData,
+    isLoading: actionLoading,
+    refetch: refetchAction,
+  } = useAction(activeApproval?.action_id);
+  const action = actionData?.action;
+
+  const handleApprove = async () => {
+    if (!activeApproval || !approvalEtag) return;
     setConcurrencyNotice(null);
+    setAuthorizedNotice(null);
     try {
-      // ETag for approval or action
-      const etag = `"action:${approval.action_id}:v${approval.action?.version || 1}"`;
-      await approveAction.mutateAsync({
-        actionId: approval.action_id,
-        etag,
+      await approveApproval.mutateAsync({
+        approvalId: activeApproval.approval_id,
+        etag: approvalEtag,
       });
+      setAuthorizedNotice('Authorization recorded. Execution is not connected in this phase.');
     } catch (err: any) {
       if (err.name === 'PreconditionFailedError' || err.status === 412) {
         setConcurrencyNotice("This changed elsewhere. We've loaded the latest version.");
+        refetchCurrentApproval();
+        refetchAction();
+        refetchApprovals();
       } else {
         setConcurrencyNotice(err.message || 'Authorization failed');
       }
     }
   };
 
-  const handleReject = async (approval: Approval) => {
+  const handleReject = async () => {
+    if (!activeApproval || !approvalEtag) return;
     setConcurrencyNotice(null);
+    setAuthorizedNotice(null);
     try {
-      const etag = `"action:${approval.action_id}:v${approval.action?.version || 1}"`;
-      await rejectAction.mutateAsync({
-        actionId: approval.action_id,
-        etag,
+      await rejectApproval.mutateAsync({
+        approvalId: activeApproval.approval_id,
+        etag: approvalEtag,
         reason: 'Declined by human operator via Needs You surface',
       });
+      setAuthorizedNotice('Action proposal rejected.');
     } catch (err: any) {
       if (err.name === 'PreconditionFailedError' || err.status === 412) {
         setConcurrencyNotice("This changed elsewhere. We've loaded the latest version.");
+        refetchCurrentApproval();
+        refetchAction();
+        refetchApprovals();
       } else {
         setConcurrencyNotice(err.message || 'Rejection failed');
       }
     }
   };
+
+  const isPending = activeApproval?.status === 'pending';
+  const isHighConsequential =
+    action?.risk_level === 'high' ||
+    action?.risk_level === 'critical' ||
+    action?.requires_approval === true;
 
   return (
     <div className="space-y-12 font-interface text-paper">
@@ -69,6 +110,14 @@ export const NeedsYouView: React.FC = () => {
         <div className="p-4 border border-grey-500 bg-ink flex items-center gap-3 text-xs font-machine text-pure">
           <AlertTriangle className="w-4 h-4 shrink-0 text-paper" />
           <span>{concurrencyNotice}</span>
+        </div>
+      )}
+
+      {/* Authorization Success Notice */}
+      {authorizedNotice && (
+        <div className="p-4 border border-pure bg-pure text-canvas flex items-center gap-3 text-xs font-machine font-bold">
+          <ShieldCheck className="w-4 h-4 shrink-0" />
+          <span>{authorizedNotice}</span>
         </div>
       )}
 
@@ -86,6 +135,7 @@ export const NeedsYouView: React.FC = () => {
         {/* Filter Toggle */}
         <div className="flex items-center gap-2 font-machine text-xs">
           <button
+            type="button"
             onClick={() => setFilter('pending')}
             className={`px-3 py-1 uppercase border transition-colors ${
               filter === 'pending'
@@ -96,6 +146,7 @@ export const NeedsYouView: React.FC = () => {
             Pending ({allApprovals.filter((a) => a.status === 'pending').length})
           </button>
           <button
+            type="button"
             onClick={() => setFilter('all')}
             className={`px-3 py-1 uppercase border transition-colors ${
               filter === 'all'
@@ -103,162 +154,196 @@ export const NeedsYouView: React.FC = () => {
                 : 'border-grey-700 text-grey-300 hover:text-pure'
             }`}
           >
-            All History ({allApprovals.length})
+            All Decisions ({allApprovals.length})
           </button>
         </div>
       </div>
 
-      {isLoading ? (
+      {listLoading ? (
         <div className="py-24 text-center font-machine text-xs text-grey-500">
-          INSPECTING APPROVAL INBOX...
+          INDEXING APPROVAL QUEUE...
         </div>
       ) : filtered.length === 0 ? (
-        <div className="py-24 border border-grey-700 text-center space-y-4 bg-ink/20">
+        <div className="py-20 border border-grey-700 text-center space-y-4 bg-ink/20">
           <div className="font-machine text-xs text-grey-500 uppercase tracking-widest">
-            ZERO ACTIONS AWAITING AUTHORIZATION
+            ZERO PENDING APPROVALS
           </div>
           <p className="text-sm text-grey-300 max-w-sm mx-auto">
-            All proposed actions have been resolved or JackVerse is operating autonomously
-            within authorized boundaries.
+            Nothing currently requires your approval. Consequential agent actions will pause
+            here for verification before external effect.
           </p>
         </div>
       ) : (
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
-          {/* Left Column: Approvals Queue List (4 cols) */}
-          <div className="lg:col-span-4 border border-grey-700 divide-y divide-grey-700 bg-canvas">
-            {filtered.map((a) => {
-              const isSelected = activeApproval?.approval_id === a.approval_id;
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+          {/* Left Column: Decision Selection List */}
+          <div className="lg:col-span-4 divide-y divide-grey-700 border-y border-grey-700">
+            {filtered.map((app) => {
+              const isSelected = app.approval_id === effectiveApprovalId;
               return (
                 <div
-                  key={a.approval_id}
-                  onClick={() => setSelectedApprovalId(a.approval_id)}
-                  className={`p-4 space-y-2 cursor-pointer transition-colors ${
-                    isSelected ? 'bg-ink border-l-4 border-l-paper' : 'hover:bg-ink/50'
+                  key={app.approval_id}
+                  onClick={() => {
+                    setSelectedApprovalId(app.approval_id);
+                    setConcurrencyNotice(null);
+                    setAuthorizedNotice(null);
+                  }}
+                  className={`p-4 cursor-pointer transition-colors space-y-2 ${
+                    isSelected
+                      ? 'bg-paper text-canvas'
+                      : 'hover:bg-ink text-paper'
                   }`}
                 >
                   <div className="flex items-center justify-between font-machine text-xs">
-                    <span className="text-grey-500">{a.approval_id.slice(0, 8)}</span>
-                    <TextureBadge status={a.status} />
+                    <span className={isSelected ? 'text-canvas/70' : 'text-grey-500'}>
+                      {app.case_id}
+                    </span>
+                    <TextureBadge status={app.status} />
                   </div>
-                  <div className="font-interface font-medium text-sm text-pure line-clamp-1">
-                    {a.action?.description || `Action ${a.action_id.slice(0, 8)}`}
+
+                  <div className="font-medium text-sm line-clamp-1">
+                    Approval #{app.approval_id.slice(0, 8)}
                   </div>
-                  <div className="font-machine text-[11px] text-grey-500 uppercase">
-                    RISK: {a.action?.risk_level || 'CRITICAL'}
+
+                  <div
+                    className={`font-machine text-[11px] ${
+                      isSelected ? 'text-canvas/80' : 'text-grey-500'
+                    }`}
+                  >
+                    Requested: {new Date(app.requested_at).toLocaleDateString()}
                   </div>
                 </div>
               );
             })}
           </div>
 
-          {/* Right Column: Active Approval Dossier (8 cols) */}
+          {/* Right Column: Editorial Approval Dossier */}
           {activeApproval && (
-            <div className="lg:col-span-8 border border-grey-700 bg-ink p-8 space-y-8">
-              <div className="space-y-3">
-                <div className="flex items-center gap-3">
-                  <span className="font-machine text-xs text-grey-500">
-                    GATE ID // {activeApproval.approval_id}
-                  </span>
-                  <TextureBadge status={activeApproval.status} />
+            <div className="lg:col-span-8 border border-grey-700 bg-ink p-6 md:p-8 space-y-6">
+              {approvalLoading || actionLoading ? (
+                <div className="py-16 text-center font-machine text-xs text-grey-500">
+                  LOADING ACTION METADATA & CONCURRENCY CONTEXT...
                 </div>
+              ) : (
+                <>
+                  <div className="space-y-3">
+                    <div className="flex flex-wrap items-center gap-3">
+                      <span className="font-machine text-xs text-grey-500">
+                        DECISION #{activeApproval.approval_id.slice(0, 8)} //
+                      </span>
+                      <TextureBadge status={activeApproval.status} />
+                      <span className="font-machine text-xs text-grey-300 uppercase">
+                        RISK: {action?.risk_level?.toUpperCase() || 'UNRATED'}
+                      </span>
+                    </div>
 
-                <h2 className="font-display text-3xl text-pure tracking-tight leading-tight">
-                  {activeApproval.action?.description || 'Operational Action Proposal'}
-                </h2>
+                    <h2 className="font-display text-3xl text-pure tracking-tight">
+                      {action?.description || 'Consequential Action Decision'}
+                    </h2>
 
-                <div className="font-machine text-xs text-grey-300">
-                  ACTION: {activeApproval.action_id} · RISK LEVEL:{' '}
-                  {activeApproval.action?.risk_level?.toUpperCase() || 'CRITICAL'}
-                </div>
-              </div>
-
-              {/* Consequential Notice */}
-              <div className="border-l-2 border-paper pl-4 py-1 text-sm text-grey-300 leading-relaxed space-y-1">
-                <div className="font-medium text-pure">Operational Intent:</div>
-                <div>
-                  This action involves irreversible side-effects, sensitive data disclosure, or
-                  external service mutation. JackVerse requires human consent before executing.
-                </div>
-              </div>
-
-              {/* Action Parameters Inspection */}
-              <div className="border border-grey-700">
-                <button
-                  type="button"
-                  onClick={() => setShowParameters(!showParameters)}
-                  className="w-full flex items-center justify-between px-4 py-3 bg-canvas text-xs font-machine text-grey-300 hover:text-pure border-b border-grey-700"
-                >
-                  <span>INSPECT ACTION PARAMETERS & BOUND DATA</span>
-                  {showParameters ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-                </button>
-
-                {showParameters && (
-                  <div className="p-4 space-y-3 font-machine text-xs bg-ink/80">
-                    <div className="text-grey-500 uppercase">Parameters:</div>
-                    <pre className="p-3 bg-canvas border border-grey-700 overflow-x-auto text-grey-300 whitespace-pre-wrap">
-                      {JSON.stringify(activeApproval.action?.parameters || {}, null, 2)}
-                    </pre>
-
-                    <div className="text-grey-500 uppercase pt-2">Cryptographic Fingerprint:</div>
-                    <div className="text-grey-300 break-all text-[11px]">
-                      {activeApproval.action_fingerprint}
+                    <div className="font-machine text-xs text-grey-300">
+                      CASE: {activeApproval.case_id} · ACTION: {activeApproval.action_id} · VERSION: v{activeApproval.version}
                     </div>
                   </div>
-                )}
-              </div>
 
-              {/* Decision Section */}
-              <div className="pt-4 border-t border-grey-700">
-                {activeApproval.status === 'approved' ? (
-                  <div className="flex items-center gap-3 p-4 border border-pure bg-pure text-canvas font-interface font-medium">
-                    <ShieldCheck className="w-5 h-5 shrink-0" />
-                    <span>Action has been authorized and queued for execution.</span>
+                  {/* Constitutional Rationale */}
+                  <div className="border-l-2 border-paper pl-4 py-1 text-sm text-grey-300 leading-relaxed space-y-1">
+                    <div className="font-medium text-pure">Constitutional Boundary:</div>
+                    <div>
+                      This action was categorized with risk level{' '}
+                      <span className="font-machine text-xs text-pure uppercase">
+                        {action?.risk_level || 'standard'}
+                      </span>
+                      . Under JackVerse security policy, consequential mutations and third-party
+                      transmissions require explicit human authorization before execution.
+                    </div>
                   </div>
-                ) : activeApproval.status === 'rejected' ? (
-                  <div className="p-4 border border-grey-700 bg-canvas text-grey-300 font-interface text-sm">
-                    Action rejected: {activeApproval.decision_reason || 'Declined by human operator.'}
-                  </div>
-                ) : (
-                  <div className="space-y-4">
-                    {/* For high or critical risk: Drag to Authorize */}
-                    {activeApproval.action?.risk_level === 'high' ||
-                    activeApproval.action?.risk_level === 'critical' ? (
-                      <DragToAuthorize
-                        label="Slide to authorize consequential action"
-                        consequentialDescription="Consequential Action: Authorizing will trigger external execution under the current case policy."
-                        onAuthorize={() => handleApprove(activeApproval)}
-                        disabled={approveAction.isPending || rejectAction.isPending}
-                      />
-                    ) : (
-                      /* For low or medium risk: Direct tactile button */
-                      <div className="flex items-center gap-4">
-                        <TactileButton
-                          variant="primary"
-                          size="lg"
-                          className="flex-1 uppercase font-machine tracking-widest"
-                          loading={approveAction.isPending}
-                          disabled={rejectAction.isPending}
-                          onClick={() => handleApprove(activeApproval)}
-                        >
-                          Authorize Action →
-                        </TactileButton>
+
+                  {/* Action Parameters Inspector */}
+                  <div className="border border-grey-700">
+                    <button
+                      type="button"
+                      onClick={() => setShowParameters(!showParameters)}
+                      className="w-full flex items-center justify-between px-4 py-3 bg-canvas text-xs font-machine text-grey-300 hover:text-pure border-b border-grey-700"
+                    >
+                      <span>INSPECT ACTION PARAMETERS & FINGERPRINT</span>
+                      {showParameters ? (
+                        <ChevronUp className="w-4 h-4" />
+                      ) : (
+                        <ChevronDown className="w-4 h-4" />
+                      )}
+                    </button>
+
+                    {showParameters && (
+                      <div className="p-4 space-y-3 font-machine text-xs bg-canvas/60">
+                        <div className="space-y-1">
+                          <span className="text-grey-500 uppercase">Cryptographic Fingerprint:</span>
+                          <div className="p-2 border border-grey-700 bg-ink text-paper break-all text-[11px]">
+                            {activeApproval.action_fingerprint}
+                          </div>
+                        </div>
+
+                        <div className="space-y-1">
+                          <span className="text-grey-500 uppercase">Parameters:</span>
+                          <pre className="p-3 border border-grey-700 bg-ink text-paper text-[11px] overflow-x-auto">
+                            {JSON.stringify(action?.parameters || {}, null, 2)}
+                          </pre>
+                        </div>
                       </div>
                     )}
-
-                    <div className="flex justify-end pt-2">
-                      <TactileButton
-                        variant="danger"
-                        size="md"
-                        loading={rejectAction.isPending}
-                        disabled={approveAction.isPending}
-                        onClick={() => handleReject(activeApproval)}
-                      >
-                        Decline Action ✕
-                      </TactileButton>
-                    </div>
                   </div>
-                )}
-              </div>
+
+                  {/* Decision Controls */}
+                  <div className="pt-4 border-t border-grey-700 space-y-4">
+                    {isPending ? (
+                      <div className="space-y-4">
+                        {isHighConsequential ? (
+                          <DragToAuthorize
+                            label="Slide to authorize action"
+                            consequentialDescription="Consequential operation: Authorizing binds your explicit consent under cryptographic fingerprint verification."
+                            onAuthorize={handleApprove}
+                          />
+                        ) : (
+                          <TactileButton
+                            variant="primary"
+                            size="md"
+                            loading={approveApproval.isPending}
+                            onClick={handleApprove}
+                          >
+                            Approve Action →
+                          </TactileButton>
+                        )}
+
+                        <div className="flex items-center justify-end gap-4 pt-2">
+                          <TactileButton
+                            variant="danger"
+                            size="md"
+                            loading={rejectApproval.isPending}
+                            onClick={handleReject}
+                          >
+                            Reject Proposal ✕
+                          </TactileButton>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="p-4 border border-grey-700 bg-canvas text-xs font-machine space-y-1">
+                        <div className="text-pure uppercase">
+                          DECISION RECORDED // STATUS: {activeApproval.status.toUpperCase()}
+                        </div>
+                        {activeApproval.reason && (
+                          <div className="text-grey-300">
+                            Reason: {activeApproval.reason}
+                          </div>
+                        )}
+                        {activeApproval.decided_at && (
+                          <div className="text-grey-500">
+                            Decided at: {new Date(activeApproval.decided_at).toLocaleString()}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </>
+              )}
             </div>
           )}
         </div>

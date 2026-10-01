@@ -98,7 +98,7 @@ describe("Context Vault Privacy & On-Demand Masking", () => {
       return Promise.reject(new Error("Unknown route: " + url));
     });
 
-    render(
+    const { unmount } = render(
       <QueryClientProvider client={queryClient}>
         <ContextView />
       </QueryClientProvider>
@@ -129,6 +129,9 @@ describe("Context Vault Privacy & On-Demand Masking", () => {
     expect(JSON.stringify(localStorage)).not.toContain("DE89370400440532013000");
     expect(JSON.stringify(sessionStorage)).not.toContain("DE89370400440532013000");
 
+    // Verify detail is in queryClient cache while revealed
+    expect(queryClient.getQueryData(["context", "facts", "detail", "fact-sensitive-01"])).toBeDefined();
+
     // Click "Mask" to hide again
     const maskButton = screen.getByRole("button", { name: /mask/i });
     fireEvent.click(maskButton);
@@ -137,5 +140,19 @@ describe("Context Vault Privacy & On-Demand Masking", () => {
       expect(screen.getByText(/PRIVATE ••••••••••••/i)).toBeInTheDocument();
       expect(screen.queryByText("DE89370400440532013000")).not.toBeInTheDocument();
     });
+
+    // Verify detail query was explicitly purged from cache upon masking
+    expect(queryClient.getQueryData(["context", "facts", "detail", "fact-sensitive-01"])).toBeUndefined();
+
+    // Re-reveal to populate cache and test unmount cleanup
+    fireEvent.click(screen.getByRole("button", { name: /reveal/i }));
+    await waitFor(() => {
+      expect(screen.getByText("DE89370400440532013000")).toBeInTheDocument();
+    });
+    expect(queryClient.getQueryData(["context", "facts", "detail", "fact-sensitive-01"])).toBeDefined();
+
+    // Unmount view: must purge all revealed sensitive detail queries
+    unmount();
+    expect(queryClient.getQueryData(["context", "facts", "detail", "fact-sensitive-01"])).toBeUndefined();
   });
 });

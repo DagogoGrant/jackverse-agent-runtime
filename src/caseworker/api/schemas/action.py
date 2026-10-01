@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 from pydantic import BaseModel, ConfigDict, Field
+from caseworker.domain.enums import ActionStatus, RiskLevel
 
 
 class ProposeActionRequest(BaseModel):
@@ -21,8 +22,8 @@ class ActionResponse(BaseModel):
     action_type: str
     description: str
     parameters: dict[str, Any] = Field(default_factory=dict)
-    status: str
-    risk_level: str
+    status: ActionStatus
+    risk_level: RiskLevel
     requires_approval: bool
     fingerprint: str
     created_at: str

@@ -104,17 +104,19 @@ Fonts are strictly bundled locally via npm packages (`@fontsource/instrument-ser
 Consequential and standard decisions are clearly differentiated:
 1. **Low-Risk / Routine Decisions**: Immediate tactile trigger `[ Approve ]` or `[ Reject ]`.
 2. **Consequential / High-Impact Decisions** (external transmissions, legal bindings, financial commitments): Flagged with `/// BLOCKED` and high-impact conflict gates. Executed solely via `DragToAuthorize`.
+3. **Truthful Execution Boundary**: Upon authorization, the UI explicitly displays *"Authorization recorded. Execution is not connected in this phase."* The interface never claims external dispatch or autonomous agent activity when execution is unplumbed.
 
 ### Truthful `AgentGlyph`
 - Renders an animated pulse if and only if an active HTTP mutation or query refetch is taking place.
 - In passive state, displays a solid static indicator with exact ISO timestamp.
 - Never fakes thinking, reasoning, or searching states.
 
-### On-Demand Context Privacy
-- In accordance with the Phase 3 backend privacy contract, `GET /api/v1/context/facts` returns sanitized summaries (`FactSummaryResponse`) that omit raw `value` and `source_reference`.
-- Fact values are displayed with a masked preview (`••••••••••••`).
-- Only when the user explicitly triggers `[ Reveal ]` does the UI fetch `GET /api/v1/context/facts/{id}` to display raw data on demand.
-- Sensitive values are kept in transient React component state and are **never persisted** to `localStorage` or `sessionStorage`.
+### On-Demand Context Privacy & Zero-Retention Memory
+- In accordance with the Phase 3 and Phase 4.1 backend privacy contract, `GET /api/v1/context/facts` returns sanitized summaries (`FactSummaryResponse`) that omit raw `value` and `source_reference` for sensitive facts. SQLite stores facts as plain JSON text; no false claims of at-rest encryption or cryptographic on-demand decryption are made in the UI or documentation.
+- Fact values are displayed with a masked preview (`PRIVATE ••••••••••••`).
+- When the user explicitly triggers `[ Reveal ]`, the UI fetches `GET /api/v1/context/facts/{id}` to display protected detail on demand.
+- The React Query cache for sensitive details is configured with `staleTime: 0, gcTime: 0` and is purged immediately upon clicking `[ Mask ]` or when the component unmounts.
+- Sensitive values are never persisted to `localStorage` or `sessionStorage`. Fact verification and rejection operate strictly from summary metadata without requiring raw value revelation.
 
 ---
 
@@ -138,7 +140,7 @@ Visual verification was conducted on automated Playwright captures in `docs/prot
 | :--- | :--- | :--- | :--- |
 | **A: Dashboard** | `prototype_a_desktop.png` | `prototype_a_mobile.png` | **Finding**: Mobile viewport initially squeezed into 150px due to fixed 224px sidebar.<br>**Resolution**: Converted `NavRail` to responsive `hidden md:flex`, added mobile header toggle `☰ 01-06`, reduced padding to `p-4`. Verified full-width typographic layout. |
 | **B: Mission Dossier** | `prototype_b_desktop.png` | `prototype_b_mobile.png` | **Finding**: Dossier metadata and case list fit cleanly on desktop. On mobile, metadata wrap was optimized with `flex-wrap` and compact badge tags.<br>**Resolution**: Clean editorial hierarchy achieved on both form factors. |
-| **C: Needs You** | `prototype_c_desktop.png` | `prototype_c_mobile.png` | **Finding**: Consequential gate header collided on 375px (`APPROVAL QUEUE // CONSTITUTIONAL GATE 1 PENDING DECISION`).<br>**Resolution**: Changed header container to `flex-col sm:flex-row gap-1`, adjusted dossier card padding to `p-5 md:p-8`. Verified crisp unclipped layout. |
+| **C: Needs You** | `prototype_c_desktop.png` | `prototype_c_mobile.png` | **Finding**: Consequential gate header collided on 375px (`APPROVAL QUEUE // CONSTITUTIONAL GATE 1 PENDING DECISION`). Personal placeholder data used.<br>**Resolution**: Changed header container to `flex-col sm:flex-row gap-1`, adjusted dossier card padding to `p-5 md:p-8`. Sanitized all fixture data to synthetic persona Alex Mercer (`alex@example.test`, Northstar AI, `Synthetic_CV.pdf`). Replaced execution wording with truthful connection disclaimer. |
 
 ### Visual Artifacts
 - [Prototype A Desktop](docs/prototypes/prototype_a_desktop.png)

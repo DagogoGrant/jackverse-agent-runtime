@@ -118,6 +118,16 @@ services:
     networks:
       - agent-net
 
+  caseworker-web:
+    build:
+      context: ./web
+    ports:
+      - "127.0.0.1:${CASEWORKER_WEB_PORT:-3001}:80"
+    depends_on:
+      - caseworker-api
+    networks:
+      - agent-net
+
 volumes:
   agent_memory:
   prometheus_data:

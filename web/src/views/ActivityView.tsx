@@ -64,7 +64,7 @@ export const ActivityView: React.FC = () => {
                 </div>
 
                 <div className="text-grey-500 pl-12 md:pl-0 shrink-0">
-                  {new Date(ev.timestamp).toLocaleString()}
+                  {new Date(ev.occurred_at).toLocaleString()}
                 </div>
               </div>
             ))}

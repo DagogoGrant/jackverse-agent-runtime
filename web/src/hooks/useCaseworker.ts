@@ -1,7 +1,7 @@
 import { useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiRequest } from '../api/client';
-import {
+import type {
   Mission,
   Case,
   Opportunity,
@@ -11,8 +11,11 @@ import {
   Claim,
   Action,
   Approval,
+  ApprovalDecision,
   PaginatedResponse,
   CursorPaginatedEvents,
+  CreateOpportunityRequest,
+  SupersedeFactRequest,
 } from '../api/types';
 
 // Invalidate on dev user switch
@@ -68,6 +71,7 @@ export function useCreateMission() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['missions'] });
+      queryClient.invalidateQueries({ queryKey: ['events'] });
     },
   });
 }
@@ -103,8 +107,9 @@ export function useMissionCases(missionId?: string) {
     queryKey: ['cases', 'mission', missionId],
     queryFn: async () => {
       if (!missionId) return [];
-      const res = await apiRequest<PaginatedResponse<Case>>(`/missions/${missionId}/cases?limit=100`);
-      return res.data.items;
+      // Backend returns CaseResponse[] directly (plain list, not PaginatedResponse)
+      const res = await apiRequest<Case[]>(`/missions/${missionId}/cases`);
+      return res.data;
     },
     enabled: Boolean(missionId),
   });
@@ -144,6 +149,7 @@ export function useCreateCase() {
     },
     onSuccess: (_, vars) => {
       queryClient.invalidateQueries({ queryKey: ['cases', 'mission', vars.missionId] });
+      queryClient.invalidateQueries({ queryKey: ['cases'] });
       queryClient.invalidateQueries({ queryKey: ['events'] });
     },
   });
@@ -194,6 +200,161 @@ export function useResolveCase() {
 }
 
 // ----------------------------------------------------------------------------
+// Actions
+// ----------------------------------------------------------------------------
+
+export function useCaseActions(caseId?: string) {
+  return useQuery({
+    queryKey: ['actions', 'case', caseId],
+    queryFn: async () => {
+      if (!caseId) return [];
+      // Backend returns ActionResponse[] directly
+      const res = await apiRequest<Action[]>(`/cases/${caseId}/actions`);
+      return res.data;
+    },
+    enabled: Boolean(caseId),
+  });
+}
+
+export function useAction(actionId?: string) {
+  return useQuery({
+    queryKey: ['actions', actionId],
+    queryFn: async () => {
+      if (!actionId) return null;
+      const res = await apiRequest<Action>(`/actions/${actionId}`);
+      return { action: res.data, etag: res.etag };
+    },
+    enabled: Boolean(actionId),
+  });
+}
+
+export function useProposeAction() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({
+      caseId,
+      actionType,
+      description,
+      parameters = {},
+    }: {
+      caseId: string;
+      actionType: string;
+      description: string;
+      parameters?: Record<string, any>;
+    }) => {
+      const res = await apiRequest<Action>(`/cases/${caseId}/actions`, {
+        method: 'POST',
+        body: JSON.stringify({
+          action_type: actionType,
+          description,
+          parameters,
+        }),
+      });
+      return { action: res.data, etag: res.etag };
+    },
+    onSuccess: (_, vars) => {
+      queryClient.invalidateQueries({ queryKey: ['actions', 'case', vars.caseId] });
+      queryClient.invalidateQueries({ queryKey: ['events'] });
+    },
+  });
+}
+
+export function useRequestActionApproval() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ actionId, etag }: { actionId: string; etag: string }) => {
+      const res = await apiRequest<Approval>(
+        `/actions/${actionId}/request-approval`,
+        {
+          method: 'POST',
+        },
+        etag
+      );
+      return { approval: res.data, etag: res.etag };
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['approvals'] });
+      queryClient.invalidateQueries({ queryKey: ['actions'] });
+      queryClient.invalidateQueries({ queryKey: ['events'] });
+    },
+  });
+}
+
+// ----------------------------------------------------------------------------
+// Approvals
+// ----------------------------------------------------------------------------
+
+export function useApprovals(statusFilter?: string) {
+  return useQuery({
+    queryKey: ['approvals', statusFilter],
+    queryFn: async () => {
+      const url = statusFilter ? `/approvals?status_filter=${statusFilter}` : '/approvals';
+      // Backend returns ApprovalResponse[] directly
+      const res = await apiRequest<Approval[]>(url);
+      return res.data;
+    },
+  });
+}
+
+export function useApproval(approvalId?: string | null) {
+  return useQuery({
+    queryKey: ['approvals', approvalId],
+    queryFn: async () => {
+      if (!approvalId) return null;
+      const res = await apiRequest<Approval>(`/approvals/${approvalId}`);
+      return { approval: res.data, etag: res.etag };
+    },
+    enabled: Boolean(approvalId),
+  });
+}
+
+export function useApproveApproval() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ approvalId, etag, reason }: { approvalId: string; etag: string; reason?: string }) => {
+      const res = await apiRequest<ApprovalDecision>(
+        `/approvals/${approvalId}/approve`,
+        {
+          method: 'POST',
+          body: JSON.stringify({ reason: reason || 'Authorized by human operator' }),
+        },
+        etag
+      );
+      return res.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['approvals'] });
+      queryClient.invalidateQueries({ queryKey: ['actions'] });
+      queryClient.invalidateQueries({ queryKey: ['cases'] });
+      queryClient.invalidateQueries({ queryKey: ['events'] });
+    },
+  });
+}
+
+export function useRejectApproval() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ approvalId, etag, reason }: { approvalId: string; etag: string; reason?: string }) => {
+      const res = await apiRequest<ApprovalDecision>(
+        `/approvals/${approvalId}/reject`,
+        {
+          method: 'POST',
+          body: JSON.stringify({ reason: reason || 'Declined by human operator' }),
+        },
+        etag
+      );
+      return res.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['approvals'] });
+      queryClient.invalidateQueries({ queryKey: ['actions'] });
+      queryClient.invalidateQueries({ queryKey: ['cases'] });
+      queryClient.invalidateQueries({ queryKey: ['events'] });
+    },
+  });
+}
+
+// ----------------------------------------------------------------------------
 // Opportunities
 // ----------------------------------------------------------------------------
 
@@ -219,15 +380,32 @@ export function useOpportunity(opportunityId?: string) {
   });
 }
 
+export function useCreateOpportunity() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (payload: CreateOpportunityRequest) => {
+      const res = await apiRequest<Opportunity>('/opportunities', {
+        method: 'POST',
+        body: JSON.stringify(payload),
+      });
+      return { opportunity: res.data, etag: res.etag };
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['opportunities'] });
+      queryClient.invalidateQueries({ queryKey: ['events'] });
+    },
+  });
+}
+
 export function useTransitionOpportunity() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async ({ id, newStatus, etag }: { id: string; newStatus: string; etag: string }) => {
+    mutationFn: async ({ id, newStatus, etag, reason }: { id: string; newStatus: string; etag: string; reason?: string }) => {
       const res = await apiRequest<Opportunity>(
         `/opportunities/${id}/transition`,
         {
           method: 'POST',
-          body: JSON.stringify({ new_status: newStatus }),
+          body: JSON.stringify({ new_status: newStatus, reason }),
         },
         etag
       );
@@ -255,17 +433,18 @@ export function useContextFacts() {
   });
 }
 
-// On-demand reveal query (never prefetched automatically)
+// On-demand reveal query (staleTime: 0, gcTime: 0 — never retained unnecessarily)
 export function useFactDetail(factId: string | null) {
   return useQuery({
     queryKey: ['context', 'facts', 'detail', factId],
     queryFn: async () => {
       if (!factId) return null;
       const res = await apiRequest<FactDetail>(`/context/facts/${factId}`);
-      return res.data;
+      return { detail: res.data, etag: res.etag };
     },
     enabled: Boolean(factId),
-    gcTime: 1000 * 60 * 2, // discard after 2 minutes of unmount
+    staleTime: 0,
+    gcTime: 0,
   });
 }
 
@@ -295,6 +474,72 @@ export function useRecordFact() {
         method: 'POST',
         body: JSON.stringify(payload),
       });
+      return { fact: res.data, etag: res.etag };
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['context', 'facts'] });
+      queryClient.invalidateQueries({ queryKey: ['context', 'readiness'] });
+      queryClient.invalidateQueries({ queryKey: ['events'] });
+    },
+  });
+}
+
+export function useVerifyFact() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ factId, status = 'user_verified', etag }: { factId: string; status?: string; etag: string }) => {
+      const res = await apiRequest<FactDetail>(
+        `/context/facts/${factId}/verify`,
+        {
+          method: 'POST',
+          body: JSON.stringify({ status }),
+        },
+        etag
+      );
+      return res.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['context', 'facts'] });
+      queryClient.invalidateQueries({ queryKey: ['context', 'readiness'] });
+      queryClient.invalidateQueries({ queryKey: ['events'] });
+    },
+  });
+}
+
+export function useRejectFact() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ factId, reason, etag }: { factId: string; reason?: string; etag: string }) => {
+      const res = await apiRequest<FactDetail>(
+        `/context/facts/${factId}/reject`,
+        {
+          method: 'POST',
+          body: JSON.stringify({ reason: reason || 'Rejected by human user' }),
+        },
+        etag
+      );
+      return res.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['context', 'facts'] });
+      queryClient.invalidateQueries({ queryKey: ['context', 'readiness'] });
+      queryClient.invalidateQueries({ queryKey: ['events'] });
+    },
+  });
+}
+
+export function useSupersedeFact() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ factId, payload, etag }: { factId: string; payload: SupersedeFactRequest; etag: string }) => {
+      const res = await apiRequest<FactDetail>(
+        `/context/facts/${factId}/supersede`,
+        {
+          method: 'POST',
+          body: JSON.stringify(payload),
+        },
+        etag
+      );
       return res.data;
     },
     onSuccess: () => {
@@ -325,6 +570,18 @@ export function useClaims(filters?: { case_id?: string; mission_id?: string; sta
   });
 }
 
+export function useClaim(claimId?: string) {
+  return useQuery({
+    queryKey: ['claims', claimId],
+    queryFn: async () => {
+      if (!claimId) return null;
+      const res = await apiRequest<Claim>(`/claims/${claimId}`);
+      return { claim: res.data, etag: res.etag };
+    },
+    enabled: Boolean(claimId),
+  });
+}
+
 export function useProposeClaim() {
   const queryClient = useQueryClient();
   return useMutation({
@@ -340,7 +597,7 @@ export function useProposeClaim() {
         method: 'POST',
         body: JSON.stringify(payload),
       });
-      return res.data;
+      return { claim: res.data, etag: res.etag };
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['claims'] });
@@ -349,73 +606,45 @@ export function useProposeClaim() {
   });
 }
 
-// ----------------------------------------------------------------------------
-// Actions & Approvals
-// ----------------------------------------------------------------------------
-
-export function useCaseActions(caseId?: string) {
-  return useQuery({
-    queryKey: ['actions', 'case', caseId],
-    queryFn: async () => {
-      if (!caseId) return [];
-      const res = await apiRequest<PaginatedResponse<Action>>(`/actions?case_id=${caseId}&limit=100`);
-      return res.data.items;
-    },
-    enabled: Boolean(caseId),
-  });
-}
-
-export function useApprovals() {
-  return useQuery({
-    queryKey: ['approvals'],
-    queryFn: async () => {
-      const res = await apiRequest<PaginatedResponse<Approval>>('/approvals?limit=100');
-      return res.data.items;
-    },
-  });
-}
-
-export function useApproveAction() {
+export function useEvaluateClaim() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async ({ actionId, etag }: { actionId: string; etag: string }) => {
-      const res = await apiRequest<{ action: Action; approval: Approval }>(
-        `/actions/${actionId}/approve`,
+    mutationFn: async ({ claimId, etag }: { claimId: string; etag: string }) => {
+      const res = await apiRequest<Claim>(
+        `/claims/${claimId}/evaluate`,
         {
           method: 'POST',
-          body: JSON.stringify({ reason: 'Authorized by human operator' }),
+          body: JSON.stringify({}),
         },
         etag
       );
       return res.data;
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['approvals'] });
-      queryClient.invalidateQueries({ queryKey: ['actions'] });
-      queryClient.invalidateQueries({ queryKey: ['cases'] });
+    onSuccess: (_, vars) => {
+      queryClient.invalidateQueries({ queryKey: ['claims'] });
+      queryClient.invalidateQueries({ queryKey: ['claims', vars.claimId] });
       queryClient.invalidateQueries({ queryKey: ['events'] });
     },
   });
 }
 
-export function useRejectAction() {
+export function useRejectClaim() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async ({ actionId, etag, reason }: { actionId: string; etag: string; reason?: string }) => {
-      const res = await apiRequest<{ action: Action; approval: Approval }>(
-        `/actions/${actionId}/reject`,
+    mutationFn: async ({ claimId, etag, reason }: { claimId: string; etag: string; reason?: string }) => {
+      const res = await apiRequest<Claim>(
+        `/claims/${claimId}/reject`,
         {
           method: 'POST',
-          body: JSON.stringify({ reason: reason || 'Declined by human operator' }),
+          body: JSON.stringify({ reason: reason || 'Rejected assertion' }),
         },
         etag
       );
       return res.data;
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['approvals'] });
-      queryClient.invalidateQueries({ queryKey: ['actions'] });
-      queryClient.invalidateQueries({ queryKey: ['cases'] });
+    onSuccess: (_, vars) => {
+      queryClient.invalidateQueries({ queryKey: ['claims'] });
+      queryClient.invalidateQueries({ queryKey: ['claims', vars.claimId] });
       queryClient.invalidateQueries({ queryKey: ['events'] });
     },
   });

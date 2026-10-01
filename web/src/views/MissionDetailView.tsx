@@ -15,7 +15,7 @@ export const MissionDetailView: React.FC = () => {
   const { missionId } = useParams<{ missionId: string }>();
   const navigate = useNavigate();
 
-  const { data: missionData, isLoading: missionLoading, error: missionError } = useMission(missionId);
+  const { data: missionData, isLoading: missionLoading, error: missionError, refetch: refetchMission } = useMission(missionId);
   const { data: cases, isLoading: casesLoading } = useMissionCases(missionId);
   const { data: eventsData } = useEvents();
 
@@ -65,6 +65,7 @@ export const MissionDetailView: React.FC = () => {
     } catch (err: any) {
       if (err.name === 'PreconditionFailedError' || err.status === 412) {
         setConcurrencyNotice("This changed elsewhere. We've loaded the latest version.");
+        refetchMission();
       } else {
         setConcurrencyNotice(err.message || 'Transition failed');
       }
@@ -125,6 +126,16 @@ export const MissionDetailView: React.FC = () => {
 
         {/* Operational Transitions */}
         <div className="flex items-center gap-3 pt-4 font-machine text-xs">
+          {mission.status === 'draft' && (
+            <TactileButton
+              variant="primary"
+              size="sm"
+              loading={transitionMission.isPending}
+              onClick={() => handleTransition('active')}
+            >
+              Activate Mission →
+            </TactileButton>
+          )}
           {mission.status === 'active' && (
             <TactileButton
               variant="outline"
@@ -307,7 +318,7 @@ export const MissionDetailView: React.FC = () => {
               missionEvents.slice(0, 8).map((ev) => (
                 <div key={ev.event_id} className="pb-3 border-b border-grey-700/50 space-y-1">
                   <div className="text-grey-500">
-                    {new Date(ev.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                    {new Date(ev.occurred_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                   </div>
                   <div className="text-pure font-bold">{ev.event_type}</div>
                 </div>

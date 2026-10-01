@@ -37,7 +37,7 @@ export const PrototypeC_NeedsYou: React.FC = () => {
           </h2>
 
           <div className="font-machine text-xs text-grey-300">
-            TARGET: EXXETA AG (BERLIN) · CASE: C-102 · MISSION: M-001
+            TARGET: NORTHSTAR AI (MUNICH) · CASE: C-102 · MISSION: M-001
           </div>
         </div>
 
@@ -68,8 +68,8 @@ export const PrototypeC_NeedsYou: React.FC = () => {
               <div className="space-y-1">
                 <span className="text-grey-500 uppercase">Documents to transmit:</span>
                 <ul className="list-disc list-inside text-pure space-y-0.5">
-                  <li>CV_Grant_Dagogo_Jack_Agentic_AI.pdf (Generated 30 Sep 2026)</li>
-                  <li>CoverLetter_Exxeta_AgentPlatform.pdf</li>
+                  <li>Synthetic_CV.pdf (Generated 30 Sep 2026)</li>
+                  <li>CoverLetter_Northstar_Platform.pdf</li>
                 </ul>
               </div>
 
@@ -78,19 +78,19 @@ export const PrototypeC_NeedsYou: React.FC = () => {
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
                   <div className="p-2 border border-grey-700 bg-canvas">
                     <span className="text-grey-500">identity.legal_name:</span>{' '}
-                    <span className="text-pure">Grant Dagogo Jack</span>
+                    <span className="text-pure">Alex Mercer</span>
                   </div>
                   <div className="p-2 border border-grey-700 bg-canvas">
                     <span className="text-grey-500">contact.email:</span>{' '}
-                    <span className="text-pure">grant@example.com</span>
+                    <span className="text-pure">alex@example.test</span>
                   </div>
                   <div className="p-2 border border-grey-700 bg-canvas">
                     <span className="text-grey-500">career.experience:</span>{' '}
-                    <span className="text-pure">4 years production AI</span>
+                    <span className="text-pure">5 years distributed systems</span>
                   </div>
                   <div className="p-2 border border-grey-700 bg-canvas">
                     <span className="text-grey-500">legal.right_to_work:</span>{' '}
-                    <span className="text-pure">Authorized (Germany)</span>
+                    <span className="text-pure">Authorized (EU)</span>
                   </div>
                 </div>
               </div>
@@ -103,14 +103,14 @@ export const PrototypeC_NeedsYou: React.FC = () => {
           {authorized ? (
             <div className="flex items-center gap-3 p-4 border border-pure bg-pure text-canvas font-interface font-medium">
               <ShieldCheck className="w-5 h-5 shrink-0" />
-              <span>Action authorized. Submission packet queued for external dispatch.</span>
+              <span>Authorization recorded. Execution is not connected in this phase.</span>
             </div>
           ) : (
             <div className="space-y-4">
               {/* Bencho-inspired Drag to Authorize Signature Control */}
               <DragToAuthorize
                 label="Slide to authorize external submission"
-                consequentialDescription="Consequential action: This will transmit personal documentation to an external third-party endpoint."
+                consequentialDescription="Consequential action: This will record your authorization for external dispatch."
                 onAuthorize={() => setAuthorized(true)}
               />
 

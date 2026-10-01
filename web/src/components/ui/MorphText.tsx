@@ -16,12 +16,17 @@ export const MorphText: React.FC<MorphTextProps> = ({
 
   useEffect(() => {
     if (text !== currentText) {
-      setIsTransitioning(true);
-      const timer = setTimeout(() => {
+      const timer1 = setTimeout(() => {
+        setIsTransitioning(true);
+      }, 0);
+      const timer2 = setTimeout(() => {
         setCurrentText(text);
         setIsTransitioning(false);
       }, 120);
-      return () => clearTimeout(timer);
+      return () => {
+        clearTimeout(timer1);
+        clearTimeout(timer2);
+      };
     }
   }, [text, currentText]);
 

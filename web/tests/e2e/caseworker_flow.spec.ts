@@ -69,7 +69,7 @@ test.describe("Caseworker Web End-to-End User Flow", () => {
     // Expand parameters
     const inspectorButton = page.locator("button", { hasText: "INSPECT SUBMISSION PAYLOAD" });
     await expect(inspectorButton).toBeVisible();
-    await expect(page.locator("text=CV_Grant_Dagogo_Jack_Agentic_AI.pdf")).toBeVisible();
+    await expect(page.locator("text=Synthetic_CV.pdf")).toBeVisible();
 
     // Keyboard trigger on slider
     const slider = page.locator("div[role='slider']");
@@ -77,6 +77,6 @@ test.describe("Caseworker Web End-to-End User Flow", () => {
     await page.keyboard.press("Space");
 
     // Success state
-    await expect(page.locator("text=Action authorized")).toBeVisible();
+    await expect(page.locator("text=Authorization recorded")).toBeVisible();
   });
 });

@@ -5,7 +5,7 @@ import { Shell } from './components/layout/Shell';
 import { PrototypesPage } from './prototypes/PrototypesPage';
 import { NotFoundView } from './views/NotFoundView';
 
-// Production views will be imported here
+// Production views
 import { HomeView } from './views/HomeView';
 import { MissionsView } from './views/MissionsView';
 import { MissionDetailView } from './views/MissionDetailView';
@@ -27,6 +27,8 @@ const queryClient = new QueryClient({
 });
 
 export const App: React.FC = () => {
+  const enablePrototypes = import.meta.env.VITE_ENABLE_PROTOTYPES === 'true';
+
   return (
     <QueryClientProvider client={queryClient}>
       <BrowserRouter>
@@ -42,11 +44,15 @@ export const App: React.FC = () => {
             <Route path="/context" element={<ContextView />} />
             <Route path="/activity" element={<ActivityView />} />
 
-            {/* Visual Prototype Inspection Routes */}
-            <Route path="/prototypes" element={<PrototypesPage initialTab="a" />} />
-            <Route path="/prototypes/a" element={<PrototypesPage initialTab="a" />} />
-            <Route path="/prototypes/b" element={<PrototypesPage initialTab="b" />} />
-            <Route path="/prototypes/c" element={<PrototypesPage initialTab="c" />} />
+            {/* Prototype inspection routes (guarded behind VITE_ENABLE_PROTOTYPES development flag) */}
+            {enablePrototypes && (
+              <>
+                <Route path="/prototypes" element={<PrototypesPage initialTab="a" />} />
+                <Route path="/prototypes/a" element={<PrototypesPage initialTab="a" />} />
+                <Route path="/prototypes/b" element={<PrototypesPage initialTab="b" />} />
+                <Route path="/prototypes/c" element={<PrototypesPage initialTab="c" />} />
+              </>
+            )}
 
             {/* 404 Fallback */}
             <Route path="/404" element={<NotFoundView />} />

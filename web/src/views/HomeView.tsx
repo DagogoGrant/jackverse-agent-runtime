@@ -125,9 +125,8 @@ export const HomeView: React.FC = () => {
                     className="w-full bg-canvas border border-grey-700 px-3 py-2 text-sm text-pure outline-none focus:border-paper font-machine"
                   >
                     <option value="opportunity_pursuit">Opportunity Pursuit</option>
-                    <option value="capability_expansion">Capability Expansion</option>
-                    <option value="dispute_resolution">Dispute Resolution</option>
-                    <option value="ongoing_monitoring">Ongoing Monitoring</option>
+                    <option value="problem_resolution">Problem Resolution</option>
+                    <option value="general_goal">General Goal</option>
                   </select>
                 </div>
               </div>

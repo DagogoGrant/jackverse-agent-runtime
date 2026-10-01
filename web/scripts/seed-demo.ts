@@ -13,7 +13,12 @@ interface RequestOptions {
   etag?: string;
 }
 
-async function request(endpoint: string, opts: RequestOptions) {
+interface RequestResult<T = any> {
+  data: T;
+  etag: string | null;
+}
+
+async function request<T = any>(endpoint: string, opts: RequestOptions): Promise<RequestResult<T>> {
   const url = `${API_BASE}${endpoint}`;
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
@@ -40,11 +45,11 @@ async function request(endpoint: string, opts: RequestOptions) {
   }
 
   if (res.status === 204) {
-    return { data: null, etag };
+    return { data: null as any, etag };
   }
 
   const data = await res.json();
-  return { data, etag };
+  return { data: data as T, etag };
 }
 
 async function seedUserAlice() {
@@ -58,8 +63,8 @@ async function seedUserAlice() {
     { namespace: "career", key: "years_experience", value: 6, sensitivity: "personal", allowed_purposes: ["job_application"], source_reference: "employment_record_2026" },
     { namespace: "career", key: "github", value: "github.com/alice-vance-ai", sensitivity: "public", allowed_purposes: ["job_application", "general"], source_reference: "user_entry" },
     { namespace: "career", key: "cv_summary", value: "Specialized in deterministic agent runtimes, tool protocols, and safe multi-agent execution.", sensitivity: "personal", allowed_purposes: ["job_application"], source_reference: "cv_v4.pdf" },
-    { namespace: "credentials", key: "right_to_work", value: "DE_EU_PERMIT_UNLIMITED", sensitivity: "sensitive", allowed_purposes: ["job_application", "legal"], source_reference: "auslaenderbehoerde_permit_ref" },
-    { namespace: "finance", key: "iban", value: "DE89370400440532013000", sensitivity: "sensitive", allowed_purposes: ["finance"], source_reference: "bank_statement_2026.pdf" },
+    { namespace: "legal", key: "work_authorization", value: "European Union (Permanent)", sensitivity: "sensitive", allowed_purposes: ["job_application"], source_reference: "residence_permit_scan" },
+    { namespace: "compensation", key: "salary_expectation_eur", value: 135000, sensitivity: "sensitive", allowed_purposes: ["job_application"], source_reference: "user_input" },
   ];
 
   for (const f of facts) {
@@ -93,7 +98,6 @@ async function seedUserAlice() {
         title: "Lead Autonomous Systems Role in Berlin",
         kind: "opportunity_pursuit",
         goal: "Secure lead architecture role in production agent infrastructure in Berlin or remote EU",
-        parameters: { max_commute_minutes: 45, minimum_salary_eur: 125000 },
       },
     });
     missionId = res.data.mission_id;
@@ -111,8 +115,7 @@ async function seedUserAlice() {
         body: {
           title: "Applied AI Systems / Principal Lead",
           case_type: "job_application",
-          priority: 1,
-          metadata: { company: "Applied AI Systems GmbH", location: "Berlin Mitte" },
+          goal: "Apply for principal agent lead position",
         },
       });
       console.log(`    ✓ Case: ${c1.data.title} (${c1.data.case_id})`);
@@ -122,16 +125,25 @@ async function seedUserAlice() {
         user: "alice",
         method: "POST",
         body: {
-          action_type: "submit_application",
+          action_type: "submit_form",
           description: "Submit comprehensive candidacy packet and verified credentials to hiring team",
           parameters: {
             recipient_email: "careers@applied-ai-systems.de",
             attachments: ["CV_Alice_Vance_2026.pdf", "Work_Authorization_DE.pdf"],
           },
-          consequential: true,
         },
       });
-      console.log(`    ✓ Consequential Action queued for approval (${act.data.action_id})`);
+      console.log(`    ✓ Consequential Action created (${act.data.action_id})`);
+
+      // Request approval so an Approval record is created
+      if (act.etag) {
+        await request(`/actions/${act.data.action_id}/request-approval`, {
+          user: "alice",
+          method: "POST",
+          etag: act.etag,
+        });
+        console.log(`    ✓ Approval requested under Action ETag (${act.data.action_id})`);
+      }
     } catch (e: any) {
       console.log(`    · Case / Action: ${e.message}`);
     }
@@ -143,8 +155,7 @@ async function seedUserAlice() {
         body: {
           title: "QuantAgentics / Core Runtime Engineer",
           case_type: "job_application",
-          priority: 2,
-          metadata: { company: "QuantAgentics Ltd", location: "Remote EU" },
+          goal: "Explore quantitative agent runtime opportunity",
         },
       });
       console.log(`    ✓ Case: ${c2.data.title} (${c2.data.case_id})`);
@@ -157,19 +168,21 @@ async function seedUserAlice() {
   const opps = [
     {
       title: "Founding Engineer - Autonomous Agent Platform",
-      description: "Stealth AI venture building deterministic runtime harnesses and tool protocols.",
-      source: "hacker_news_who_is_hiring",
-      external_id: "hn-410022",
-      url: "https://news.ycombinator.com/item?id=410022",
-      data: { score: 0.94, salary_range: "€120k - €150k" },
+      opportunity_type: "job",
+      organization: "Stealth AI",
+      location: "Berlin, Germany / Remote",
+      source_name: "Hacker News",
+      source_url: "https://news.ycombinator.com/item?id=410022",
+      requirements: ["5+ years distributed systems", "Experience with agent runtimes"],
     },
     {
       title: "Staff Infrastructure Engineer - Agent Runtime",
-      description: "Scale high-throughput execution engines for multi-modal agents.",
-      source: "berlin_tech_board",
-      external_id: "btb-8891",
-      url: "https://berlinstartupjobs.com/engineering/btb-8891",
-      data: { score: 0.88, salary_range: "€130k - €160k" },
+      opportunity_type: "job",
+      organization: "Berlin Tech Ventures",
+      location: "Berlin, Germany",
+      source_name: "Berlin Startup Jobs",
+      source_url: "https://berlinstartupjobs.com/engineering/btb-8891",
+      requirements: ["High-throughput execution engines", "Python / Rust runtime experience"],
     },
   ];
 
@@ -188,8 +201,8 @@ async function seedUserAlice() {
 
   // 5. Claims
   const claims = [
-    { purpose: "job_application", text: "6 years production experience scaling agentic LLM platforms", mission_id: missionId || null },
-    { purpose: "job_application", text: "Legally authorized to work full-time in Germany without sponsorship", mission_id: missionId || null },
+    { purpose: "job_application", text: "6 years production experience scaling agentic LLM platforms", mission_id: missionId || null, supporting_fact_ids: [] },
+    { purpose: "job_application", text: "Legally authorized to work full-time in Germany without sponsorship", mission_id: missionId || null, supporting_fact_ids: [] },
   ];
 
   for (const cl of claims) {
@@ -247,7 +260,6 @@ async function seedUserBob() {
         title: "Relocate to Munich AI Cluster",
         kind: "opportunity_pursuit",
         goal: "Secure full-stack AI engineering role in Munich with relocation support",
-        parameters: { target_city: "Munich" },
       },
     });
     console.log(`    ✓ Mission: ${res.data.title} (${res.data.mission_id})`);
@@ -262,11 +274,12 @@ async function seedUserBob() {
       method: "POST",
       body: {
         title: "Mid-level Agent Engineer at Munich Labs",
-        description: "Front-end and Python integration for human-in-the-loop agent workflows.",
-        source: "munich_ai_hub",
-        external_id: "mah-102",
-        url: "https://munich-ai.org/jobs/102",
-        data: { score: 0.82 },
+        opportunity_type: "job",
+        organization: "Munich Labs",
+        location: "Munich, Germany",
+        source_name: "Munich AI Hub",
+        source_url: "https://munich-ai.org/jobs/102",
+        requirements: ["Python", "React", "Human-in-the-loop workflows"],
       },
     });
     console.log(`    ✓ Opportunity: ${res.data.title} (${res.data.opportunity_id})`);

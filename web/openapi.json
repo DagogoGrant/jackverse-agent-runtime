@@ -1,0 +1,4570 @@
+{
+  "components": {
+    "schemas": {
+      "ActionResponse": {
+        "properties": {
+          "action_id": {
+            "title": "Action Id",
+            "type": "string"
+          },
+          "action_type": {
+            "title": "Action Type",
+            "type": "string"
+          },
+          "case_id": {
+            "title": "Case Id",
+            "type": "string"
+          },
+          "created_at": {
+            "title": "Created At",
+            "type": "string"
+          },
+          "description": {
+            "title": "Description",
+            "type": "string"
+          },
+          "executed_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Executed At"
+          },
+          "fingerprint": {
+            "title": "Fingerprint",
+            "type": "string"
+          },
+          "idempotency_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Idempotency Key"
+          },
+          "parameters": {
+            "additionalProperties": true,
+            "title": "Parameters",
+            "type": "object"
+          },
+          "requires_approval": {
+            "title": "Requires Approval",
+            "type": "boolean"
+          },
+          "result": {
+            "additionalProperties": true,
+            "title": "Result",
+            "type": "object"
+          },
+          "risk_level": {
+            "$ref": "#/components/schemas/RiskLevel"
+          },
+          "status": {
+            "$ref": "#/components/schemas/ActionStatus"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "action_id",
+          "case_id",
+          "action_type",
+          "description",
+          "status",
+          "risk_level",
+          "requires_approval",
+          "fingerprint",
+          "created_at",
+          "version"
+        ],
+        "title": "ActionResponse",
+        "type": "object"
+      },
+      "ActionStatus": {
+        "description": "Lifecycle status for a real-world Action.",
+        "enum": [
+          "proposed",
+          "awaiting_approval",
+          "approved",
+          "rejected",
+          "executing",
+          "succeeded",
+          "failed",
+          "cancelled"
+        ],
+        "title": "ActionStatus",
+        "type": "string"
+      },
+      "ApprovalDecisionResponse": {
+        "properties": {
+          "action": {
+            "$ref": "#/components/schemas/ActionResponse"
+          },
+          "approval": {
+            "$ref": "#/components/schemas/ApprovalResponse"
+          }
+        },
+        "required": [
+          "approval",
+          "action"
+        ],
+        "title": "ApprovalDecisionResponse",
+        "type": "object"
+      },
+      "ApprovalResponse": {
+        "properties": {
+          "action_fingerprint": {
+            "title": "Action Fingerprint",
+            "type": "string"
+          },
+          "action_id": {
+            "title": "Action Id",
+            "type": "string"
+          },
+          "approval_id": {
+            "title": "Approval Id",
+            "type": "string"
+          },
+          "case_id": {
+            "title": "Case Id",
+            "type": "string"
+          },
+          "decided_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Decided At"
+          },
+          "expires_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expires At"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "requested_at": {
+            "title": "Requested At",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "user_id": {
+            "title": "User Id",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "approval_id",
+          "action_id",
+          "case_id",
+          "user_id",
+          "action_fingerprint",
+          "status",
+          "requested_at",
+          "version"
+        ],
+        "title": "ApprovalResponse",
+        "type": "object"
+      },
+      "ApprovalStatus": {
+        "description": "Status of an approval decision.",
+        "enum": [
+          "pending",
+          "approved",
+          "rejected",
+          "expired",
+          "cancelled"
+        ],
+        "title": "ApprovalStatus",
+        "type": "string"
+      },
+      "ApproveActionRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "reason": {
+            "anyOf": [
+              {
+                "maxLength": 1000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Optional rationale for human approval.",
+            "title": "Reason"
+          }
+        },
+        "title": "ApproveActionRequest",
+        "type": "object"
+      },
+      "CaseResponse": {
+        "properties": {
+          "case_id": {
+            "title": "Case Id",
+            "type": "string"
+          },
+          "case_type": {
+            "title": "Case Type",
+            "type": "string"
+          },
+          "constraints": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Constraints",
+            "type": "array"
+          },
+          "created_at": {
+            "title": "Created At",
+            "type": "string"
+          },
+          "deadline": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Deadline"
+          },
+          "goal": {
+            "title": "Goal",
+            "type": "string"
+          },
+          "mission_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mission Id"
+          },
+          "outcome": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Outcome"
+          },
+          "resolved_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resolved At"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "success_criteria": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Success Criteria",
+            "type": "array"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "updated_at": {
+            "title": "Updated At",
+            "type": "string"
+          },
+          "user_id": {
+            "title": "User Id",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "case_id",
+          "user_id",
+          "case_type",
+          "title",
+          "goal",
+          "status",
+          "created_at",
+          "updated_at",
+          "version"
+        ],
+        "title": "CaseResponse",
+        "type": "object"
+      },
+      "CaseStatus": {
+        "description": "Lifecycle states for a Case.",
+        "enum": [
+          "new",
+          "intake",
+          "investigating",
+          "planning",
+          "action_required",
+          "awaiting_approval",
+          "action_in_progress",
+          "waiting_external",
+          "follow_up_due",
+          "resolved",
+          "blocked",
+          "escalated",
+          "cancelled"
+        ],
+        "title": "CaseStatus",
+        "type": "string"
+      },
+      "CaseType": {
+        "description": "Standard case types with extensible categories.",
+        "enum": [
+          "job_application",
+          "scholarship_application",
+          "grant_pursuit",
+          "housing_search",
+          "package_investigation",
+          "refund_request",
+          "service_complaint",
+          "general"
+        ],
+        "title": "CaseType",
+        "type": "string"
+      },
+      "ClaimResponse": {
+        "properties": {
+          "case_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Case Id"
+          },
+          "claim_id": {
+            "title": "Claim Id",
+            "type": "string"
+          },
+          "created_at": {
+            "title": "Created At",
+            "type": "string"
+          },
+          "mission_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mission Id"
+          },
+          "purpose": {
+            "title": "Purpose",
+            "type": "string"
+          },
+          "rejection_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rejection Reason"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "supporting_fact_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Supporting Fact Ids",
+            "type": "array"
+          },
+          "text": {
+            "title": "Text",
+            "type": "string"
+          },
+          "updated_at": {
+            "title": "Updated At",
+            "type": "string"
+          },
+          "user_id": {
+            "title": "User Id",
+            "type": "string"
+          },
+          "verified_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Verified At"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "claim_id",
+          "user_id",
+          "purpose",
+          "text",
+          "status",
+          "created_at",
+          "updated_at",
+          "version"
+        ],
+        "title": "ClaimResponse",
+        "type": "object"
+      },
+      "ClaimStatus": {
+        "description": "Lifecycle states for factual claims in the Claim Ledger.",
+        "enum": [
+          "proposed",
+          "supported",
+          "unsupported",
+          "conflicted",
+          "rejected",
+          "expired"
+        ],
+        "title": "ClaimStatus",
+        "type": "string"
+      },
+      "ContextPackageResponse": {
+        "properties": {
+          "expires_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expires At"
+          },
+          "fact_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Fact Ids",
+            "type": "array"
+          },
+          "facts": {
+            "items": {
+              "$ref": "#/components/schemas/FactResponse"
+            },
+            "title": "Facts",
+            "type": "array"
+          },
+          "fingerprint": {
+            "title": "Fingerprint",
+            "type": "string"
+          },
+          "generated_at": {
+            "title": "Generated At",
+            "type": "string"
+          },
+          "package_id": {
+            "title": "Package Id",
+            "type": "string"
+          },
+          "purpose": {
+            "title": "Purpose",
+            "type": "string"
+          },
+          "user_id": {
+            "title": "User Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "package_id",
+          "user_id",
+          "purpose",
+          "generated_at",
+          "fingerprint"
+        ],
+        "title": "ContextPackageResponse",
+        "type": "object"
+      },
+      "CreateCaseRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "case_type": {
+            "$ref": "#/components/schemas/CaseType",
+            "default": "general",
+            "description": "Type of case."
+          },
+          "constraints": {
+            "description": "Operational constraints.",
+            "items": {
+              "type": "string"
+            },
+            "title": "Constraints",
+            "type": "array"
+          },
+          "deadline": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Completion deadline.",
+            "title": "Deadline"
+          },
+          "goal": {
+            "description": "Clear objective or goal of the case.",
+            "maxLength": 4000,
+            "minLength": 1,
+            "title": "Goal",
+            "type": "string"
+          },
+          "mission_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Optional parent mission ID.",
+            "title": "Mission Id"
+          },
+          "success_criteria": {
+            "description": "Target outcomes.",
+            "items": {
+              "type": "string"
+            },
+            "title": "Success Criteria",
+            "type": "array"
+          },
+          "title": {
+            "description": "Case title.",
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "title",
+          "goal"
+        ],
+        "title": "CreateCaseRequest",
+        "type": "object"
+      },
+      "CreateMissionRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "constraints": {
+            "description": "Operational constraints.",
+            "items": {
+              "type": "string"
+            },
+            "title": "Constraints",
+            "type": "array"
+          },
+          "deadline": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Completion deadline.",
+            "title": "Deadline"
+          },
+          "goal": {
+            "anyOf": [
+              {
+                "maxLength": 4000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Clear objective or goal of the mission.",
+            "title": "Goal"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/MissionKind",
+            "default": "general_goal",
+            "description": "Classification of the mission."
+          },
+          "success_criteria": {
+            "description": "Target outcomes.",
+            "items": {
+              "type": "string"
+            },
+            "title": "Success Criteria",
+            "type": "array"
+          },
+          "title": {
+            "description": "Title of the mission.",
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "title"
+        ],
+        "title": "CreateMissionRequest",
+        "type": "object"
+      },
+      "CreateOpportunityRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "deadline": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Application or submission deadline.",
+            "title": "Deadline"
+          },
+          "location": {
+            "default": "",
+            "description": "Geographic or remote location.",
+            "maxLength": 255,
+            "title": "Location",
+            "type": "string"
+          },
+          "metadata": {
+            "additionalProperties": true,
+            "description": "Custom metadata attributes.",
+            "title": "Metadata",
+            "type": "object"
+          },
+          "mission_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Optional associated mission ID.",
+            "title": "Mission Id"
+          },
+          "opportunity_type": {
+            "$ref": "#/components/schemas/OpportunityType",
+            "description": "Classification of opportunity."
+          },
+          "organization": {
+            "default": "",
+            "description": "Provider/Host organization.",
+            "maxLength": 255,
+            "title": "Organization",
+            "type": "string"
+          },
+          "requirements": {
+            "description": "Eligibility requirements.",
+            "items": {
+              "type": "string"
+            },
+            "title": "Requirements",
+            "type": "array"
+          },
+          "source_name": {
+            "default": "",
+            "description": "Source platform name.",
+            "maxLength": 255,
+            "title": "Source Name",
+            "type": "string"
+          },
+          "source_url": {
+            "default": "",
+            "description": "Web address for the opportunity.",
+            "maxLength": 2048,
+            "title": "Source Url",
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/OpportunityStatus",
+            "default": "discovered",
+            "description": "Initial discovery status."
+          },
+          "title": {
+            "description": "Opportunity title.",
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "title",
+          "opportunity_type"
+        ],
+        "title": "CreateOpportunityRequest",
+        "type": "object"
+      },
+      "CreatePackageRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "expires_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Package expiration timestamp.",
+            "title": "Expires At"
+          },
+          "namespaces": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Filter by namespace prefixes.",
+            "title": "Namespaces"
+          },
+          "purpose": {
+            "description": "Access purpose.",
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Purpose",
+            "type": "string"
+          },
+          "require_verified": {
+            "default": false,
+            "description": "Require verified facts only.",
+            "title": "Require Verified",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "purpose"
+        ],
+        "title": "CreatePackageRequest",
+        "type": "object"
+      },
+      "CursorPaginatedResponse_DomainEventResponse_": {
+        "properties": {
+          "has_more": {
+            "default": false,
+            "description": "Whether more events exist.",
+            "title": "Has More",
+            "type": "boolean"
+          },
+          "items": {
+            "description": "Events in sequential order.",
+            "items": {
+              "$ref": "#/components/schemas/DomainEventResponse"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "limit": {
+            "description": "Requested limit.",
+            "title": "Limit",
+            "type": "integer"
+          },
+          "next_position": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Next monotonic position cursor.",
+            "title": "Next Position"
+          }
+        },
+        "required": [
+          "items",
+          "limit"
+        ],
+        "title": "CursorPaginatedResponse[DomainEventResponse]",
+        "type": "object"
+      },
+      "DomainEventResponse": {
+        "properties": {
+          "aggregate_id": {
+            "title": "Aggregate Id",
+            "type": "string"
+          },
+          "aggregate_type": {
+            "title": "Aggregate Type",
+            "type": "string"
+          },
+          "aggregate_version": {
+            "title": "Aggregate Version",
+            "type": "integer"
+          },
+          "event_id": {
+            "title": "Event Id",
+            "type": "string"
+          },
+          "event_type": {
+            "title": "Event Type",
+            "type": "string"
+          },
+          "occurred_at": {
+            "title": "Occurred At",
+            "type": "string"
+          },
+          "payload": {
+            "additionalProperties": true,
+            "title": "Payload",
+            "type": "object"
+          },
+          "position": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Monotonic sequence position for cursor pagination.",
+            "title": "Position"
+          },
+          "schema_version": {
+            "default": 1,
+            "title": "Schema Version",
+            "type": "integer"
+          },
+          "user_id": {
+            "title": "User Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "event_id",
+          "event_type",
+          "aggregate_type",
+          "aggregate_id",
+          "aggregate_version",
+          "user_id",
+          "occurred_at"
+        ],
+        "title": "DomainEventResponse",
+        "type": "object"
+      },
+      "EvaluateClaimRequest": {
+        "additionalProperties": false,
+        "properties": {},
+        "title": "EvaluateClaimRequest",
+        "type": "object"
+      },
+      "FactResponse": {
+        "properties": {
+          "allowed_purposes": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Allowed Purposes",
+            "type": "array"
+          },
+          "confidence": {
+            "title": "Confidence",
+            "type": "number"
+          },
+          "created_at": {
+            "title": "Created At",
+            "type": "string"
+          },
+          "expires_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expires At"
+          },
+          "fact_id": {
+            "title": "Fact Id",
+            "type": "string"
+          },
+          "key": {
+            "title": "Key",
+            "type": "string"
+          },
+          "namespace": {
+            "title": "Namespace",
+            "type": "string"
+          },
+          "rejection_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rejection Reason"
+          },
+          "sensitivity": {
+            "title": "Sensitivity",
+            "type": "string"
+          },
+          "source_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Id"
+          },
+          "source_reference": {
+            "default": "",
+            "title": "Source Reference",
+            "type": "string"
+          },
+          "source_type": {
+            "title": "Source Type",
+            "type": "string"
+          },
+          "superseded_by_fact_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Superseded By Fact Id"
+          },
+          "updated_at": {
+            "title": "Updated At",
+            "type": "string"
+          },
+          "user_id": {
+            "title": "User Id",
+            "type": "string"
+          },
+          "value": {
+            "title": "Value"
+          },
+          "verification_status": {
+            "title": "Verification Status",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "fact_id",
+          "user_id",
+          "namespace",
+          "key",
+          "value",
+          "source_type",
+          "confidence",
+          "verification_status",
+          "sensitivity",
+          "created_at",
+          "updated_at",
+          "version"
+        ],
+        "title": "FactResponse",
+        "type": "object"
+      },
+      "FactSummaryResponse": {
+        "description": "Sanitized context fact summary for lists and personal index, omitting raw sensitive values and references.",
+        "properties": {
+          "confidence": {
+            "title": "Confidence",
+            "type": "number"
+          },
+          "expires_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expires At"
+          },
+          "fact_id": {
+            "title": "Fact Id",
+            "type": "string"
+          },
+          "has_value": {
+            "default": true,
+            "title": "Has Value",
+            "type": "boolean"
+          },
+          "key": {
+            "title": "Key",
+            "type": "string"
+          },
+          "namespace": {
+            "title": "Namespace",
+            "type": "string"
+          },
+          "preview": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Preview"
+          },
+          "sensitivity": {
+            "title": "Sensitivity",
+            "type": "string"
+          },
+          "source_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Id"
+          },
+          "source_type": {
+            "title": "Source Type",
+            "type": "string"
+          },
+          "updated_at": {
+            "title": "Updated At",
+            "type": "string"
+          },
+          "user_id": {
+            "title": "User Id",
+            "type": "string"
+          },
+          "verification_status": {
+            "title": "Verification Status",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "fact_id",
+          "user_id",
+          "namespace",
+          "key",
+          "sensitivity",
+          "verification_status",
+          "source_type",
+          "confidence",
+          "updated_at",
+          "version"
+        ],
+        "title": "FactSummaryResponse",
+        "type": "object"
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "title": "Detail",
+            "type": "array"
+          }
+        },
+        "title": "HTTPValidationError",
+        "type": "object"
+      },
+      "MissionKind": {
+        "description": "High-level classification of user objective.",
+        "enum": [
+          "opportunity_pursuit",
+          "problem_resolution",
+          "general_goal"
+        ],
+        "title": "MissionKind",
+        "type": "string"
+      },
+      "MissionResponse": {
+        "properties": {
+          "constraints": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Constraints",
+            "type": "array"
+          },
+          "created_at": {
+            "title": "Created At",
+            "type": "string"
+          },
+          "deadline": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Deadline"
+          },
+          "goal": {
+            "title": "Goal",
+            "type": "string"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "mission_id": {
+            "title": "Mission Id",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "success_criteria": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Success Criteria",
+            "type": "array"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "updated_at": {
+            "title": "Updated At",
+            "type": "string"
+          },
+          "user_id": {
+            "title": "User Id",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "mission_id",
+          "user_id",
+          "title",
+          "goal",
+          "kind",
+          "status",
+          "created_at",
+          "updated_at",
+          "version"
+        ],
+        "title": "MissionResponse",
+        "type": "object"
+      },
+      "MissionStatus": {
+        "description": "Lifecycle states for a Mission.",
+        "enum": [
+          "draft",
+          "active",
+          "paused",
+          "completed",
+          "cancelled",
+          "failed"
+        ],
+        "title": "MissionStatus",
+        "type": "string"
+      },
+      "OpportunityResponse": {
+        "properties": {
+          "deadline": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Deadline"
+          },
+          "discovered_at": {
+            "title": "Discovered At",
+            "type": "string"
+          },
+          "fingerprint": {
+            "title": "Fingerprint",
+            "type": "string"
+          },
+          "location": {
+            "default": "",
+            "title": "Location",
+            "type": "string"
+          },
+          "metadata": {
+            "additionalProperties": true,
+            "title": "Metadata",
+            "type": "object"
+          },
+          "mission_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mission Id"
+          },
+          "opportunity_id": {
+            "title": "Opportunity Id",
+            "type": "string"
+          },
+          "opportunity_type": {
+            "title": "Opportunity Type",
+            "type": "string"
+          },
+          "organization": {
+            "default": "",
+            "title": "Organization",
+            "type": "string"
+          },
+          "requirements": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Requirements",
+            "type": "array"
+          },
+          "source_name": {
+            "default": "",
+            "title": "Source Name",
+            "type": "string"
+          },
+          "source_url": {
+            "default": "",
+            "title": "Source Url",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "user_id": {
+            "title": "User Id",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "opportunity_id",
+          "user_id",
+          "opportunity_type",
+          "title",
+          "status",
+          "fingerprint",
+          "discovered_at",
+          "version"
+        ],
+        "title": "OpportunityResponse",
+        "type": "object"
+      },
+      "OpportunityStatus": {
+        "description": "Lifecycle status of a discovered opportunity.",
+        "enum": [
+          "discovered",
+          "normalized",
+          "evaluating",
+          "shortlisted",
+          "converted_to_case",
+          "archived",
+          "rejected"
+        ],
+        "title": "OpportunityStatus",
+        "type": "string"
+      },
+      "OpportunityType": {
+        "description": "Classification of external opportunities.",
+        "enum": [
+          "job",
+          "scholarship",
+          "grant",
+          "fellowship",
+          "research",
+          "housing",
+          "freelance",
+          "hackathon",
+          "conference",
+          "competition",
+          "other"
+        ],
+        "title": "OpportunityType",
+        "type": "string"
+      },
+      "PaginatedResponse_CaseResponse_": {
+        "properties": {
+          "items": {
+            "description": "Collection items for current page.",
+            "items": {
+              "$ref": "#/components/schemas/CaseResponse"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "limit": {
+            "description": "Current page size limit.",
+            "title": "Limit",
+            "type": "integer"
+          },
+          "offset": {
+            "description": "Offset position.",
+            "title": "Offset",
+            "type": "integer"
+          },
+          "total": {
+            "description": "Total number of items matching filter.",
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total",
+          "limit",
+          "offset"
+        ],
+        "title": "PaginatedResponse[CaseResponse]",
+        "type": "object"
+      },
+      "PaginatedResponse_ClaimResponse_": {
+        "properties": {
+          "items": {
+            "description": "Collection items for current page.",
+            "items": {
+              "$ref": "#/components/schemas/ClaimResponse"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "limit": {
+            "description": "Current page size limit.",
+            "title": "Limit",
+            "type": "integer"
+          },
+          "offset": {
+            "description": "Offset position.",
+            "title": "Offset",
+            "type": "integer"
+          },
+          "total": {
+            "description": "Total number of items matching filter.",
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total",
+          "limit",
+          "offset"
+        ],
+        "title": "PaginatedResponse[ClaimResponse]",
+        "type": "object"
+      },
+      "PaginatedResponse_FactSummaryResponse_": {
+        "properties": {
+          "items": {
+            "description": "Collection items for current page.",
+            "items": {
+              "$ref": "#/components/schemas/FactSummaryResponse"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "limit": {
+            "description": "Current page size limit.",
+            "title": "Limit",
+            "type": "integer"
+          },
+          "offset": {
+            "description": "Offset position.",
+            "title": "Offset",
+            "type": "integer"
+          },
+          "total": {
+            "description": "Total number of items matching filter.",
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total",
+          "limit",
+          "offset"
+        ],
+        "title": "PaginatedResponse[FactSummaryResponse]",
+        "type": "object"
+      },
+      "PaginatedResponse_MissionResponse_": {
+        "properties": {
+          "items": {
+            "description": "Collection items for current page.",
+            "items": {
+              "$ref": "#/components/schemas/MissionResponse"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "limit": {
+            "description": "Current page size limit.",
+            "title": "Limit",
+            "type": "integer"
+          },
+          "offset": {
+            "description": "Offset position.",
+            "title": "Offset",
+            "type": "integer"
+          },
+          "total": {
+            "description": "Total number of items matching filter.",
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total",
+          "limit",
+          "offset"
+        ],
+        "title": "PaginatedResponse[MissionResponse]",
+        "type": "object"
+      },
+      "PaginatedResponse_OpportunityResponse_": {
+        "properties": {
+          "items": {
+            "description": "Collection items for current page.",
+            "items": {
+              "$ref": "#/components/schemas/OpportunityResponse"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "limit": {
+            "description": "Current page size limit.",
+            "title": "Limit",
+            "type": "integer"
+          },
+          "offset": {
+            "description": "Offset position.",
+            "title": "Offset",
+            "type": "integer"
+          },
+          "total": {
+            "description": "Total number of items matching filter.",
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total",
+          "limit",
+          "offset"
+        ],
+        "title": "PaginatedResponse[OpportunityResponse]",
+        "type": "object"
+      },
+      "ProfileReadinessResponse": {
+        "properties": {
+          "completeness_ratio": {
+            "title": "Completeness Ratio",
+            "type": "number"
+          },
+          "expired": {
+            "items": {
+              "$ref": "#/components/schemas/RequirementItem"
+            },
+            "title": "Expired",
+            "type": "array"
+          },
+          "expired_count": {
+            "title": "Expired Count",
+            "type": "integer"
+          },
+          "is_ready": {
+            "title": "Is Ready",
+            "type": "boolean"
+          },
+          "missing": {
+            "items": {
+              "$ref": "#/components/schemas/RequirementItem"
+            },
+            "title": "Missing",
+            "type": "array"
+          },
+          "missing_count": {
+            "title": "Missing Count",
+            "type": "integer"
+          },
+          "purpose": {
+            "title": "Purpose",
+            "type": "string"
+          },
+          "satisfied": {
+            "items": {
+              "$ref": "#/components/schemas/RequirementItem"
+            },
+            "title": "Satisfied",
+            "type": "array"
+          },
+          "satisfied_count": {
+            "title": "Satisfied Count",
+            "type": "integer"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "unverifiable": {
+            "items": {
+              "$ref": "#/components/schemas/RequirementItem"
+            },
+            "title": "Unverifiable",
+            "type": "array"
+          },
+          "unverifiable_count": {
+            "title": "Unverifiable Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "purpose",
+          "title",
+          "is_ready",
+          "completeness_ratio",
+          "satisfied_count",
+          "missing_count",
+          "unverifiable_count",
+          "expired_count"
+        ],
+        "title": "ProfileReadinessResponse",
+        "type": "object"
+      },
+      "ProposeActionRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "action_type": {
+            "description": "Action classification type.",
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Action Type",
+            "type": "string"
+          },
+          "description": {
+            "description": "Human-readable description of intended action.",
+            "maxLength": 4000,
+            "minLength": 1,
+            "title": "Description",
+            "type": "string"
+          },
+          "idempotency_key": {
+            "anyOf": [
+              {
+                "maxLength": 128,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Optional caller idempotency key.",
+            "title": "Idempotency Key"
+          },
+          "parameters": {
+            "additionalProperties": true,
+            "description": "Action execution arguments.",
+            "title": "Parameters",
+            "type": "object"
+          }
+        },
+        "required": [
+          "action_type",
+          "description"
+        ],
+        "title": "ProposeActionRequest",
+        "type": "object"
+      },
+      "ProposeClaimRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "auto_evaluate": {
+            "default": true,
+            "description": "Immediately evaluate against supporting facts.",
+            "title": "Auto Evaluate",
+            "type": "boolean"
+          },
+          "case_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Optional linked case ID.",
+            "title": "Case Id"
+          },
+          "mission_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Optional linked mission ID.",
+            "title": "Mission Id"
+          },
+          "purpose": {
+            "description": "Intended purpose for the assertion.",
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Purpose",
+            "type": "string"
+          },
+          "supporting_fact_ids": {
+            "description": "IDs of backing context facts.",
+            "items": {
+              "type": "string"
+            },
+            "title": "Supporting Fact Ids",
+            "type": "array"
+          },
+          "text": {
+            "description": "Assertion statement text.",
+            "maxLength": 4000,
+            "minLength": 1,
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "purpose",
+          "text"
+        ],
+        "title": "ProposeClaimRequest",
+        "type": "object"
+      },
+      "RecordFactRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "allowed_purposes": {
+            "description": "Allowed access purposes.",
+            "items": {
+              "type": "string"
+            },
+            "title": "Allowed Purposes",
+            "type": "array"
+          },
+          "confidence": {
+            "default": 1.0,
+            "description": "Confidence score.",
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Confidence",
+            "type": "number"
+          },
+          "expires_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Expiration timestamp.",
+            "title": "Expires At"
+          },
+          "key": {
+            "description": "Fact key.",
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Key",
+            "type": "string"
+          },
+          "namespace": {
+            "description": "Hierarchical namespace.",
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Namespace",
+            "type": "string"
+          },
+          "sensitivity": {
+            "$ref": "#/components/schemas/SensitivityLevel",
+            "default": "personal",
+            "description": "Sensitivity level."
+          },
+          "source_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Optional parent source ID.",
+            "title": "Source Id"
+          },
+          "source_reference": {
+            "default": "",
+            "description": "Provenance reference.",
+            "maxLength": 2048,
+            "title": "Source Reference",
+            "type": "string"
+          },
+          "source_type": {
+            "$ref": "#/components/schemas/SourceType",
+            "default": "user_input",
+            "description": "Provenance source type."
+          },
+          "value": {
+            "description": "Fact payload value.",
+            "title": "Value"
+          }
+        },
+        "required": [
+          "namespace",
+          "key",
+          "value"
+        ],
+        "title": "RecordFactRequest",
+        "type": "object"
+      },
+      "RegisterSourceRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "metadata": {
+            "additionalProperties": true,
+            "description": "Metadata dictionary.",
+            "title": "Metadata",
+            "type": "object"
+          },
+          "sensitivity": {
+            "$ref": "#/components/schemas/SensitivityLevel",
+            "default": "personal",
+            "description": "Default source sensitivity."
+          },
+          "source_reference": {
+            "default": "",
+            "description": "Source URI or reference.",
+            "maxLength": 2048,
+            "title": "Source Reference",
+            "type": "string"
+          },
+          "source_type": {
+            "$ref": "#/components/schemas/SourceType",
+            "default": "user_input",
+            "description": "Classification of context source."
+          },
+          "title": {
+            "description": "Human-readable title.",
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "title"
+        ],
+        "title": "RegisterSourceRequest",
+        "type": "object"
+      },
+      "RejectActionRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "reason": {
+            "anyOf": [
+              {
+                "maxLength": 1000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Optional rationale for rejection.",
+            "title": "Reason"
+          }
+        },
+        "title": "RejectActionRequest",
+        "type": "object"
+      },
+      "RejectClaimRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "reason": {
+            "anyOf": [
+              {
+                "maxLength": 1000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Reason for rejection.",
+            "title": "Reason"
+          }
+        },
+        "title": "RejectClaimRequest",
+        "type": "object"
+      },
+      "RejectFactRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "reason": {
+            "anyOf": [
+              {
+                "maxLength": 1000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Reason for rejection.",
+            "title": "Reason"
+          }
+        },
+        "title": "RejectFactRequest",
+        "type": "object"
+      },
+      "RequirementItem": {
+        "properties": {
+          "is_mandatory": {
+            "title": "Is Mandatory",
+            "type": "boolean"
+          },
+          "key": {
+            "title": "Key",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "minimum_verification": {
+            "title": "Minimum Verification",
+            "type": "string"
+          },
+          "namespace": {
+            "title": "Namespace",
+            "type": "string"
+          },
+          "purpose": {
+            "title": "Purpose",
+            "type": "string"
+          },
+          "requirement_id": {
+            "title": "Requirement Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "requirement_id",
+          "purpose",
+          "namespace",
+          "key",
+          "label",
+          "is_mandatory",
+          "minimum_verification"
+        ],
+        "title": "RequirementItem",
+        "type": "object"
+      },
+      "ResolveCaseRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "outcome": {
+            "description": "Case resolution summary.",
+            "maxLength": 1000,
+            "minLength": 1,
+            "title": "Outcome",
+            "type": "string"
+          }
+        },
+        "required": [
+          "outcome"
+        ],
+        "title": "ResolveCaseRequest",
+        "type": "object"
+      },
+      "RiskLevel": {
+        "description": "Risk severity classification for consequential actions.",
+        "enum": [
+          "low",
+          "medium",
+          "high",
+          "critical"
+        ],
+        "title": "RiskLevel",
+        "type": "string"
+      },
+      "SafeSourceResponse": {
+        "description": "Safe source representation omitting private tokens, credentials, and raw metadata.",
+        "properties": {
+          "created_at": {
+            "title": "Created At",
+            "type": "string"
+          },
+          "sensitivity": {
+            "title": "Sensitivity",
+            "type": "string"
+          },
+          "source_id": {
+            "title": "Source Id",
+            "type": "string"
+          },
+          "source_type": {
+            "title": "Source Type",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "user_id": {
+            "title": "User Id",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "source_id",
+          "user_id",
+          "title",
+          "source_type",
+          "sensitivity",
+          "created_at",
+          "version"
+        ],
+        "title": "SafeSourceResponse",
+        "type": "object"
+      },
+      "SensitivityLevel": {
+        "description": "Privacy and exposure boundaries for facts.",
+        "enum": [
+          "public",
+          "personal",
+          "sensitive"
+        ],
+        "title": "SensitivityLevel",
+        "type": "string"
+      },
+      "SourceType": {
+        "description": "Provenance origin of personal context facts and sources.",
+        "enum": [
+          "user_input",
+          "document",
+          "profile_import",
+          "system_derived",
+          "agent_inference",
+          "third_party",
+          "user_upload",
+          "third_party_verifier",
+          "system"
+        ],
+        "title": "SourceType",
+        "type": "string"
+      },
+      "SupersedeFactRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "expires_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "New expiration timestamp.",
+            "title": "Expires At"
+          },
+          "new_confidence": {
+            "default": 1.0,
+            "description": "New confidence score.",
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "New Confidence",
+            "type": "number"
+          },
+          "new_source_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "New context source ID if different.",
+            "title": "New Source Id"
+          },
+          "new_value": {
+            "description": "Replacement value.",
+            "title": "New Value"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "maxLength": 1000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Reason for superseding.",
+            "title": "Reason"
+          }
+        },
+        "required": [
+          "new_value"
+        ],
+        "title": "SupersedeFactRequest",
+        "type": "object"
+      },
+      "TransitionCaseRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "new_status": {
+            "$ref": "#/components/schemas/CaseStatus",
+            "description": "Target case status."
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "maxLength": 1000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Reason for transition.",
+            "title": "Reason"
+          }
+        },
+        "required": [
+          "new_status"
+        ],
+        "title": "TransitionCaseRequest",
+        "type": "object"
+      },
+      "TransitionMissionRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "new_status": {
+            "$ref": "#/components/schemas/MissionStatus",
+            "description": "Target lifecycle status."
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "maxLength": 1000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Reason for the status transition.",
+            "title": "Reason"
+          }
+        },
+        "required": [
+          "new_status"
+        ],
+        "title": "TransitionMissionRequest",
+        "type": "object"
+      },
+      "TransitionOpportunityRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "new_status": {
+            "$ref": "#/components/schemas/OpportunityStatus",
+            "description": "Target opportunity status."
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "maxLength": 1000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Reason for transition.",
+            "title": "Reason"
+          }
+        },
+        "required": [
+          "new_status"
+        ],
+        "title": "TransitionOpportunityRequest",
+        "type": "object"
+      },
+      "ValidationError": {
+        "properties": {
+          "ctx": {
+            "title": "Context",
+            "type": "object"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "title": "Location",
+            "type": "array"
+          },
+          "msg": {
+            "title": "Message",
+            "type": "string"
+          },
+          "type": {
+            "title": "Error Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError",
+        "type": "object"
+      },
+      "VerificationStatus": {
+        "description": "Trust and verification level of a fact.",
+        "enum": [
+          "unverified",
+          "user_verified",
+          "source_verified",
+          "rejected"
+        ],
+        "title": "VerificationStatus",
+        "type": "string"
+      },
+      "VerifyFactRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "status": {
+            "$ref": "#/components/schemas/VerificationStatus",
+            "default": "user_verified",
+            "description": "Verification status."
+          }
+        },
+        "title": "VerifyFactRequest",
+        "type": "object"
+      }
+    }
+  },
+  "info": {
+    "description": "Autonomous caseworker agent service for proactive opportunities, cases, and actions.",
+    "title": "JackVerse Caseworker API",
+    "version": "0.3.0"
+  },
+  "openapi": "3.1.0",
+  "paths": {
+    "/api/v1/actions/{action_id}": {
+      "get": {
+        "description": "Retrieve an action asserting case user ownership (404 on unowned actions).",
+        "operationId": "get_action_api_v1_actions__action_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "action_id",
+            "required": true,
+            "schema": {
+              "title": "Action Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ActionResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Action",
+        "tags": [
+          "actions"
+        ]
+      }
+    },
+    "/api/v1/actions/{action_id}/request-approval": {
+      "post": {
+        "description": "Request human approval for an action with ETag precondition enforcement.",
+        "operationId": "request_approval_api_v1_actions__action_id__request_approval_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "action_id",
+            "required": true,
+            "schema": {
+              "title": "Action Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ActionResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Request Approval",
+        "tags": [
+          "actions"
+        ]
+      }
+    },
+    "/api/v1/approvals": {
+      "get": {
+        "description": "List approvals belonging to the authenticated user.",
+        "operationId": "list_approvals_api_v1_approvals_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "status_filter",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/ApprovalStatus"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status Filter"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ApprovalResponse"
+                  },
+                  "title": "Response List Approvals Api V1 Approvals Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Approvals",
+        "tags": [
+          "approvals"
+        ]
+      }
+    },
+    "/api/v1/approvals/{approval_id}": {
+      "get": {
+        "description": "Retrieve an approval asserting user ownership (404 on unowned records).",
+        "operationId": "get_approval_api_v1_approvals__approval_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "approval_id",
+            "required": true,
+            "schema": {
+              "title": "Approval Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApprovalResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Approval",
+        "tags": [
+          "approvals"
+        ]
+      }
+    },
+    "/api/v1/approvals/{approval_id}/approve": {
+      "post": {
+        "description": "Approve an action with fingerprint verification and idempotent handling under ETag control.",
+        "operationId": "approve_action_api_v1_approvals__approval_id__approve_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "approval_id",
+            "required": true,
+            "schema": {
+              "title": "Approval Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ApproveActionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApprovalDecisionResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Approve Action",
+        "tags": [
+          "approvals"
+        ]
+      }
+    },
+    "/api/v1/approvals/{approval_id}/reject": {
+      "post": {
+        "description": "Reject an action with idempotent handling under ETag control.",
+        "operationId": "reject_action_api_v1_approvals__approval_id__reject_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "approval_id",
+            "required": true,
+            "schema": {
+              "title": "Approval Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RejectActionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApprovalDecisionResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Reject Action",
+        "tags": [
+          "approvals"
+        ]
+      }
+    },
+    "/api/v1/cases": {
+      "get": {
+        "description": "List cases belonging to the authenticated user.",
+        "operationId": "list_cases_api_v1_cases_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "status_filter",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/CaseStatus"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status Filter"
+            }
+          },
+          {
+            "description": "Items per page (max 100)",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "description": "Items per page (max 100)",
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Pagination offset",
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "description": "Pagination offset",
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaginatedResponse_CaseResponse_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Cases",
+        "tags": [
+          "cases"
+        ]
+      },
+      "post": {
+        "description": "Create a new case bound strictly to the authenticated caller.",
+        "operationId": "create_case_api_v1_cases_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateCaseRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CaseResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Case",
+        "tags": [
+          "cases"
+        ]
+      }
+    },
+    "/api/v1/cases/{case_id}": {
+      "get": {
+        "description": "Retrieve a case asserting user ownership (404 on unowned cases).",
+        "operationId": "get_case_api_v1_cases__case_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "case_id",
+            "required": true,
+            "schema": {
+              "title": "Case Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CaseResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Case",
+        "tags": [
+          "cases"
+        ]
+      }
+    },
+    "/api/v1/cases/{case_id}/actions": {
+      "get": {
+        "description": "List actions belonging to a case, verifying case ownership (404 on unowned cases).",
+        "operationId": "list_case_actions_api_v1_cases__case_id__actions_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "case_id",
+            "required": true,
+            "schema": {
+              "title": "Case Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ActionResponse"
+                  },
+                  "title": "Response List Case Actions Api V1 Cases  Case Id  Actions Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Case Actions",
+        "tags": [
+          "actions"
+        ]
+      },
+      "post": {
+        "description": "Propose an action with strict server-side risk level and approval requirement derivation.",
+        "operationId": "propose_action_api_v1_cases__case_id__actions_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "case_id",
+            "required": true,
+            "schema": {
+              "title": "Case Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProposeActionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ActionResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Propose Action",
+        "tags": [
+          "actions"
+        ]
+      }
+    },
+    "/api/v1/cases/{case_id}/resolve": {
+      "post": {
+        "description": "Resolve a case with recorded outcome and ETag precondition enforcement.",
+        "operationId": "resolve_case_api_v1_cases__case_id__resolve_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "case_id",
+            "required": true,
+            "schema": {
+              "title": "Case Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ResolveCaseRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CaseResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Resolve Case",
+        "tags": [
+          "cases"
+        ]
+      }
+    },
+    "/api/v1/cases/{case_id}/transition": {
+      "post": {
+        "description": "Execute state machine transition with ETag precondition enforcement.",
+        "operationId": "transition_case_api_v1_cases__case_id__transition_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "case_id",
+            "required": true,
+            "schema": {
+              "title": "Case Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TransitionCaseRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CaseResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Transition Case",
+        "tags": [
+          "cases"
+        ]
+      }
+    },
+    "/api/v1/claims": {
+      "get": {
+        "description": "List claims belonging to the authenticated user, optionally filtered by status, case_id, or mission_id.",
+        "operationId": "list_claims_api_v1_claims_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "status_filter",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/ClaimStatus"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status Filter"
+            }
+          },
+          {
+            "in": "query",
+            "name": "case_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Case Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "mission_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Mission Id"
+            }
+          },
+          {
+            "description": "Items per page (max 100)",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "description": "Items per page (max 100)",
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Pagination offset",
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "description": "Pagination offset",
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaginatedResponse_ClaimResponse_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Claims",
+        "tags": [
+          "claims"
+        ]
+      },
+      "post": {
+        "description": "Propose a verifiable assertion bound strictly to the caller's context vault facts.",
+        "operationId": "propose_claim_api_v1_claims_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProposeClaimRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClaimResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Propose Claim",
+        "tags": [
+          "claims"
+        ]
+      }
+    },
+    "/api/v1/claims/{claim_id}": {
+      "get": {
+        "description": "Retrieve a claim asserting user ownership (404 on unowned claims).",
+        "operationId": "get_claim_api_v1_claims__claim_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "claim_id",
+            "required": true,
+            "schema": {
+              "title": "Claim Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClaimResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Claim",
+        "tags": [
+          "claims"
+        ]
+      }
+    },
+    "/api/v1/claims/{claim_id}/evaluate": {
+      "post": {
+        "description": "Re-evaluate claim validity under ETag precondition enforcement.",
+        "operationId": "evaluate_claim_api_v1_claims__claim_id__evaluate_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "claim_id",
+            "required": true,
+            "schema": {
+              "title": "Claim Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EvaluateClaimRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClaimResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Evaluate Claim",
+        "tags": [
+          "claims"
+        ]
+      }
+    },
+    "/api/v1/claims/{claim_id}/reject": {
+      "post": {
+        "description": "Reject a claim under ETag precondition enforcement.",
+        "operationId": "reject_claim_api_v1_claims__claim_id__reject_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "claim_id",
+            "required": true,
+            "schema": {
+              "title": "Claim Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RejectClaimRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClaimResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Reject Claim",
+        "tags": [
+          "claims"
+        ]
+      }
+    },
+    "/api/v1/context/facts": {
+      "get": {
+        "description": "List active context facts belonging to the authenticated user (sanitized summaries).",
+        "operationId": "list_facts_api_v1_context_facts_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "namespace",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Namespace"
+            }
+          },
+          {
+            "description": "Items per page (max 100)",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "description": "Items per page (max 100)",
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Pagination offset",
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "description": "Pagination offset",
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaginatedResponse_FactSummaryResponse_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Facts",
+        "tags": [
+          "context"
+        ]
+      },
+      "post": {
+        "description": "Record a factual context item bound to the authenticated user.",
+        "operationId": "record_fact_api_v1_context_facts_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RecordFactRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FactResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Record Fact",
+        "tags": [
+          "context"
+        ]
+      }
+    },
+    "/api/v1/context/facts/{fact_id}": {
+      "get": {
+        "description": "Retrieve a context fact by ID, asserting user ownership (404 on unowned facts).",
+        "operationId": "get_fact_api_v1_context_facts__fact_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "fact_id",
+            "required": true,
+            "schema": {
+              "title": "Fact Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FactResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Fact",
+        "tags": [
+          "context"
+        ]
+      }
+    },
+    "/api/v1/context/facts/{fact_id}/reject": {
+      "post": {
+        "description": "Reject a context fact with ETag precondition enforcement.",
+        "operationId": "reject_fact_api_v1_context_facts__fact_id__reject_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "fact_id",
+            "required": true,
+            "schema": {
+              "title": "Fact Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RejectFactRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FactResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Reject Fact",
+        "tags": [
+          "context"
+        ]
+      }
+    },
+    "/api/v1/context/facts/{fact_id}/supersede": {
+      "post": {
+        "description": "Supersede a context fact with a newer version under ETag precondition enforcement.",
+        "operationId": "supersede_fact_api_v1_context_facts__fact_id__supersede_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "fact_id",
+            "required": true,
+            "schema": {
+              "title": "Fact Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SupersedeFactRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FactResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Supersede Fact",
+        "tags": [
+          "context"
+        ]
+      }
+    },
+    "/api/v1/context/facts/{fact_id}/verify": {
+      "post": {
+        "description": "Verify a context fact with ETag precondition enforcement.",
+        "operationId": "verify_fact_api_v1_context_facts__fact_id__verify_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "fact_id",
+            "required": true,
+            "schema": {
+              "title": "Fact Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VerifyFactRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FactResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Verify Fact",
+        "tags": [
+          "context"
+        ]
+      }
+    },
+    "/api/v1/context/packages": {
+      "post": {
+        "description": "Assemble a purpose-scoped, policy-gated context package with immutable access auditing.",
+        "operationId": "create_context_package_api_v1_context_packages_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreatePackageRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContextPackageResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Context Package",
+        "tags": [
+          "context"
+        ]
+      }
+    },
+    "/api/v1/context/readiness/{purpose}": {
+      "get": {
+        "description": "Evaluate user profile completeness/readiness against authoritative domain requirement sets.",
+        "operationId": "get_profile_readiness_api_v1_context_readiness__purpose__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "purpose",
+            "required": true,
+            "schema": {
+              "title": "Purpose",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProfileReadinessResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Profile Readiness",
+        "tags": [
+          "context"
+        ]
+      }
+    },
+    "/api/v1/context/sources": {
+      "get": {
+        "description": "List context sources registered for the authenticated user.",
+        "operationId": "list_sources_api_v1_context_sources_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/SafeSourceResponse"
+                  },
+                  "title": "Response List Sources Api V1 Context Sources Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Sources",
+        "tags": [
+          "context"
+        ]
+      },
+      "post": {
+        "description": "Register a context source, returning a sanitized response omitting sensitive credentials.",
+        "operationId": "register_source_api_v1_context_sources_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RegisterSourceRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SafeSourceResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Register Source",
+        "tags": [
+          "context"
+        ]
+      }
+    },
+    "/api/v1/context/sources/{source_id}": {
+      "get": {
+        "description": "Retrieve a context source by ID, asserting user ownership (404 on unowned sources).",
+        "operationId": "get_source_api_v1_context_sources__source_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "source_id",
+            "required": true,
+            "schema": {
+              "title": "Source Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SafeSourceResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Source",
+        "tags": [
+          "context"
+        ]
+      }
+    },
+    "/api/v1/events": {
+      "get": {
+        "description": "Stream domain events for the authenticated user using monotonic cursor pagination.",
+        "operationId": "list_events_api_v1_events_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "aggregate_type",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Aggregate Type"
+            }
+          },
+          {
+            "in": "query",
+            "name": "aggregate_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Aggregate Id"
+            }
+          },
+          {
+            "description": "Items per page (max 100)",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "description": "Items per page (max 100)",
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Monotonic event position cursor",
+            "in": "query",
+            "name": "after_position",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Monotonic event position cursor",
+              "title": "After Position"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CursorPaginatedResponse_DomainEventResponse_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Events",
+        "tags": [
+          "events"
+        ]
+      }
+    },
+    "/api/v1/missions": {
+      "get": {
+        "description": "List missions belonging to the authenticated user with offset pagination.",
+        "operationId": "list_missions_api_v1_missions_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "status_filter",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/MissionStatus"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status Filter"
+            }
+          },
+          {
+            "description": "Items per page (max 100)",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "description": "Items per page (max 100)",
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Pagination offset",
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "description": "Pagination offset",
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaginatedResponse_MissionResponse_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Missions",
+        "tags": [
+          "missions"
+        ]
+      },
+      "post": {
+        "description": "Create a new user mission, binding ownership strictly to the authenticated Principal.",
+        "operationId": "create_mission_api_v1_missions_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateMissionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MissionResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Mission",
+        "tags": [
+          "missions"
+        ]
+      }
+    },
+    "/api/v1/missions/{mission_id}": {
+      "get": {
+        "description": "Retrieve mission ensuring strict cross-user isolation (404 on unowned missions).",
+        "operationId": "get_mission_api_v1_missions__mission_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "mission_id",
+            "required": true,
+            "schema": {
+              "title": "Mission Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MissionResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Mission",
+        "tags": [
+          "missions"
+        ]
+      }
+    },
+    "/api/v1/missions/{mission_id}/cases": {
+      "get": {
+        "description": "List cases for a mission, verifying mission ownership (404 if not found).",
+        "operationId": "list_mission_cases_api_v1_missions__mission_id__cases_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "mission_id",
+            "required": true,
+            "schema": {
+              "title": "Mission Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/CaseResponse"
+                  },
+                  "title": "Response List Mission Cases Api V1 Missions  Mission Id  Cases Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Mission Cases",
+        "tags": [
+          "cases"
+        ]
+      },
+      "post": {
+        "description": "Convenience endpoint to create a case linked to a verified user mission.",
+        "operationId": "create_mission_case_api_v1_missions__mission_id__cases_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "mission_id",
+            "required": true,
+            "schema": {
+              "title": "Mission Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateCaseRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CaseResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Mission Case",
+        "tags": [
+          "cases"
+        ]
+      }
+    },
+    "/api/v1/missions/{mission_id}/pause": {
+      "post": {
+        "description": "Convenience endpoint to pause an active mission.",
+        "operationId": "pause_mission_api_v1_missions__mission_id__pause_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "mission_id",
+            "required": true,
+            "schema": {
+              "title": "Mission Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "reason",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Reason"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MissionResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Pause Mission",
+        "tags": [
+          "missions"
+        ]
+      }
+    },
+    "/api/v1/missions/{mission_id}/resume": {
+      "post": {
+        "description": "Convenience endpoint to resume a paused mission.",
+        "operationId": "resume_mission_api_v1_missions__mission_id__resume_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "mission_id",
+            "required": true,
+            "schema": {
+              "title": "Mission Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "reason",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Reason"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MissionResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Resume Mission",
+        "tags": [
+          "missions"
+        ]
+      }
+    },
+    "/api/v1/missions/{mission_id}/transition": {
+      "post": {
+        "description": "Transition mission status with strict ETag precondition verification.",
+        "operationId": "transition_mission_api_v1_missions__mission_id__transition_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "mission_id",
+            "required": true,
+            "schema": {
+              "title": "Mission Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TransitionMissionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MissionResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Transition Mission",
+        "tags": [
+          "missions"
+        ]
+      }
+    },
+    "/api/v1/opportunities": {
+      "get": {
+        "description": "List opportunities belonging to the authenticated user.",
+        "operationId": "list_opportunities_api_v1_opportunities_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "status_filter",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/OpportunityStatus"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status Filter"
+            }
+          },
+          {
+            "description": "Items per page (max 100)",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "description": "Items per page (max 100)",
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Pagination offset",
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "description": "Pagination offset",
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaginatedResponse_OpportunityResponse_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Opportunities",
+        "tags": [
+          "opportunities"
+        ]
+      },
+      "post": {
+        "description": "Discover opportunity with user-scoped deduplication (returns 201 for new, 200 for existing).",
+        "operationId": "create_or_deduplicate_opportunity_api_v1_opportunities_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateOpportunityRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OpportunityResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Or Deduplicate Opportunity",
+        "tags": [
+          "opportunities"
+        ]
+      }
+    },
+    "/api/v1/opportunities/{opportunity_id}": {
+      "get": {
+        "description": "Retrieve an opportunity asserting user ownership (404 on unowned records).",
+        "operationId": "get_opportunity_api_v1_opportunities__opportunity_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "opportunity_id",
+            "required": true,
+            "schema": {
+              "title": "Opportunity Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OpportunityResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Opportunity",
+        "tags": [
+          "opportunities"
+        ]
+      }
+    },
+    "/api/v1/opportunities/{opportunity_id}/transition": {
+      "post": {
+        "description": "Transition opportunity status with strict ETag precondition verification.",
+        "operationId": "transition_opportunity_api_v1_opportunities__opportunity_id__transition_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "opportunity_id",
+            "required": true,
+            "schema": {
+              "title": "Opportunity Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TransitionOpportunityRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OpportunityResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Transition Opportunity",
+        "tags": [
+          "opportunities"
+        ]
+      }
+    },
+    "/health/live": {
+      "get": {
+        "description": "Lightweight liveness probe checking process responsiveness.",
+        "operationId": "health_live_health_live_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "title": "Response Health Live Health Live Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Health Live",
+        "tags": [
+          "health"
+        ]
+      }
+    },
+    "/health/ready": {
+      "get": {
+        "description": "Lightweight readiness probe executing read-only database query without running migrations.",
+        "operationId": "health_ready_health_ready_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "title": "Response Health Ready Health Ready Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Health Ready",
+        "tags": [
+          "health"
+        ]
+      }
+    }
+  }
+}

@@ -3,6 +3,15 @@ FROM node:22-alpine AS builder
 
 WORKDIR /app
 
+# Build arguments for Vite compilation
+ARG VITE_JACKVERSE_DEV_AUTH=false
+ARG VITE_ENABLE_PROTOTYPES=false
+ARG VITE_CASEWORKER_API_URL=/api
+
+ENV VITE_JACKVERSE_DEV_AUTH=$VITE_JACKVERSE_DEV_AUTH
+ENV VITE_ENABLE_PROTOTYPES=$VITE_ENABLE_PROTOTYPES
+ENV VITE_CASEWORKER_API_URL=$VITE_CASEWORKER_API_URL
+
 # Copy dependency specifications
 COPY package.json package-lock.json* ./
 
