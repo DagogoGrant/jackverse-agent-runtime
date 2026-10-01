@@ -7,6 +7,7 @@ import {
   useRecordFact,
   useVerifyFact,
   useRejectFact,
+  useSupersedeFact,
 } from '../hooks/useCaseworker';
 import { TextureBadge } from '../components/ui/TextureBadge';
 import { TactileButton } from '../components/ui/TactileButton';
@@ -17,125 +18,260 @@ interface FactRowProps {
   fact: FactSummary;
   onVerify: (factId: string, version: number) => Promise<void>;
   onReject: (factId: string, version: number) => Promise<void>;
+  onSupersede: (factId: string, version: number, newValue: string, reason?: string) => Promise<void>;
 }
 
-const FactRow: React.FC<FactRowProps> = ({ fact, onVerify, onReject }) => {
+const FactRow: React.FC<FactRowProps> = ({ fact, onVerify, onReject, onSupersede }) => {
   const queryClient = useQueryClient();
-  const [revealed, setRevealed] = useState(false);
+  const [detailOpen, setDetailOpen] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
+  const [newValue, setNewValue] = useState('');
+  const [updateReason, setUpdateReason] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // On-demand detail fetching ONLY when explicitly revealed
-  const { data: detailData, isLoading } = useFactDetail(revealed ? fact.fact_id : null);
+  // On-demand detail fetching ONLY when explicitly opened/revealed
+  const { data: detailData, isLoading } = useFactDetail(detailOpen ? fact.fact_id : null);
   const isSensitive = fact.sensitivity === 'sensitive';
+  const isPersonal = fact.sensitivity === 'personal';
 
-  const handleToggleReveal = () => {
-    if (revealed) {
-      // User is masking: immediately remove cached detail query to prevent retention
+  const handleToggleDetail = () => {
+    if (detailOpen) {
+      // User is masking/hiding: immediately remove cached detail query to prevent retention
       queryClient.removeQueries({ queryKey: ['context', 'facts', 'detail', fact.fact_id] });
-      setRevealed(false);
+      setDetailOpen(false);
     } else {
-      setRevealed(true);
+      setDetailOpen(true);
+    }
+  };
+
+  const handleSupersedeSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newValue.trim()) return;
+    setIsSubmitting(true);
+    try {
+      await onSupersede(fact.fact_id, fact.version, newValue.trim(), updateReason.trim() || undefined);
+      setIsEditing(false);
+      setNewValue('');
+      setUpdateReason('');
+    } catch {
+      // Handled in ContextView
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
   return (
-    <div className="py-4 flex flex-col md:flex-row md:items-center justify-between gap-3 px-3 -mx-3 hover:bg-ink/50 transition-colors">
-      <div className="space-y-1 max-w-xl">
-        <div className="flex flex-wrap items-center gap-3">
-          <span className="font-machine text-xs text-grey-500 uppercase">
-            {fact.namespace}.{fact.key}
-          </span>
-          {fact.verification_status === 'user_verified' || fact.verification_status === 'source_verified' ? (
-            <span className="font-machine text-[10px] px-1.5 py-0.2 border border-paper text-pure uppercase">
-              VERIFIED
+    <div className="py-4 px-3 -mx-3 hover:bg-ink/50 transition-colors">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
+        <div className="space-y-1 max-w-xl">
+          <div className="flex flex-wrap items-center gap-3">
+            <span className="font-machine text-xs text-grey-500 uppercase">
+              {fact.namespace}.{fact.key}
             </span>
-          ) : fact.verification_status === 'rejected' ? (
-            <span className="font-machine text-[10px] px-1.5 py-0.2 border border-grey-500 text-grey-500 uppercase">
-              REJECTED
+            {fact.verification_status === 'user_verified' || fact.verification_status === 'source_verified' ? (
+              <span className="font-machine text-[10px] px-1.5 py-0.2 border border-paper text-pure uppercase">
+                VERIFIED
+              </span>
+            ) : fact.verification_status === 'rejected' ? (
+              <span className="font-machine text-[10px] px-1.5 py-0.2 border border-grey-500 text-grey-500 uppercase">
+                REJECTED
+              </span>
+            ) : (
+              <span className="font-machine text-[10px] px-1.5 py-0.2 border border-grey-700 text-grey-500 uppercase">
+                UNVERIFIED
+              </span>
+            )}
+            <span className="font-machine text-[10px] text-grey-500 uppercase">
+              v{fact.version}
             </span>
-          ) : (
-            <span className="font-machine text-[10px] px-1.5 py-0.2 border border-grey-700 text-grey-500 uppercase">
-              UNVERIFIED
-            </span>
-          )}
-          <span className="font-machine text-[10px] text-grey-500 uppercase">
-            v{fact.version}
-          </span>
-        </div>
+          </div>
 
-        {/* Fact Value Representation */}
-        <div className="font-interface text-sm text-pure pt-0.5">
-          {isSensitive ? (
-            revealed ? (
-              isLoading ? (
-                <span className="font-machine text-xs text-grey-500">
-                  Fetching protected detail...
-                </span>
+          {/* Fact Value Representation */}
+          <div className="font-interface text-sm text-pure pt-0.5">
+            {isSensitive ? (
+              detailOpen ? (
+                isLoading ? (
+                  <span className="font-machine text-xs text-grey-500">
+                    Fetching protected detail...
+                  </span>
+                ) : (
+                  <div className="flex items-center gap-2">
+                    <Lock className="w-3.5 h-3.5 text-pure shrink-0" />
+                    <span className="font-machine text-xs bg-canvas px-2 py-0.5 border border-grey-500">
+                      {String(detailData?.detail?.value ?? '[EMPTY]')}
+                    </span>
+                  </div>
+                )
               ) : (
-                <div className="flex items-center gap-2">
-                  <Lock className="w-3.5 h-3.5 text-pure shrink-0" />
-                  <span className="font-machine text-xs bg-canvas px-2 py-0.5 border border-grey-500">
+                <span className="font-machine text-xs tracking-widest text-grey-500 select-none">
+                  PRIVATE ••••••••••••
+                </span>
+              )
+            ) : isPersonal ? (
+              detailOpen ? (
+                isLoading ? (
+                  <span className="font-machine text-xs text-grey-500">
+                    Fetching personal detail...
+                  </span>
+                ) : (
+                  <span className="font-interface text-sm text-pure">
                     {String(detailData?.detail?.value ?? '[EMPTY]')}
                   </span>
-                </div>
+                )
+              ) : (
+                <span className="font-machine text-xs text-grey-500 italic">
+                  Personal record · Detail on demand
+                </span>
               )
             ) : (
-              <span className="font-machine text-xs tracking-widest text-grey-500 select-none">
-                PRIVATE ••••••••••••
-              </span>
-            )
-          ) : (
-            <span>{fact.preview || 'Recorded Value'}</span>
+              <span>{fact.preview || 'Recorded Value'}</span>
+            )}
+          </div>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-4 pl-0 md:pl-4">
+          <span className="font-machine text-xs uppercase text-grey-500">
+            {fact.sensitivity}
+          </span>
+
+          {/* Detail Controls for Sensitive & Personal Facts */}
+          {isSensitive && (
+            <button
+              type="button"
+              onClick={handleToggleDetail}
+              className="flex items-center gap-1.5 font-machine text-xs text-grey-300 hover:text-pure underline underline-offset-4"
+            >
+              {detailOpen ? (
+                <>
+                  <EyeOff className="w-3.5 h-3.5" />
+                  <span>Mask</span>
+                </>
+              ) : (
+                <>
+                  <Eye className="w-3.5 h-3.5" />
+                  <span>Reveal</span>
+                </>
+              )}
+            </button>
+          )}
+
+          {isPersonal && (
+            <button
+              type="button"
+              onClick={handleToggleDetail}
+              className="flex items-center gap-1.5 font-machine text-xs text-grey-300 hover:text-pure underline underline-offset-4"
+            >
+              {detailOpen ? (
+                <>
+                  <EyeOff className="w-3.5 h-3.5" />
+                  <span>Hide</span>
+                </>
+              ) : (
+                <>
+                  <Eye className="w-3.5 h-3.5" />
+                  <span>View</span>
+                </>
+              )}
+            </button>
+          )}
+
+          {/* Fact Update / Supersede Trigger */}
+          <button
+            type="button"
+            onClick={() => setIsEditing(!isEditing)}
+            className="font-machine text-xs text-grey-300 hover:text-pure underline underline-offset-4"
+          >
+            {isEditing ? 'Cancel' : 'Update'}
+          </button>
+
+          {/* Fact Lifecycle Controls (operates strictly from summary metadata without revealing value) */}
+          {fact.verification_status === 'unverified' && (
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => onVerify(fact.fact_id, fact.version)}
+                className="p-1 border border-grey-700 hover:border-paper text-grey-300 hover:text-pure text-xs font-machine"
+                title="Verify fact assertion"
+              >
+                <Check className="w-3.5 h-3.5" />
+              </button>
+              <button
+                type="button"
+                onClick={() => onReject(fact.fact_id, fact.version)}
+                className="p-1 border border-grey-700 hover:border-paper text-grey-500 hover:text-pure text-xs font-machine"
+                title="Reject fact assertion"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
           )}
         </div>
       </div>
 
-      <div className="flex flex-wrap items-center gap-4 pl-0 md:pl-4">
-        <span className="font-machine text-xs uppercase text-grey-500">
-          {fact.sensitivity}
-        </span>
+      {/* Inline Supersede / Update Editor */}
+      {isEditing && (
+        <form
+          onSubmit={handleSupersedeSubmit}
+          className="mt-3 p-4 border border-grey-700 bg-ink/70 space-y-3"
+        >
+          <div className="flex items-center justify-between border-b border-grey-700 pb-1.5">
+            <span className="font-machine text-[10px] text-grey-500 uppercase tracking-widest">
+              SUPERSEDE FACT // HISTORICAL LINEAGE PRESERVED
+            </span>
+            <span className="font-machine text-[10px] text-grey-500">
+              CURRENT: v{fact.version}
+            </span>
+          </div>
 
-        {isSensitive && (
-          <button
-            type="button"
-            onClick={handleToggleReveal}
-            className="flex items-center gap-1.5 font-machine text-xs text-grey-300 hover:text-pure underline underline-offset-4"
-          >
-            {revealed ? (
-              <>
-                <EyeOff className="w-3.5 h-3.5" />
-                <span>Mask</span>
-              </>
-            ) : (
-              <>
-                <Eye className="w-3.5 h-3.5" />
-                <span>Reveal</span>
-              </>
-            )}
-          </button>
-        )}
+          <div className="space-y-1">
+            <label className="font-machine text-[10px] text-grey-500 uppercase">
+              Replacement Value
+            </label>
+            <input
+              type="text"
+              value={newValue}
+              onChange={(e) => setNewValue(e.target.value)}
+              placeholder="Enter updated replacement value"
+              required
+              className="w-full bg-canvas border border-grey-700 px-3 py-1.5 text-sm text-pure font-interface outline-none focus:border-paper"
+            />
+          </div>
 
-        {/* Fact Lifecycle Controls (operates strictly from summary metadata without revealing value) */}
-        {fact.verification_status === 'unverified' && (
-          <div className="flex items-center gap-2">
+          <div className="space-y-1">
+            <label className="font-machine text-[10px] text-grey-500 uppercase">
+              Reason for Change (Optional)
+            </label>
+            <input
+              type="text"
+              value={updateReason}
+              onChange={(e) => setUpdateReason(e.target.value)}
+              placeholder="e.g. Promotion, corrected title, renewed credential"
+              className="w-full bg-canvas border border-grey-700 px-3 py-1.5 text-xs text-pure font-interface outline-none focus:border-paper"
+            />
+          </div>
+
+          <div className="flex items-center justify-end gap-2 pt-1">
             <button
               type="button"
-              onClick={() => onVerify(fact.fact_id, fact.version)}
-              className="p-1 border border-grey-700 hover:border-paper text-grey-300 hover:text-pure text-xs font-machine"
-              title="Verify fact assertion"
+              onClick={() => {
+                setIsEditing(false);
+                setNewValue('');
+                setUpdateReason('');
+              }}
+              className="px-2.5 py-1 text-xs font-machine border border-grey-700 hover:border-paper text-grey-500 hover:text-pure"
             >
-              <Check className="w-3.5 h-3.5" />
+              Cancel
             </button>
             <button
-              type="button"
-              onClick={() => onReject(fact.fact_id, fact.version)}
-              className="p-1 border border-grey-700 hover:border-paper text-grey-500 hover:text-pure text-xs font-machine"
-              title="Reject fact assertion"
+              type="submit"
+              disabled={isSubmitting || !newValue.trim()}
+              className="px-3 py-1 text-xs font-machine bg-pure text-canvas font-medium hover:bg-paper disabled:opacity-50"
             >
-              <X className="w-3.5 h-3.5" />
+              {isSubmitting ? 'Updating...' : 'Save Update →'}
             </button>
           </div>
-        )}
-      </div>
+        </form>
+      )}
     </div>
   );
 };
@@ -147,6 +283,7 @@ export const ContextView: React.FC = () => {
   const recordFact = useRecordFact();
   const verifyFact = useVerifyFact();
   const rejectFact = useRejectFact();
+  const supersedeFact = useSupersedeFact();
 
   const [showAddFact, setShowAddFact] = useState(false);
   const [namespace, setNamespace] = useState('identity');
@@ -214,6 +351,30 @@ export const ContextView: React.FC = () => {
       } else {
         setConcurrencyNotice(err.message || 'Rejection failed');
       }
+    }
+  };
+
+  const handleSupersede = async (factId: string, version: number, newValue: string, reason?: string) => {
+    setConcurrencyNotice(null);
+    try {
+      const etag = `"fact:${factId}:v${version}"`;
+      await supersedeFact.mutateAsync({
+        factId,
+        payload: {
+          new_value: newValue,
+          new_confidence: 1,
+          reason: reason || 'Updated by user via Context Vault',
+        },
+        etag,
+      });
+    } catch (err: any) {
+      if (err.name === 'PreconditionFailedError' || err.status === 412) {
+        setConcurrencyNotice("This fact was modified elsewhere. We've loaded the latest version. Please review before updating.");
+        refetch();
+      } else {
+        setConcurrencyNotice(err.message || 'Update failed');
+      }
+      throw err;
     }
   };
 
@@ -402,6 +563,7 @@ export const ContextView: React.FC = () => {
                     fact={f}
                     onVerify={handleVerify}
                     onReject={handleReject}
+                    onSupersede={handleSupersede}
                   />
                 ))}
               </div>

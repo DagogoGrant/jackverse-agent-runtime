@@ -10,6 +10,7 @@ import {
   useResolveCase,
   useProposeClaim,
   useEvaluateClaim,
+  useRequestActionApproval,
 } from '../hooks/useCaseworker';
 import { apiRequest } from '../api/client';
 import type { Claim } from '../api/types';
@@ -29,6 +30,7 @@ export const CaseDetailView: React.FC = () => {
   const resolveCase = useResolveCase();
   const proposeClaim = useProposeClaim();
   const evaluateClaim = useEvaluateClaim();
+  const requestApproval = useRequestActionApproval();
 
   const [concurrencyNotice, setConcurrencyNotice] = useState<string | null>(null);
   const [resolveOutcome, setResolveOutcome] = useState('');
@@ -465,8 +467,33 @@ export const CaseDetailView: React.FC = () => {
                         <TextureBadge status={act.status} />
                       </div>
                     </div>
-                    <div className="font-machine text-xs text-grey-500">
-                      TYPE: {act.action_type} · REQUIRES APPROVAL: {act.requires_approval ? 'YES' : 'NO'}
+                    <div className="flex items-center justify-between pt-1">
+                      <div className="font-machine text-xs text-grey-500">
+                        TYPE: {act.action_type} · REQUIRES APPROVAL: {act.requires_approval ? 'YES' : 'NO'}
+                      </div>
+                      {act.status === 'proposed' && act.requires_approval && (
+                        <TactileButton
+                          variant="secondary"
+                          size="sm"
+                          loading={requestApproval.isPending}
+                          onClick={async () => {
+                            setConcurrencyNotice(null);
+                            try {
+                              const etag = `"action:${act.action_id}:v${act.version}"`;
+                              await requestApproval.mutateAsync({ actionId: act.action_id, etag });
+                            } catch (err: any) {
+                              if (err.name === 'PreconditionFailedError' || err.status === 412) {
+                                setConcurrencyNotice("This action was modified elsewhere. We've loaded the latest version.");
+                                refetchCase();
+                              } else {
+                                setConcurrencyNotice(err.message || 'Approval request failed');
+                              }
+                            }
+                          }}
+                        >
+                          Request Approval →
+                        </TactileButton>
+                      )}
                     </div>
                   </div>
                 ))}

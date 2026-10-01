@@ -96,4 +96,23 @@ describe("Authoritative OpenAPI Contract Invariants", () => {
     expect(readinessRoute).toBeDefined();
     expect(readinessRoute.get).toBeDefined();
   });
+
+  it("POST /api/v1/actions/{action_id}/request-approval returns ActionResponse and does NOT return Approval", () => {
+    const route = paths["/api/v1/actions/{action_id}/request-approval"];
+    expect(route).toBeDefined();
+    expect(route.post).toBeDefined();
+    const respSchema = route.post.responses["200"].content["application/json"].schema;
+    expect(respSchema.$ref).toContain("ActionResponse");
+    expect(respSchema.$ref).not.toContain("ApprovalResponse");
+  });
+
+  it("POST /api/v1/context/facts/{fact_id}/supersede accepts SupersedeFactRequest and returns FactResponse", () => {
+    const route = paths["/api/v1/context/facts/{fact_id}/supersede"];
+    expect(route).toBeDefined();
+    expect(route.post).toBeDefined();
+    const reqBody = route.post.requestBody.content["application/json"].schema;
+    expect(reqBody.$ref).toContain("SupersedeFactRequest");
+    const respSchema = route.post.responses["200"].content["application/json"].schema;
+    expect(respSchema.$ref).toContain("FactResponse");
+  });
 });

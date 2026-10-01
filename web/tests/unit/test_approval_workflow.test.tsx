@@ -1,8 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import React from "react";
-import { render, screen, waitFor, fireEvent } from "@testing-library/react";
+import { render, screen, waitFor, fireEvent, renderHook, act } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { NeedsYouView } from "../../src/views/NeedsYouView";
+import { useRequestActionApproval } from "../../src/hooks/useCaseworker";
 
 describe("Approval Workflow & ETag Governance", () => {
   let queryClient: QueryClient;
@@ -183,5 +184,75 @@ describe("Approval Workflow & ETag Governance", () => {
       ? approveCallHeaders.get("If-Match")
       : (approveCallHeaders as any)["If-Match"];
     expect(ifMatch).toBe('"approval:app-101:v1"');
+  });
+
+  it("useRequestActionApproval sends Action ETag, returns ActionResponse, and invalidates queries", async () => {
+    let requestHeaders: HeadersInit | undefined;
+    let requestMethod: string | undefined;
+
+    const mockActionResponse = {
+      action_id: "act-501",
+      case_id: "case-001",
+      action_type: "submit_form",
+      description: "Submit candidate credentials to external portal",
+      parameters: { portal: "greenhouse" },
+      status: "awaiting_approval",
+      risk_level: "high",
+      requires_approval: true,
+      fingerprint: "sha256:abcd1234ef5678",
+      created_at: "2026-10-01T09:59:00Z",
+      version: 2,
+    };
+
+    vi.spyOn(globalThis, "fetch").mockImplementation((input: any, init: any) => {
+      const url = String(input);
+      if (url.includes("/actions/act-501/request-approval")) {
+        requestMethod = init?.method;
+        requestHeaders = init?.headers;
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          headers: new Headers({ ETag: '"action:act-501:v2"' }),
+          json: async () => mockActionResponse,
+        } as Response);
+      }
+      return Promise.reject(new Error("Unexpected route: " + url));
+    });
+
+    const invalidateSpy = vi.spyOn(queryClient, "invalidateQueries");
+
+    const wrapper = ({ children }: { children: React.ReactNode }) => (
+      <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+    );
+
+    const { result } = renderHook(() => useRequestActionApproval(), { wrapper });
+
+    let mutationResult: any;
+    await act(async () => {
+      mutationResult = await result.current.mutateAsync({
+        actionId: "act-501",
+        etag: '"action:act-501:v1"',
+      });
+    });
+
+    expect(requestMethod).toBe("POST");
+    const ifMatch = requestHeaders instanceof Headers
+      ? requestHeaders.get("If-Match")
+      : (requestHeaders as any)["If-Match"];
+    expect(ifMatch).toBe('"action:act-501:v1"');
+
+    // Contract: returns action (ActionResponse) and Action ETag, NOT approval
+    expect(mutationResult.action).toBeDefined();
+    expect(mutationResult.action.action_id).toBe("act-501");
+    expect(mutationResult.action.status).toBe("awaiting_approval");
+    expect(mutationResult.etag).toBe('"action:act-501:v2"');
+    expect(mutationResult.approval).toBeUndefined();
+
+    // Invalidation check
+    const invalidatedKeys = invalidateSpy.mock.calls.map((c) => c[0]?.queryKey);
+    expect(invalidatedKeys.some((k) => k?.[0] === "approvals")).toBe(true);
+    expect(invalidatedKeys.some((k) => k?.[0] === "action" && k?.[1] === "act-501")).toBe(true);
+    expect(invalidatedKeys.some((k) => k?.[0] === "actions")).toBe(true);
+    expect(invalidatedKeys.some((k) => k?.[0] === "events")).toBe(true);
   });
 });

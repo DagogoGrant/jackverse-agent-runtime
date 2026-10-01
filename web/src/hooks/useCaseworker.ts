@@ -263,17 +263,18 @@ export function useRequestActionApproval() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async ({ actionId, etag }: { actionId: string; etag: string }) => {
-      const res = await apiRequest<Approval>(
+      const res = await apiRequest<Action>(
         `/actions/${actionId}/request-approval`,
         {
           method: 'POST',
         },
         etag
       );
-      return { approval: res.data, etag: res.etag };
+      return { action: res.data, etag: res.etag };
     },
-    onSuccess: () => {
+    onSuccess: (_, vars) => {
       queryClient.invalidateQueries({ queryKey: ['approvals'] });
+      queryClient.invalidateQueries({ queryKey: ['action', vars.actionId] });
       queryClient.invalidateQueries({ queryKey: ['actions'] });
       queryClient.invalidateQueries({ queryKey: ['events'] });
     },
@@ -540,7 +541,7 @@ export function useSupersedeFact() {
         },
         etag
       );
-      return res.data;
+      return { fact: res.data, etag: res.etag };
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['context', 'facts'] });

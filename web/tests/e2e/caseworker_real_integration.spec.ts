@@ -183,8 +183,8 @@ test.describe('Caseworker Real Integration Suite (Live FastAPI + Temporary SQLit
     await expect(page.locator('text=STATUS: SHORTLISTED')).toBeVisible();
   });
 
-  // FLOW E: Context Flow (Sensitive Masking, Reveal, Mask, and Lifecycle without value reveal)
-  test('Flow E: Context Fact sensitivity masking, on-demand reveal, and non-revealing lifecycle', async ({ page }) => {
+  // FLOW E: Context Flow (Sensitive Masking, Personal Detail On-Demand, Supersede Update, and Concurrency)
+  test('Flow E: Fact sensitivity masking, on-demand reveal, and non-revealing lifecycle', async ({ page, request }) => {
     await page.goto('/context');
 
     // 1. Record sensitive fact
@@ -196,34 +196,114 @@ test.describe('Caseworker Real Integration Suite (Live FastAPI + Temporary SQLit
 
     await page.locator('button[type="submit"]:has-text("Record Fact →")').click();
 
-    // Locate fact row
-    const factRow = page.locator('div', { hasText: 'national_identity_number' }).first();
-    await expect(factRow).toBeVisible();
+    // Locate sensitive fact row
+    const sensRow = page.locator('div.py-4').filter({ hasText: 'identity.national_identity_number' }).first();
+    await expect(sensRow).toBeVisible();
 
     // Sensitive value should be masked initially
-    await expect(factRow.locator('text=PRIVATE ••••••••••••')).toBeVisible();
+    await expect(sensRow.locator('text=PRIVATE ••••••••••••')).toBeVisible();
     await expect(page.locator('text=ID-SECRET-99412')).toHaveCount(0);
 
     // Reveal value
-    const revealBtn = factRow.locator('button', { hasText: 'Reveal' });
+    const revealBtn = sensRow.locator('button', { hasText: 'Reveal' });
     await revealBtn.click();
     await expect(page.locator('text=ID-SECRET-99412')).toBeVisible();
 
     // Mask value
-    const maskBtn = factRow.locator('button', { hasText: 'Mask' });
+    const maskBtn = sensRow.locator('button', { hasText: 'Mask' });
     await maskBtn.click();
-    await expect(factRow.locator('text=PRIVATE ••••••••••••')).toBeVisible();
+    await expect(sensRow.locator('text=PRIVATE ••••••••••••')).toBeVisible();
     await expect(page.locator('text=ID-SECRET-99412')).toHaveCount(0);
 
     // Verify fact without revealing raw value
-    const verifyBtn = factRow.locator('button[title="Verify fact assertion"]');
+    const verifyBtn = sensRow.locator('button[title="Verify fact assertion"]');
     await expect(verifyBtn).toBeVisible();
     await verifyBtn.click();
 
     // Status should become VERIFIED
-    await expect(factRow.locator('text=VERIFIED')).toBeVisible();
+    await expect(sensRow.locator('text=VERIFIED')).toBeVisible();
     // Raw value must still be unrevealed
-    await expect(factRow.locator('text=PRIVATE ••••••••••••')).toBeVisible();
+    await expect(sensRow.locator('text=PRIVATE ••••••••••••')).toBeVisible();
+
+    // 2. Record personal fact
+    await page.locator('button', { hasText: '+ Add Fact' }).click();
+    await page.locator('form select').first().selectOption('career');
+    await page.locator('input[placeholder*="legal_name"]').fill('job_title');
+    await page.locator('form select').nth(1).selectOption('personal');
+    await page.locator('input[placeholder*="John Doe"]').fill('Staff Software Engineer');
+
+    await page.locator('button[type="submit"]:has-text("Record Fact →")').click();
+
+    // Locate personal fact row
+    const personalRow = page.locator('div.py-4').filter({ hasText: 'career.job_title' }).first();
+    await expect(personalRow).toBeVisible();
+
+    // Personal value must NOT be in the page text initially (Detail on demand)
+    await expect(personalRow.locator('text=Personal record · Detail on demand')).toBeVisible();
+    await expect(page.locator('text=Staff Software Engineer')).toHaveCount(0);
+
+    // Click "View" to fetch personal detail on demand
+    const viewBtn = personalRow.locator('button', { hasText: 'View' });
+    await viewBtn.click();
+    await expect(page.locator('text=Staff Software Engineer')).toBeVisible();
+
+    // Click "Hide" to purge and return to safe unrevealed state
+    const hideBtn = personalRow.locator('button', { hasText: 'Hide' });
+    await hideBtn.click();
+    await expect(personalRow.locator('text=Personal record · Detail on demand')).toBeVisible();
+    await expect(page.locator('text=Staff Software Engineer')).toHaveCount(0);
+
+    // 3. Test inline Supersede / Update from browser
+    const updateBtn = personalRow.locator('button', { hasText: 'Update' });
+    await updateBtn.click();
+
+    await expect(page.locator('text=SUPERSEDE FACT // HISTORICAL LINEAGE PRESERVED')).toBeVisible();
+    await page.locator('input[placeholder*="Enter updated replacement value"]').fill('Principal Systems Architect');
+    await page.locator('input[placeholder*="Promotion, corrected title"]').fill('Promotion 2026');
+    await page.locator('button[type="submit"]:has-text("Save Update →")').click();
+
+    // Old fact is no longer active; new fact row with updated value appears in active list
+    const updatedPersonalRow = page.locator('div.py-4').filter({ hasText: 'career.job_title' }).first();
+    await expect(updatedPersonalRow).toBeVisible();
+    // View replacement value
+    await updatedPersonalRow.locator('button', { hasText: 'View' }).click();
+    await expect(page.locator('text=Principal Systems Architect')).toBeVisible();
+    await expect(page.locator('text=Staff Software Engineer')).toHaveCount(0);
+
+    // 4. Test stale supersede ETag concurrency handling (412)
+    await updatedPersonalRow.locator('button', { hasText: 'Update' }).click();
+    await expect(page.locator('text=SUPERSEDE FACT // HISTORICAL LINEAGE PRESERVED')).toBeVisible();
+
+    // In background via API, bump this fact's version out-of-band by superseding it
+    const activeFactsRes = await request.get('http://127.0.0.1:8089/api/v1/context/facts?namespace=career', {
+      headers: { 'X-JackVerse-User': 'alice' },
+    });
+    const activeFactsData = await activeFactsRes.json();
+    const currentFact = activeFactsData.items.find((f: any) => f.key === 'job_title');
+    expect(currentFact).toBeDefined();
+
+    // Out-of-band supersede to bump version and invalidate browser's cached ETag
+    await request.post(`http://127.0.0.1:8089/api/v1/context/facts/${currentFact.fact_id}/supersede`, {
+      headers: {
+        'X-JackVerse-User': 'alice',
+        'If-Match': `"fact:${currentFact.fact_id}:v${currentFact.version}"`,
+        'Content-Type': 'application/json',
+      },
+      data: {
+        new_value: 'Out-Of-Band Bump Value',
+        new_confidence: 1,
+        reason: 'Simulated concurrent update',
+      },
+    });
+
+    // Now submit the form in the browser using the stale ETag
+    await page.locator('input[placeholder*="Enter updated replacement value"]').fill('Conflicting Value');
+    await page.locator('button[type="submit"]:has-text("Save Update →")').click();
+
+    // Verify 412 concurrency notice is shown
+    await expect(
+      page.locator('text=This fact was modified elsewhere. We\'ve loaded the latest version. Please review before updating.')
+    ).toBeVisible();
   });
 
   // FLOW F: Claim Flow (Verified Fact -> Propose Claim -> Evaluate -> Supported)
@@ -319,11 +399,18 @@ test.describe('Caseworker Real Integration Suite (Live FastAPI + Temporary SQLit
     expect(action.status).toBe('proposed');
     expect(action.risk_level).toBe('high');
 
-    // 3. Request approval under Action ETag (transitions action to awaiting_approval and creates pending Approval)
-    const reqApprovalRes = await request.post(`http://127.0.0.1:8089/api/v1/actions/${action.action_id}/request-approval`, {
-      headers: { 'X-JackVerse-User': 'alice', 'If-Match': actionEtag },
-    });
-    expect(reqApprovalRes.status()).toBe(200);
+    // 3. Navigate to case in browser and exercise the UI "Request Approval →" button
+    await page.goto(`/cases/${caseItem.case_id}`);
+    await expect(page.locator('text=Submit candidate credentials to external portal')).toBeVisible();
+    await expect(page.locator('span', { hasText: 'high RISK' })).toBeVisible();
+
+    const reqApprovalBtn = page.locator('button', { hasText: 'Request Approval →' });
+    await expect(reqApprovalBtn).toBeVisible();
+    await reqApprovalBtn.click();
+
+    // Action status updates to awaiting_approval
+    await expect(page.getByText('awaiting approval', { exact: true })).toBeVisible();
+    await expect(page.locator('button', { hasText: 'Request Approval →' })).toHaveCount(0);
 
     // 4. Open Needs You view in browser
     await page.goto('/approvals');
