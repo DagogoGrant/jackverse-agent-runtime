@@ -15,7 +15,7 @@ export const TextureBadge: React.FC<TextureBadgeProps> = ({ status, className })
       <span
         className={twMerge(
           clsx(
-            'inline-flex items-center gap-1.5 px-2 py-0.5 text-xs font-machine uppercase tracking-widest border border-grey-500 texture-hatch text-pure',
+            'inline-flex items-center gap-1.5 px-2 py-0.5 text-xs font-machine uppercase tracking-widest border border-jv-rule-strong texture-hatch text-jv-ink select-none',
             className
           )
         )}
@@ -31,12 +31,12 @@ export const TextureBadge: React.FC<TextureBadgeProps> = ({ status, className })
       <span
         className={twMerge(
           clsx(
-            'inline-flex items-center gap-1.5 px-2 py-0.5 text-xs font-machine uppercase tracking-widest border border-paper bg-canvas text-pure',
+            'inline-flex items-center gap-1.5 px-2 py-0.5 text-xs font-machine uppercase tracking-widest border border-jv-ink bg-jv-bg text-jv-ink select-none',
             className
           )
         )}
       >
-        <span className="w-1.5 h-1.5 rounded-full bg-pure" />
+        <span className="w-1.5 h-1.5 bg-jv-ink inline-block" />
         <span>{status.replace(/_/g, ' ')}</span>
       </span>
     );
@@ -47,12 +47,12 @@ export const TextureBadge: React.FC<TextureBadgeProps> = ({ status, className })
       <span
         className={twMerge(
           clsx(
-            'inline-flex items-center gap-1.5 px-2 py-0.5 text-xs font-machine uppercase tracking-widest border border-grey-700 bg-canvas text-grey-300',
+            'inline-flex items-center gap-1.5 px-2 py-0.5 text-xs font-machine uppercase tracking-widest border border-jv-rule bg-jv-surface text-jv-ink-soft select-none',
             className
           )
         )}
       >
-        <span className="w-1.5 h-1.5 rounded-full border border-grey-300" />
+        <span className="w-1.5 h-1.5 border border-jv-ink-soft inline-block" />
         <span>{status.replace(/_/g, ' ')}</span>
       </span>
     );
@@ -63,12 +63,12 @@ export const TextureBadge: React.FC<TextureBadgeProps> = ({ status, className })
       <span
         className={twMerge(
           clsx(
-            'inline-flex items-center gap-1.5 px-2 py-0.5 text-xs font-machine uppercase tracking-widest border border-pure bg-pure text-canvas font-semibold',
+            'inline-flex items-center gap-1.5 px-2 py-0.5 text-xs font-machine uppercase tracking-widest border border-jv-ink bg-jv-ink text-jv-bg font-semibold select-none',
             className
           )
         )}
       >
-        <span className="w-1.5 h-1.5 bg-canvas" />
+        <span className="w-1.5 h-1.5 bg-jv-bg inline-block" />
         <span>{status.replace(/_/g, ' ')}</span>
       </span>
     );
@@ -79,7 +79,7 @@ export const TextureBadge: React.FC<TextureBadgeProps> = ({ status, className })
       <span
         className={twMerge(
           clsx(
-            'inline-flex items-center gap-1.5 px-2 py-0.5 text-xs font-machine uppercase tracking-widest border border-grey-700 text-grey-500',
+            'inline-flex items-center gap-1.5 px-2 py-0.5 text-xs font-machine uppercase tracking-widest border border-jv-rule text-jv-muted select-none',
             className
           )
         )}
@@ -95,7 +95,7 @@ export const TextureBadge: React.FC<TextureBadgeProps> = ({ status, className })
     <span
       className={twMerge(
         clsx(
-          'inline-flex items-center gap-1.5 px-2 py-0.5 text-xs font-machine uppercase tracking-widest border border-grey-700 text-grey-300',
+          'inline-flex items-center gap-1.5 px-2 py-0.5 text-xs font-machine uppercase tracking-widest border border-jv-rule text-jv-ink-soft select-none',
           className
         )
       )}

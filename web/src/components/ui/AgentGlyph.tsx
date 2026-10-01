@@ -21,14 +21,14 @@ export const AgentGlyph: React.FC<AgentGlyphProps> = ({
     >
       {/* Outer concentric square */}
       <div
-        className={`absolute inset-0 border border-grey-500 transition-transform duration-700 ${
-          active ? 'rotate-45 scale-90 border-pure' : 'rotate-0'
+        className={`absolute inset-0 border border-jv-rule transition-transform duration-700 ${
+          active ? 'rotate-45 scale-90 border-jv-ink' : 'rotate-0'
         }`}
       />
       {/* Inner concentric core */}
       <div
-        className={`w-1.5 h-1.5 bg-paper transition-all duration-300 ${
-          active ? 'scale-125 bg-pure animate-pulse' : 'scale-75 opacity-70'
+        className={`w-1.5 h-1.5 bg-jv-ink transition-all duration-300 ${
+          active ? 'scale-125 animate-pulse' : 'scale-75 opacity-60'
         }`}
       />
     </div>

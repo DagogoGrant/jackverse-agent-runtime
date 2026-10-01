@@ -16,13 +16,27 @@ export const MorphText: React.FC<MorphTextProps> = ({
 
   useEffect(() => {
     if (text !== currentText) {
+      const prefersReducedMotion =
+        typeof window !== 'undefined' &&
+        window.matchMedia &&
+        window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+      if (prefersReducedMotion) {
+        const timer = setTimeout(() => {
+          setCurrentText(text);
+        }, 0);
+        return () => clearTimeout(timer);
+      }
+
       const timer1 = setTimeout(() => {
         setIsTransitioning(true);
       }, 0);
+
       const timer2 = setTimeout(() => {
         setCurrentText(text);
         setIsTransitioning(false);
       }, 120);
+
       return () => {
         clearTimeout(timer1);
         clearTimeout(timer2);
@@ -32,9 +46,9 @@ export const MorphText: React.FC<MorphTextProps> = ({
 
   return (
     <Component
-      className={`inline-block transition-all duration-150 ${
+      className={`inline-block transition-all duration-base ease-editorial ${
         isTransitioning
-          ? 'opacity-0 translate-y-1'
+          ? 'opacity-0 -translate-y-1'
           : 'opacity-100 translate-y-0'
       } ${className}`}
     >

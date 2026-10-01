@@ -18,27 +18,27 @@ export const TactileButton: React.FC<TactileButtonProps> = ({
   ...props
 }) => {
   const baseStyles =
-    'relative inline-flex items-center justify-center font-interface font-medium transition-all duration-150 ease-out select-none focus:outline-none focus-visible:ring-2 focus-visible:ring-paper active:scale-tactile disabled:opacity-40 disabled:cursor-not-allowed disabled:active:scale-100';
+    'relative inline-flex items-center justify-center font-interface font-medium transition-colors duration-fast ease-editorial select-none focus:outline-none focus-visible:ring-2 focus-visible:ring-jv-ink active:scale-tactile disabled:opacity-40 disabled:cursor-not-allowed disabled:active:scale-100';
 
   const variants = {
-    // Primary: Pure white surface -> Canvas black surface on hover
+    // Primary: Solid ink surface with inverted text, reverses on hover
     primary:
-      'bg-pure text-canvas border border-pure hover:bg-canvas hover:text-pure active:bg-ink',
-    // Secondary: Canvas black surface with hairline -> pure white on hover
+      'bg-jv-ink text-jv-bg border border-jv-ink hover:bg-jv-bg hover:text-jv-ink active:bg-jv-surface',
+    // Secondary: Elevated surface with subtle hairline
     secondary:
-      'bg-canvas text-paper border border-grey-700 hover:border-paper hover:text-pure',
-    // Outline: Minimal hairline
+      'bg-jv-surface text-jv-ink border border-jv-rule hover:border-jv-rule-strong hover:text-jv-ink',
+    // Outline: Minimal transparent background with hairline
     outline:
-      'bg-transparent text-paper border border-grey-700 hover:border-paper hover:bg-ink',
-    // Danger: Stark white text with heavy hairline border
+      'bg-transparent text-jv-ink border border-jv-rule hover:border-jv-ink hover:bg-jv-surface',
+    // Danger: Stark border with tactile response
     danger:
-      'bg-canvas text-paper border border-grey-500 hover:border-paper hover:bg-ink',
+      'bg-jv-bg text-jv-ink border border-jv-rule-strong hover:border-jv-ink hover:bg-jv-surface',
   };
 
   const sizes = {
-    sm: 'text-xs px-2.5 py-1 tracking-wider uppercase',
-    md: 'text-sm px-4 py-2 tracking-wide',
-    lg: 'text-base px-6 py-3 tracking-wide',
+    sm: 'text-xs px-2.5 py-1 tracking-wider uppercase font-machine',
+    md: 'text-sm px-4 py-2 tracking-wide font-interface',
+    lg: 'text-base px-6 py-3 tracking-wide font-interface',
   };
 
   return (
@@ -49,8 +49,8 @@ export const TactileButton: React.FC<TactileButtonProps> = ({
     >
       {loading ? (
         <span className="inline-flex items-center gap-2">
-          <span className="w-2 h-2 rounded-full bg-current animate-ping" />
-          <span>Processing...</span>
+          <span className="w-1.5 h-1.5 rounded-full bg-current animate-ping" />
+          <span className="font-machine text-xs">Processing...</span>
         </span>
       ) : (
         children

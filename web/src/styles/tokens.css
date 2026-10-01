@@ -7,24 +7,83 @@
 @tailwind utilities;
 
 @layer base {
-  :root {
-    --color-canvas: #050505;
-    --color-ink: #0A0A0A;
-    --color-paper: #F4F3EF;
-    --color-white: #FFFFFF;
-    --color-grey-100: #E8E7E3;
-    --color-grey-300: #B8B7B2;
-    --color-grey-500: #777672;
-    --color-grey-700: #2D2D2B;
+  :root,
+  html[data-theme="paper"] {
+    /* Primary Identity: Paper (Warm architectural, editorial print) */
+    --jv-bg: #F2F0E9;
+    --jv-surface: #F7F5EF;
+    --jv-surface-sunken: #E7E4DC;
+    --jv-ink: #0A0A09;
+    --jv-ink-soft: #34332F;
+    --jv-muted: #79766E;
+    --jv-rule: rgba(10, 10, 9, 0.14);
+    --jv-rule-strong: rgba(10, 10, 9, 0.32);
+    --jv-inverse-bg: #0A0A09;
+    --jv-inverse-fg: #F2F0E9;
+    --jv-selection-bg: #0A0A09;
+    --jv-selection-fg: #F2F0E9;
+    --jv-hatch: rgba(10, 10, 9, 0.22);
+    --jv-dot: rgba(10, 10, 9, 0.16);
 
+    /* Backwards compatible mappings */
+    --color-canvas: var(--jv-bg);
+    --color-ink: var(--jv-surface);
+    --color-paper: var(--jv-ink);
+    --color-white: var(--jv-ink);
+    --color-grey-100: var(--jv-ink);
+    --color-grey-300: var(--jv-ink-soft);
+    --color-grey-500: var(--jv-muted);
+    --color-grey-700: var(--jv-rule);
+
+    color-scheme: light;
+  }
+
+  html[data-theme="ink"] {
+    /* Alternate Identity: Ink (Photographic darkroom, night operations) */
+    --jv-bg: #050505;
+    --jv-surface: #0A0A09;
+    --jv-surface-sunken: #000000;
+    --jv-ink: #F2F0E9;
+    --jv-ink-soft: #C5C1B8;
+    --jv-muted: #77736C;
+    --jv-rule: rgba(242, 240, 233, 0.14);
+    --jv-rule-strong: rgba(242, 240, 233, 0.32);
+    --jv-inverse-bg: #F2F0E9;
+    --jv-inverse-fg: #050505;
+    --jv-selection-bg: #F2F0E9;
+    --jv-selection-fg: #050505;
+    --jv-hatch: rgba(242, 240, 233, 0.22);
+    --jv-dot: rgba(242, 240, 233, 0.16);
+
+    /* Backwards compatible mappings */
+    --color-canvas: var(--jv-bg);
+    --color-ink: var(--jv-surface);
+    --color-paper: var(--jv-ink);
+    --color-white: var(--jv-ink);
+    --color-grey-100: var(--jv-ink);
+    --color-grey-300: var(--jv-ink-soft);
+    --color-grey-500: var(--jv-muted);
+    --color-grey-700: var(--jv-rule);
+
+    color-scheme: dark;
+  }
+
+  :root {
     --font-display: "Instrument Serif", Georgia, serif;
     --font-interface: "Geist", -apple-system, BlinkMacSystemFont, sans-serif;
     --font-machine: "Geist Mono", ui-monospace, monospace;
+
+    /* Semantic Motion Tokens */
+    --motion-instant: 80ms;
+    --motion-fast: 140ms;
+    --motion-base: 220ms;
+    --motion-page: 420ms;
+    --ease-editorial: cubic-bezier(0.16, 1, 0.3, 1);
   }
 
   body {
-    background-color: var(--color-canvas);
-    color: var(--color-paper);
+    background-color: var(--jv-bg);
+    color: var(--jv-ink);
     font-family: var(--font-interface);
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
@@ -34,8 +93,27 @@
   }
 
   ::selection {
-    background-color: var(--color-paper);
-    color: var(--color-canvas);
+    background-color: var(--jv-selection-bg);
+    color: var(--jv-selection-fg);
+  }
+
+  /* View Transitions API progressive enhancement */
+  ::view-transition-old(root),
+  ::view-transition-new(root) {
+    animation-duration: var(--motion-base);
+    animation-timing-function: var(--ease-editorial);
+  }
+
+  /* Authored Theme Wash Class applied during explicit toggle */
+  html.theme-wash,
+  html.theme-wash *,
+  html.theme-wash *::before,
+  html.theme-wash *::after {
+    transition: background-color var(--motion-page) var(--ease-editorial),
+                border-color var(--motion-page) var(--ease-editorial),
+                color var(--motion-page) var(--ease-editorial),
+                stroke var(--motion-page) var(--ease-editorial),
+                fill var(--motion-page) var(--ease-editorial) !important;
   }
 }
 
@@ -43,25 +121,47 @@
   .texture-hatch {
     background-image: repeating-linear-gradient(
       -45deg,
-      #2D2D2B,
-      #2D2D2B 2px,
+      var(--jv-hatch),
+      var(--jv-hatch) 2px,
       transparent 2px,
       transparent 6px
     );
   }
 
   .texture-dots {
-    background-image: radial-gradient(#2D2D2B 1px, transparent 1px);
+    background-image: radial-gradient(var(--jv-dot) 1px, transparent 1px);
     background-size: 8px 8px;
   }
 
   .border-hairline {
     border-width: 1px;
-    border-color: #2D2D2B;
+    border-color: var(--jv-rule);
   }
 
-  .border-hairline-light {
+  .border-hairline-strong {
     border-width: 1px;
-    border-color: #777672;
+    border-color: var(--jv-rule-strong);
+  }
+}
+
+/* Reduced motion disables nonessential choreography */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+
+  html.theme-wash,
+  html.theme-wash * {
+    transition: none !important;
+  }
+
+  ::view-transition-group(*),
+  ::view-transition-old(*),
+  ::view-transition-new(*) {
+    animation: none !important;
   }
 }
