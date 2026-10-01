@@ -17,6 +17,33 @@ import type { Claim } from '../api/types';
 import { TextureBadge } from '../components/ui/TextureBadge';
 import { TactileButton } from '../components/ui/TactileButton';
 
+function humanizeEvent(eventType: string): string {
+  switch (eventType) {
+    case 'case_created':
+      return 'Case created and registered';
+    case 'case_transitioned':
+      return 'Case status transitioned';
+    case 'case_resolved':
+      return 'Case resolved with verified outcome';
+    case 'action_proposed':
+      return 'Action proposed by runtime';
+    case 'action_approval_requested':
+      return 'Governance authorization requested';
+    case 'action_approved':
+      return 'Human authorization recorded';
+    case 'action_rejected':
+      return 'Human governance rejected proposal';
+    case 'action_dispatched':
+      return 'Action dispatched to execution';
+    case 'claim_proposed':
+      return 'Factual claim proposed';
+    case 'claim_evaluated':
+      return 'Claim evaluated against context vault';
+    default:
+      return eventType.replace(/_/g, ' ');
+  }
+}
+
 export const CaseDetailView: React.FC = () => {
   const { caseId } = useParams<{ caseId: string }>();
   const navigate = useNavigate();
@@ -44,7 +71,7 @@ export const CaseDetailView: React.FC = () => {
 
   if (isLoading) {
     return (
-      <div className="py-24 text-center font-machine text-xs text-grey-500">
+      <div className="py-24 text-center font-machine text-xs text-jv-muted">
         RETRIEVING CASE DOSSIER...
       </div>
     );
@@ -53,9 +80,9 @@ export const CaseDetailView: React.FC = () => {
   if (error || !caseData?.caseItem) {
     return (
       <div className="py-24 text-center space-y-4 font-interface">
-        <div className="font-machine text-xs text-grey-500 uppercase">HTTP 404 // NOT FOUND</div>
-        <h1 className="font-display text-4xl text-pure">Case Dossier Not Found</h1>
-        <p className="text-sm text-grey-300">
+        <div className="font-machine text-xs text-jv-muted uppercase">HTTP 404 // NOT FOUND</div>
+        <h1 className="font-display text-4xl text-jv-ink">Case Dossier Not Found</h1>
+        <p className="text-sm text-jv-muted">
           This case does not exist or belongs to another user scope.
         </p>
         <TactileButton variant="primary" size="md" onClick={() => navigate('/missions')}>
@@ -158,13 +185,13 @@ export const CaseDetailView: React.FC = () => {
   );
 
   return (
-    <div className="space-y-12 font-interface text-paper">
+    <div className="space-y-12 font-interface text-jv-ink">
       {/* Return link */}
       <div>
         {caseItem.mission_id ? (
           <Link
             to={`/missions/${caseItem.mission_id}`}
-            className="inline-flex items-center gap-2 font-machine text-xs text-grey-500 hover:text-pure transition-colors"
+            className="inline-flex items-center gap-2 font-machine text-xs text-jv-muted hover:text-jv-ink transition-colors"
           >
             <ArrowLeft className="w-3.5 h-3.5" />
             <span>RETURN TO PARENT MISSION // {caseItem.mission_id.slice(0, 8)}</span>
@@ -172,7 +199,7 @@ export const CaseDetailView: React.FC = () => {
         ) : (
           <Link
             to="/missions"
-            className="inline-flex items-center gap-2 font-machine text-xs text-grey-500 hover:text-pure transition-colors"
+            className="inline-flex items-center gap-2 font-machine text-xs text-jv-muted hover:text-jv-ink transition-colors"
           >
             <ArrowLeft className="w-3.5 h-3.5" />
             <span>RETURN TO MISSIONS</span>
@@ -182,32 +209,32 @@ export const CaseDetailView: React.FC = () => {
 
       {/* Concurrency Notification */}
       {concurrencyNotice && (
-        <div className="p-4 border border-grey-500 bg-ink flex items-center gap-3 text-xs font-machine text-pure">
-          <AlertTriangle className="w-4 h-4 shrink-0 text-paper" />
+        <div className="p-4 border border-jv-rule bg-jv-surface flex items-center gap-3 text-xs font-machine text-jv-ink">
+          <AlertTriangle className="w-4 h-4 shrink-0 text-jv-ink" />
           <span>{concurrencyNotice}</span>
         </div>
       )}
 
       {/* Case Header */}
-      <div className="border-b border-grey-700 pb-8 space-y-4">
-        <div className="flex items-center justify-between font-machine text-xs text-grey-500">
-          <div>CASE DOSSIER // {caseItem.case_id}</div>
+      <div className="border-b border-jv-rule pb-8 space-y-4">
+        <div className="flex items-center justify-between font-machine text-xs text-jv-muted">
+          <div>02 / FOLIO · CASE DOSSIER // {caseItem.case_id}</div>
           <TextureBadge status={caseItem.status} />
         </div>
 
-        <h1 className="font-display text-4xl lg:text-5xl text-pure tracking-tight leading-tight">
+        <h1 className="font-display font-normal text-4xl lg:text-5xl text-jv-ink tracking-tight leading-tight">
           {caseItem.title}
         </h1>
 
-        <div className="flex flex-wrap items-center gap-6 font-machine text-xs text-grey-300 pt-1">
+        <div className="flex flex-wrap items-center gap-6 font-machine text-xs text-jv-muted pt-1">
           <span>TYPE: {caseItem.case_type.toUpperCase()}</span>
-          <span className="text-grey-700">|</span>
+          <span className="text-jv-rule">|</span>
           <span>STATUS: {caseItem.status.toUpperCase().replace(/_/g, ' ')}</span>
-          <span className="text-grey-700">|</span>
+          <span className="text-jv-rule">|</span>
           <span>VERSION: v{caseItem.version}</span>
           {caseItem.deadline && (
             <>
-              <span className="text-grey-700">|</span>
+              <span className="text-jv-rule">|</span>
               <span>DEADLINE: {new Date(caseItem.deadline).toLocaleDateString()}</span>
             </>
           )}
@@ -288,8 +315,8 @@ export const CaseDetailView: React.FC = () => {
 
         {/* Inline Resolve Form */}
         {showResolveForm && (
-          <form onSubmit={handleResolve} className="mt-4 p-4 border border-grey-700 bg-ink space-y-3">
-            <div className="font-machine text-xs uppercase text-grey-500">
+          <form onSubmit={handleResolve} className="mt-4 p-4 border border-jv-rule bg-jv-surface space-y-3">
+            <div className="font-machine text-xs uppercase text-jv-muted">
               RESOLVE CASE // SPECIFY OPERATIONAL OUTCOME
             </div>
             <input
@@ -298,7 +325,7 @@ export const CaseDetailView: React.FC = () => {
               onChange={(e) => setResolveOutcome(e.target.value)}
               placeholder="e.g. Accepted offer; contract executed"
               required
-              className="w-full bg-canvas border border-grey-700 px-3 py-2 text-sm text-pure outline-none"
+              className="w-full bg-jv-bg border border-jv-rule px-3 py-2 text-sm text-jv-ink outline-none focus:border-jv-ink"
             />
             <div className="flex justify-end gap-3">
               <TactileButton type="button" variant="outline" size="sm" onClick={() => setShowResolveForm(false)}>
@@ -318,24 +345,24 @@ export const CaseDetailView: React.FC = () => {
         <div className="lg:col-span-8 space-y-12">
           {/* Section 1: Overview */}
           <section className="space-y-4">
-            <h2 className="font-display text-2xl text-pure tracking-tight border-b border-grey-700 pb-2">
+            <h2 className="font-display font-normal text-2xl text-jv-ink tracking-tight border-b border-jv-rule pb-2">
               Case Parameters & Goal
             </h2>
-            <div className="p-6 border border-grey-700 bg-ink/30 space-y-4">
+            <div className="p-6 border border-jv-rule bg-jv-surface/50 space-y-4">
               <div>
-                <span className="font-machine text-xs uppercase text-grey-500 block mb-1">
+                <span className="font-machine text-xs uppercase text-jv-muted block mb-1">
                   Primary Objective:
                 </span>
-                <p className="text-sm text-grey-300 leading-relaxed">{caseItem.goal}</p>
+                <p className="text-sm text-jv-ink leading-relaxed">{caseItem.goal}</p>
               </div>
 
               {caseItem.outcome && (
-                <div className="border-t border-grey-700 pt-3">
-                  <span className="font-machine text-xs uppercase text-pure flex items-center gap-2 mb-1">
-                    <CheckCircle2 className="w-4 h-4 text-paper" />
+                <div className="border-t border-jv-rule pt-3">
+                  <span className="font-machine text-xs uppercase text-jv-ink flex items-center gap-2 mb-1">
+                    <CheckCircle2 className="w-4 h-4 text-jv-ink" />
                     Operational Outcome:
                   </span>
-                  <p className="text-sm text-pure">{caseItem.outcome}</p>
+                  <p className="text-sm text-jv-ink font-medium">{caseItem.outcome}</p>
                 </div>
               )}
             </div>
@@ -343,8 +370,8 @@ export const CaseDetailView: React.FC = () => {
 
           {/* Section 2: Associated Claims */}
           <section className="space-y-4">
-            <div className="flex items-baseline justify-between border-b border-grey-700 pb-2">
-              <h2 className="font-display text-2xl text-pure tracking-tight">
+            <div className="flex items-baseline justify-between border-b border-jv-rule pb-2">
+              <h2 className="font-display font-normal text-2xl text-jv-ink tracking-tight">
                 Claim Ledger
               </h2>
               <TactileButton variant="outline" size="sm" onClick={() => setShowClaimForm(!showClaimForm)}>
@@ -354,16 +381,16 @@ export const CaseDetailView: React.FC = () => {
 
             {/* Inline Propose Claim Form */}
             {showClaimForm && (
-              <form onSubmit={handleProposeClaim} className="border border-grey-700 bg-ink p-4 space-y-3">
-                <div className="font-machine text-xs uppercase text-grey-500">
+              <form onSubmit={handleProposeClaim} className="border border-jv-rule bg-jv-surface p-4 space-y-3">
+                <div className="font-machine text-xs uppercase text-jv-muted">
                   PROPOSE CLAIM BOUND TO THIS CASE
                 </div>
                 <div className="space-y-1">
-                  <label className="font-machine text-[11px] uppercase text-grey-500">Claim Purpose</label>
+                  <label className="font-machine text-[11px] uppercase text-jv-muted">Claim Purpose</label>
                   <select
                     value={claimPurpose}
                     onChange={(e) => setClaimPurpose(e.target.value)}
-                    className="w-full bg-canvas border border-grey-700 px-3 py-1.5 text-xs text-pure font-machine outline-none"
+                    className="w-full bg-jv-bg border border-jv-rule px-3 py-1.5 text-xs text-jv-ink font-machine outline-none focus:border-jv-ink"
                   >
                     <option value="job_application">Job Application</option>
                     <option value="housing_search">Housing Search</option>
@@ -371,7 +398,7 @@ export const CaseDetailView: React.FC = () => {
                   </select>
                 </div>
                 <div className="space-y-1">
-                  <label className="font-machine text-[11px] uppercase text-grey-500">
+                  <label className="font-machine text-[11px] uppercase text-jv-muted">
                     Supporting Fact IDs (optional, space or comma-separated)
                   </label>
                   <input
@@ -379,7 +406,7 @@ export const CaseDetailView: React.FC = () => {
                     value={supportingFactsInput}
                     onChange={(e) => setSupportingFactsInput(e.target.value)}
                     placeholder="e.g. fact_abc123 fact_xyz789"
-                    className="w-full bg-canvas border border-grey-700 px-3 py-1.5 text-xs text-pure font-machine outline-none"
+                    className="w-full bg-jv-bg border border-jv-rule px-3 py-1.5 text-xs text-jv-ink font-machine outline-none focus:border-jv-ink"
                   />
                 </div>
                 <textarea
@@ -388,7 +415,7 @@ export const CaseDetailView: React.FC = () => {
                   placeholder="State claim assertion (e.g. 5 years Python engineering experience)..."
                   required
                   rows={2}
-                  className="w-full bg-canvas border border-grey-700 px-3 py-2 text-sm text-pure outline-none"
+                  className="w-full bg-jv-bg border border-jv-rule px-3 py-2 text-sm text-jv-ink outline-none focus:border-jv-ink"
                 />
                 <div className="flex justify-end gap-3">
                   <TactileButton type="button" variant="outline" size="sm" onClick={() => setShowClaimForm(false)}>
@@ -402,17 +429,17 @@ export const CaseDetailView: React.FC = () => {
             )}
 
             {claimsLoading ? (
-              <div className="py-6 font-machine text-xs text-grey-500">LOADING CLAIMS...</div>
+              <div className="py-6 font-machine text-xs text-jv-muted">LOADING CLAIMS...</div>
             ) : !claims || claims.length === 0 ? (
-              <div className="p-8 border border-grey-700 text-center font-machine text-xs text-grey-500 bg-ink/10">
+              <div className="p-8 border border-jv-rule text-center font-machine text-xs text-jv-muted bg-jv-surface/20">
                 NO CLAIMS BOUND TO THIS CASE
               </div>
             ) : (
-              <div className="divide-y divide-grey-700 border-y border-grey-700">
+              <div className="divide-y divide-jv-rule border-y border-jv-rule">
                 {claims.map((cl) => (
                   <div key={cl.claim_id} className="py-4 space-y-2">
                     <div className="flex items-center justify-between font-machine text-xs">
-                      <span className="text-grey-500">{cl.claim_id.slice(0, 8)}</span>
+                      <span className="text-jv-muted">{cl.claim_id.slice(0, 8)}</span>
                       <div className="flex items-center gap-2">
                         <TextureBadge status={cl.status} />
                         {cl.status !== 'supported' && (
@@ -427,8 +454,8 @@ export const CaseDetailView: React.FC = () => {
                         )}
                       </div>
                     </div>
-                    <p className="text-sm text-pure">{cl.text}</p>
-                    <div className="font-machine text-[11px] text-grey-500">
+                    <p className="text-sm text-jv-ink">{cl.text}</p>
+                    <div className="font-machine text-[11px] text-jv-muted">
                       PURPOSE: {cl.purpose} · FACTS LINKED: {cl.supporting_fact_ids?.length || 0}
                     </div>
                   </div>
@@ -439,36 +466,36 @@ export const CaseDetailView: React.FC = () => {
 
           {/* Section 3: Case Actions */}
           <section className="space-y-4">
-            <div className="border-b border-grey-700 pb-2">
-              <h2 className="font-display text-2xl text-pure tracking-tight">
+            <div className="border-b border-jv-rule pb-2">
+              <h2 className="font-display font-normal text-2xl text-jv-ink tracking-tight">
                 Case Actions
               </h2>
             </div>
 
             {actionsLoading ? (
-              <div className="py-6 font-machine text-xs text-grey-500">LOADING ACTIONS...</div>
+              <div className="py-6 font-machine text-xs text-jv-muted">LOADING ACTIONS...</div>
             ) : !actions || actions.length === 0 ? (
-              <div className="p-8 border border-grey-700 text-center font-machine text-xs text-grey-500 bg-ink/10">
+              <div className="p-8 border border-jv-rule text-center font-machine text-xs text-jv-muted bg-jv-surface/20">
                 ZERO ACTIONS PENDING OR DISPATCHED
               </div>
             ) : (
-              <div className="divide-y divide-grey-700 border-y border-grey-700">
+              <div className="divide-y divide-jv-rule border-y border-jv-rule">
                 {actions.map((act) => (
                   <div key={act.action_id} className="py-5 space-y-2">
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-3">
-                        <span className="font-machine text-xs text-grey-500">{act.action_id.slice(0, 8)}</span>
-                        <span className="font-interface font-medium text-pure">{act.description}</span>
+                        <span className="font-machine text-xs text-jv-muted">{act.action_id.slice(0, 8)}</span>
+                        <span className="font-interface font-medium text-jv-ink">{act.description}</span>
                       </div>
                       <div className="flex items-center gap-3">
-                        <span className="font-machine text-xs uppercase px-2 py-0.5 border border-grey-700 text-grey-300">
+                        <span className="font-machine text-xs uppercase px-2 py-0.5 border border-jv-rule text-jv-muted">
                           {act.risk_level} RISK
                         </span>
                         <TextureBadge status={act.status} />
                       </div>
                     </div>
                     <div className="flex items-center justify-between pt-1">
-                      <div className="font-machine text-xs text-grey-500">
+                      <div className="font-machine text-xs text-jv-muted">
                         TYPE: {act.action_type} · REQUIRES APPROVAL: {act.requires_approval ? 'YES' : 'NO'}
                       </div>
                       {act.status === 'proposed' && act.requires_approval && (
@@ -504,23 +531,23 @@ export const CaseDetailView: React.FC = () => {
 
         {/* Right Column: Case Timeline (4 cols) */}
         <div className="lg:col-span-4 space-y-6">
-          <div className="border-b border-grey-700 pb-2">
-            <h2 className="font-display text-xl text-pure tracking-tight">
-              Case Timeline
+          <div className="border-b border-jv-rule pb-2">
+            <h2 className="font-display font-normal text-xl text-jv-ink tracking-tight">
+              Case Chronicle
             </h2>
           </div>
 
           <div className="space-y-4 font-machine text-xs">
             {caseEvents.length === 0 ? (
-              <div className="text-grey-500">No events recorded for this case.</div>
+              <div className="text-jv-muted">No events recorded for this case.</div>
             ) : (
               caseEvents.map((ev) => (
-                <div key={ev.event_id} className="pb-3 border-b border-grey-700/50 space-y-1">
-                  <div className="text-grey-500">
+                <div key={ev.event_id} className="pb-3 border-b border-jv-rule/50 space-y-1">
+                  <div className="text-jv-muted text-[11px]">
                     {new Date(ev.occurred_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                   </div>
-                  <div className="text-pure font-bold">{ev.event_type}</div>
-                  <div className="text-grey-500 text-[11px] truncate">
+                  <div className="text-jv-ink font-semibold">{humanizeEvent(ev.event_type)}</div>
+                  <div className="text-jv-muted text-[11px] truncate">
                     VERSION v{ev.aggregate_version}
                   </div>
                 </div>

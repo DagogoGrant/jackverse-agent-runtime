@@ -1,151 +1,174 @@
-# JackVerse Caseworker Design System
-**Visual Language: Monochrome Kinetic Editorialism**
+# JackVerse Caseworker Design V2 Specification
+**The Living Editorial System: Paper as Primary Identity, Ink as Alternate**
 
 ---
 
-## 1. Philosophy & Aesthetic Intent
+## 1. Vision & Core Philosophy
 
-JackVerse Caseworker rejects conventional "SaaS minimalism" and "AI agent demo" cliches. The interface is engineered as a **designed editorial object** rather than an assembly of cards.
+JackVerse Caseworker V2 is an authored **Living Editorial System**. It moves decisively beyond conventional SaaS dashboards, flat dark-mode minimalism, and generic "AI assistant" tropes. The interface is engineered as an authoritative publication—tactile, typographical, physically grounded, and kinetic.
 
-### Core Tenets
-1. **Monochrome Kinetic Editorialism**: Contrast, typography as architecture, negative space, and disciplined 1px borders define structure. Color is completely eliminated—there are no blues, purples, emerald greens, neons, glassmorphic blurs, or AI gradients.
-2. **Anti-Card Discipline**: Information lives in structured dossiers, lists, hairlines, and asymmetric typographic layouts. We explicitly prohibit nested rounded-xl cards with drop shadows.
-3. **Truthful Agent States**: The system never simulates thinking, searching, or artificial latency. If no network operation is occurring, the agent is reported as idle/passive. The interface reflects reality without anthropomorphic theater.
-4. **Physicality & Tactile Authorization**: User consent is physical. Routine operations use calibrated micro-recessed triggers (`scale(0.96)`). Irreversible or consequential external operations use deliberate drag-to-authorize controls with physical resistance and spring-resets.
+### The Three Foundational Pillars
+1. **Editorial**: The layout treats state as published content. Information is presented through broadsheets, dossiers, classified catalogues, and chronological chronicles. Hierarchy is established through stark typographical scale, generous margins, disciplined 1px hairlines, and asymmetric balance.
+2. **Kinetic**: Motion in JackVerse is structural rather than decorative. It conveys state transitions through native View Transitions, progressive morphing of status badges, rolling metric tallies, tactile physical button presses (`scale(0.97)`), and intentional drag-to-authorize governance gates.
+3. **Alive**: JackVerse breathes with restrained ambient awareness. An ultra-subtle 2D coordinate grid tracks system liveness without distraction, pausing entirely under reduced-motion preferences or document blur.
 
----
-
-## 2. Color & Surface Tokens
-
-All tokens are defined in CSS custom properties (`web/src/styles/tokens.css`) and integrated into Tailwind configuration:
-
-| Token | Hex / CSS Value | Semantic Role |
-| :--- | :--- | :--- |
-| `canvas` | `#050505` | Primary deep canvas background |
-| `ink` | `#0A0A0A` | Slightly elevated panel surface (dossiers, input fields) |
-| `paper` | `#F4F3EF` | Primary high-contrast text and interactive surface |
-| `pure` | `#FFFFFF` | Maximum typographic contrast, active titles, and highlights |
-| `grey-100` | `#E5E5E5` | High-contrast subtext |
-| `grey-300` | `#A3A3A3` | Secondary text, descriptions, table metadata |
-| `grey-500` | `#737373` | Muted captions, machine IDs, timestamps, inactive borders |
-| `grey-700` | `#262626` | Structural 1px division lines and borders |
-
-### Status Representation (Colorless)
-Status is communicated exclusively through weight, outline, fill, pattern, and typography:
-- **`ACTIVE`**: Solid outline with filled dot `● ACTIVE` (`border border-paper text-paper bg-canvas`).
-- **`BLOCKED / PENDING`**: Genuine 45-degree crosshatch pattern (`/// BLOCKED`) created with CSS repeating linear gradient (`repeating-linear-gradient(45deg, #262626, #262626 4px, #050505 4px, #050505 8px)`).
-- **`PAUSED / INACTIVE`**: Muted outline `— PAUSED` (`border border-grey-700 text-grey-500 bg-transparent`).
-- **`RESOLVED / COMPLETED`**: Inverted fill `✓ COMPLETED` (`bg-paper text-canvas font-semibold`).
+### The Ratio: 70% Human Language / 30% Editorial Machine Texture
+- **70% Human Voice**: Action titles, constitutional boundaries, mission objectives, and operational outcomes are articulated in precise, dignified human language.
+- **30% Machine Texture**: Monospaced cryptographic hashes, ETag precondition tags, monotonic stream cursors, and state machine versioning provide genuine structural veracity without superficial sci-fi clutter.
 
 ---
 
-## 3. Three-Voice Typography System
+## 2. Dual Identity Token Architecture
 
-Typography functions as structural architecture. Three typefaces serve three distinct voices:
+JackVerse Caseworker implements an authored dual-identity system built on CSS custom properties (`web/src/styles/tokens.css`) mapped seamlessly into Tailwind CSS (`web/tailwind.config.ts`).
 
-```
-+-----------------------------------------------------------------------+
-| VOICE 1: DISPLAY (Instrument Serif)                                    |
-| Purpose: Editorial titles, intent dispatch prompts, dossier headers   |
-| Characteristics: Editorial elegance, high contrast, serif structure  |
-+-----------------------------------------------------------------------+
-| VOICE 2: INTERFACE (Geist Sans)                                       |
-| Purpose: Navigation, button labels, form inputs, primary content body |
-| Characteristics: Clean, geometric, neutral reading rhythm             |
-+-----------------------------------------------------------------------+
-| VOICE 3: MACHINE / METADATA (Geist Mono)                              |
-| Purpose: Timestamps, hash digests, IDs, status tags, audit ledgers    |
-| Characteristics: Monospaced, tabular numerals, technical authority   |
-+-----------------------------------------------------------------------+
-```
+### The Two Identities
+- **Paper Identity (Default / Primary)**:
+  - Evokes archival heavy paper stock, morning broadsheets, and typed intelligence dossiers.
+  - Surface: `--jv-bg: #F2F0E9`, Panel: `--jv-surface: #E8E5DC`
+  - Ink: `--jv-ink: #0A0A09`, Muted: `--jv-muted: #6B6860`
+  - Rules: `--jv-rule: #D5D2C7`, Strong Rule: `--jv-rule-strong: #1A1A18`
+- **Ink Identity (Alternate / Darkroom)**:
+  - Evokes an optical darkroom, photographic contact sheets, and nocturnal surveillance.
+  - Surface: `--jv-bg: #050505`, Panel: `--jv-surface: #0E0E0C`
+  - Ink: `--jv-ink: #F2F0E9`, Muted: `--jv-muted: #8A8780`
+  - Rules: `--jv-rule: #1E1E1C`, Strong Rule: `--jv-rule-strong: #E8E5DC`
 
-### Local Bundling
-Fonts are strictly bundled locally via npm packages (`@fontsource/instrument-serif`, `@fontsource/geist-sans`, `@fontsource/geist-mono`). No external Google Fonts CDN or runtime webfont requests are permitted.
+### Semantic Token Table
 
----
-
-## 4. Layout Architecture & Responsive Strategy
-
-### Left Rail (Desktop) & Responsive Header Drawer (Mobile)
-- **Desktop (`>= 768px`)**: Fixed 224px (`w-56`) left navigation rail with numbered routes:
-  - `01 HOME`
-  - `02 MISSIONS`
-  - `03 OPPORTUNITIES`
-  - `04 NEEDS YOU` (with live dynamic badge for pending approvals)
-  - `05 MY CONTEXT`
-  - `06 ACTIVITY`
-  - System footprint footer (`SYS // RUNTIME: v0.4.0`, `MODEL // DETERMINISTIC`).
-- **Mobile (`< 768px`)**:
-  - The fixed sidebar collapses (`hidden md:flex`) to prevent screen-width starvation.
-  - Header displays compact `☰ 01-06` toggle alongside protocol status and glyph.
-  - Clicking `☰ 01-06` opens an editorial overlay drawer containing full numbered destinations.
-  - Selecting any destination automatically closes the drawer and transitions the route.
-  - Canvas padding scales gracefully (`p-4 sm:p-6 md:p-8 lg:p-12`).
-
----
-
-## 5. Kinetic & Motion Language
-
-- **Micro-interactions**: Discrete 150ms transitions (`duration-150 ease-out`).
-- **Tactile Button Press**: `active:scale-[0.97]` provides instant physical feedback.
-- **State Continuity (`MorphText`)**: Transitions between state labels (e.g. from `INVESTIGATING` to `RESOLVED`) smoothly animate character-by-character without abrupt layout shifts.
-- **Drag-to-Authorize Kinetic Resistance**:
-  - Linear horizontal track with pointer capture.
-  - 88% travel threshold required to trigger execution.
-  - Incomplete travel snaps back to 0% via spring physics on release.
-  - Immediate visual lockout during asynchronous submission prevents double-click race conditions.
-  - Accessible keyboard confirmation via `Space` / `Enter` or explicit button fallback.
-
----
-
-## 6. Signature Interactions
-
-### Halaska "Needs You" Approval Surface
-Consequential and standard decisions are clearly differentiated:
-1. **Low-Risk / Routine Decisions**: Immediate tactile trigger `[ Approve ]` or `[ Reject ]`.
-2. **Consequential / High-Impact Decisions** (external transmissions, legal bindings, financial commitments): Flagged with `/// BLOCKED` and high-impact conflict gates. Executed solely via `DragToAuthorize`.
-3. **Truthful Execution Boundary**: Upon authorization, the UI explicitly displays *"Authorization recorded. Execution is not connected in this phase."* The interface never claims external dispatch or autonomous agent activity when execution is unplumbed.
-
-### Truthful `AgentGlyph`
-- Renders an animated pulse if and only if an active HTTP mutation or query refetch is taking place.
-- In passive state, displays a solid static indicator with exact ISO timestamp.
-- Never fakes thinking, reasoning, or searching states.
-
-### On-Demand Context Privacy & Zero-Retention Memory
-- In accordance with the Phase 3 and Phase 4.1 backend privacy contract, `GET /api/v1/context/facts` returns sanitized summaries (`FactSummaryResponse`) that omit raw `value` and `source_reference` for sensitive facts. SQLite stores facts as plain JSON text; no false claims of at-rest encryption or cryptographic on-demand decryption are made in the UI or documentation.
-- Fact values are displayed with a masked preview (`PRIVATE ••••••••••••`).
-- When the user explicitly triggers `[ Reveal ]`, the UI fetches `GET /api/v1/context/facts/{id}` to display protected detail on demand.
-- The React Query cache for sensitive details is configured with `staleTime: 0, gcTime: 0` and is purged immediately upon clicking `[ Mask ]` or when the component unmounts.
-- Sensitive values are never persisted to `localStorage` or `sessionStorage`. Fact verification and rejection operate strictly from summary metadata without requiring raw value revelation.
-
----
-
-## 7. Banned Patterns Checklist
-
-- [x] **NO** accent colors (no blue CTA buttons, purple sparkles, green badges, red alert boxes).
-- [x] **NO** rounded-xl card grids with drop shadows.
-- [x] **NO** glassmorphism, blur backdrops, or gradient borders.
-- [x] **NO** anthropomorphic agent personas or fake "thinking..." loops.
-- [x] **NO** runtime CDN font links (local `@fontsource` only).
-- [x] **NO** local storage of unencrypted credentials, tokens, or sensitive context vault values.
-- [x] **NO** fake "Start a Case" action on Opportunities (strict separation maintained until Phase 5 backend foreign-key model).
-
----
-
-## 8. Prototype Critique & Visual Audit Log
-
-Visual verification was conducted on automated Playwright captures in `docs/prototypes/`:
-
-| Prototype | Desktop (1440x900) | Mobile (375x812) | Audit Finding & Resolution |
+| Token Variable | Paper Identity | Ink Identity | Functional Role |
 | :--- | :--- | :--- | :--- |
-| **A: Dashboard** | `prototype_a_desktop.png` | `prototype_a_mobile.png` | **Finding**: Mobile viewport initially squeezed into 150px due to fixed 224px sidebar.<br>**Resolution**: Converted `NavRail` to responsive `hidden md:flex`, added mobile header toggle `☰ 01-06`, reduced padding to `p-4`. Verified full-width typographic layout. |
-| **B: Mission Dossier** | `prototype_b_desktop.png` | `prototype_b_mobile.png` | **Finding**: Dossier metadata and case list fit cleanly on desktop. On mobile, metadata wrap was optimized with `flex-wrap` and compact badge tags.<br>**Resolution**: Clean editorial hierarchy achieved on both form factors. |
-| **C: Needs You** | `prototype_c_desktop.png` | `prototype_c_mobile.png` | **Finding**: Consequential gate header collided on 375px (`APPROVAL QUEUE // CONSTITUTIONAL GATE 1 PENDING DECISION`). Personal placeholder data used.<br>**Resolution**: Changed header container to `flex-col sm:flex-row gap-1`, adjusted dossier card padding to `p-5 md:p-8`. Sanitized all fixture data to synthetic persona Alex Mercer (`alex@example.test`, Northstar AI, `Synthetic_CV.pdf`). Replaced execution wording with truthful connection disclaimer. |
+| `--jv-bg` | `#F2F0E9` | `#050505` | Primary canvas surface |
+| `--jv-surface` | `#E8E5DC` | `#0E0E0C` | Elevated dossiers, cards, toolbars |
+| `--jv-surface-raised`| `#DEDAD0` | `#161614` | High-contrast container elements |
+| `--jv-ink` | `#0A0A09` | `#F2F0E9` | Primary high-contrast text and solid glyphs |
+| `--jv-ink-soft` | `#2D2B26` | `#D5D2C7` | Body text, explanations, narratives |
+| `--jv-muted` | `#6B6860` | `#8A8780` | Folio headers, hashes, timestamps |
+| `--jv-rule` | `#D5D2C7` | `#1E1E1C` | Structural 1px division hairlines |
+| `--jv-rule-strong` | `#1A1A18` | `#E8E5DC` | Focus outlines and boundary accents |
+| `--jv-accent` | `#C85A32` | `#D0623A` | Restrained terracotta alert / high-risk accent |
 
-### Visual Artifacts
-- [Prototype A Desktop](docs/prototypes/prototype_a_desktop.png)
-- [Prototype A Mobile](docs/prototypes/prototype_a_mobile.png)
-- [Prototype B Desktop](docs/prototypes/prototype_b_desktop.png)
-- [Prototype B Mobile](docs/prototypes/prototype_b_mobile.png)
-- [Prototype C Desktop](docs/prototypes/prototype_c_desktop.png)
-- [Prototype C Mobile](docs/prototypes/prototype_c_mobile.png)
+---
+
+## 3. Zero-Flash Theme Initialization & Reactive Switching
+
+### Bootstrap Architecture
+To eliminate theme flashing (FOUC) on cold start, `web/index.html` injects an immediate inline script before any stylesheets or DOM elements parse:
+
+```html
+<script>
+  (function() {
+    try {
+      var t = localStorage.getItem('jv_theme');
+      if (t === 'ink' || t === 'paper') {
+        document.documentElement.dataset.theme = t;
+      } else {
+        document.documentElement.dataset.theme = 'paper';
+      }
+    } catch (e) {
+      document.documentElement.dataset.theme = 'paper';
+    }
+  })();
+</script>
+```
+
+### Authored Theme Control (`ThemeSwitch.tsx`)
+- Displayed prominently in the top editorial bar: `◐ PAPER / INK`.
+- Features active underline indicator, high-contrast toggle, and tactile scaling.
+- Applies a temporary 400ms theme wash transition (`theme-wash` class) while respecting `prefers-reduced-motion`.
+- React hook `useTheme` employs a `MutationObserver` on `document.documentElement` (`attributeFilter: ['data-theme']`) and a window `storage` listener to guarantee real-time synchronization across multi-tab sessions and programmatic DOM updates.
+
+---
+
+## 4. Contextual Book-Spine Navigation (`NavRail.tsx`)
+
+The navigation system draws direct inspiration from the spine of a cloth-bound dossier or journal.
+
+### Desktop Behavior (`>= 768px`)
+- **Resting State**: Slim 64px (`w-16`) spine displaying numbered section indices (`01` through `06`) and the minimal `JV` monograph.
+- **Engaged State**: Smoothly expands to 240px (`w-60`) on hover or keyboard `:focus-within`, revealing full section titles (`01 Home`, `02 Missions`, `03 Opportunities`, `04 Needs you`, `05 My Context`, `06 Activity`).
+- **Contextual Folios**: When drilling into a specific Mission (`/missions/:id`) or Case (`/cases/:id`), the spine renders a contextual return folio (`← Missions Index` or `← Return to Case`) allowing immediate hierarchical navigation without cluttering the main content canvas.
+- **Dynamic Live Counters**: Section `04 Needs you` integrates `NumberRoll`, rolling animated digits when pending approval counts change.
+
+### Mobile Drawer Behavior (`< 768px`)
+- Desktop spine gracefully hides (`hidden md:flex`).
+- Header displays a compact `☰ 01-06` trigger.
+- Opens a full-screen editorial drawer with oversized folio typography, allowing single-tap navigation with automatic drawer dismissal.
+
+---
+
+## 5. Kinetic Primitives & Native Motion System
+
+JackVerse eschews heavyweight animation libraries in favor of native browser primitives and CSS physics:
+
+### 1. View Transitions API (`startViewTransition`)
+- Implemented in `web/src/utils/transitions.ts`.
+- Progressive enhancement: if `document.startViewTransition` is supported and `prefers-reduced-motion` is not active, route and state transitions execute seamless cross-dissolves and morphs; otherwise falls back instantly.
+
+### 2. Physical Button Press (`TactileButton.tsx`)
+- Standardized tactile feedback using `active:scale-[0.97]` and discrete 150ms transitions.
+- High-contrast states: `primary` (solid ink on bg), `secondary` (surface with strong rule), `outline` (hairline rule with hover contrast), and `danger` (terracotta high-risk boundary).
+
+### 3. State Continuity (`MorphText.tsx` & `NumberRoll.tsx`)
+- Smoothly transitions state machine labels without jarring reflow.
+- Tabular numeric wheels animate rolling counts for audit entries and approval queues.
+
+### 4. High-Consequence Slider (`DragToAuthorize.tsx`)
+- Consequential actions require deliberate physical commitment: an 88% drag travel threshold with pointer capture and spring return.
+- Includes accessible keyboard confirmation (`Space` / `Enter`) and standard button fallback.
+
+### 5. Restrained Ambient Signature (`AmbientCanvas.tsx`)
+- Ultra-lightweight HTML5 2D canvas rendered behind the main stage.
+- 40 subtle architectural crosshairs (`+`) rendered in `--jv-rule` at 15% opacity with gentle 60px pointer proximity displacement.
+- Fully non-blocking: pauses automatically when the document is hidden (`visibilitychange`), when user is idle, or when `prefers-reduced-motion` is detected.
+
+---
+
+## 6. What JackVerse Will Never Look Like (The Brutal Anti-Patterns)
+
+To protect the integrity of the design system across future phases, the following anti-patterns are strictly forbidden:
+
+1. **NO SaaS Dashboard Generic Cards**: No 12px or 16px rounded rectangular cards floating on light grey with diffuse multi-layer drop shadows (`shadow-xl`).
+2. **NO Synthetic AI Chat Bubbles**: No conversational assistant chat threads with typing indicators, pulsating glowing spheres, or fake "Thinking..." animations.
+3. **NO Neon Accents or Silicon Valley Purples**: No gradient text, no indigo/violet brand buttons, no teal highlights. Color is restricted to Paper, Ink, and disciplined Terracotta.
+4. **NO Fake Domain Matching**: JackVerse does not display unpersisted opportunity match percentages, speculative fit scores, or artificial Case-Opportunity links before Phase 5 implements them.
+5. **NO Unconsented Data Leaks**: Context vault facts marked `PERSONAL` or `SENSITIVE` are never rendered in full plaintext on load; they require intentional human reveal and purge immediately on unmount.
+
+---
+
+## 7. Four-Surface Prototype Gate & Screenshot Critique
+
+Before propagating across all application routes, Design V2 established an empirical **Four-Surface Prototype Gate**. All 16 production screenshots were captured against real FastAPI backends with synthetic data at 1440x900 (desktop) and 375x812 (mobile) in both Paper and Ink identities (`docs/prototypes/v2/`):
+
+### Surface A: Intent Entry & Dispatch Broadsheet (`/`)
+- **Paper 1440**: Broad editorial canvas with Instrument Serif headline (*"What do you want JackVerse to move forward?"*), high-contrast dispatch prompt, action required callout, and active mission ledger.
+- **Ink 1440**: Photographic darkroom feel; deep blacks (`#050505`) with crisp, luminescent cream type (`#F2F0E9`).
+- **Mobile 375 (Paper/Ink)**: Refined header with compact `JACKVERSE` brand and responsive drawer trigger.
+
+### Surface B: Mission Dossier (`/missions/:id`)
+- **Dossier Hierarchy**: Displays Mission Kind, Status badge, Title in Instrument Serif, Case roster with quick-transition buttons, and chronological event chronicle.
+
+### Surface C: Human Governance Gate (`/approvals`)
+- **Governance Dossier**: Left column decision index, right column formal action audit card.
+- **Critical Refinement**: The action parameters inspector pre block was constrained with `max-h-28 overflow-y-auto` and header metadata now includes the full cryptographic SHA256 fingerprint, ensuring the constitutional boundary summary and `DragToAuthorize` slider remain immediately accessible above the fold.
+
+### Surface D: Personal Context Vault (`/context`)
+- **Vault Index**: Job Application Readiness readiness gauge, categorical fact groupings (Identity, Finance, Professional).
+- **Privacy Architecture**: Sensitive values remain masked (`••••••••••••`) until explicit on-demand reveal; inline supersede editor handles ETag concurrency without page reload.
+
+---
+
+## 8. Verification & Performance Budget
+
+Design V2 preserves 100% of JackVerse's functional and operational contracts:
+- **TypeScript**: Zero errors (`tsc -b --noEmit`).
+- **ESLint**: Zero warnings or errors across `web/src`.
+- **Unit Tests**: 35/35 passing in Vitest (theme synchronization, spine expansion, privacy masking, ETag concurrency, slide authorization).
+- **End-to-End Tests**: 15/15 passing in Playwright (navigation flow, mobile drawer, drag-to-authorize, real integration with live FastAPI).
+- **Backend Regression**: 769/769 tests passing in Docker `harness` container.
+- **OpenAPI Drift**: Zero drift (`export_caseworker_openapi.py` diff clean).
+- **Bundle Footprint**:
+  - Baseline (Phase 4.1.1): JS 421.62 kB, CSS 45.69 kB.
+  - Design V2: JS 437.09 kB (+3.6%), CSS 49.60 kB (+8.5%).
+  - Both metrics comfortably within the <= 15% budget constraint.
+- **Docker Production**: Web container serving on `127.0.0.1:3001` with clean SPA routing and zero-flash theme bootstrap.

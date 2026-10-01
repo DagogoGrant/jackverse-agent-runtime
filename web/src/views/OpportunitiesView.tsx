@@ -64,29 +64,29 @@ export const OpportunitiesView: React.FC = () => {
   };
 
   return (
-    <div className="space-y-12 font-interface text-paper">
-      {/* Header */}
-      <div className="border-b border-grey-700 pb-6 flex flex-col md:flex-row md:items-end justify-between gap-4">
+    <div className="space-y-12 font-interface text-jv-ink">
+      {/* Editorial Header */}
+      <div className="border-b border-jv-rule pb-6 flex flex-col md:flex-row md:items-end justify-between gap-4">
         <div className="space-y-2">
-          <div className="font-machine text-xs text-grey-500 uppercase">
-            PROSPECTS // DISCOVERY STREAM
+          <div className="font-machine text-xs text-jv-muted uppercase">
+            03 / FOLIO · OPPORTUNITY CATALOGUE
           </div>
-          <h1 className="font-display text-4xl text-pure tracking-tight">
+          <h1 className="font-display font-normal text-4xl lg:text-5xl text-jv-ink tracking-tight">
             Opportunity Inbox
           </h1>
         </div>
 
         <div className="flex flex-wrap items-center gap-4">
           {/* Status Filters */}
-          <div className="flex items-center gap-2 font-machine text-xs">
+          <div className="flex items-center gap-1.5 font-machine text-xs">
             {(['all', 'discovered', 'evaluating', 'shortlisted', 'archived'] as const).map((s) => (
               <button
                 key={s}
                 onClick={() => setFilter(s)}
                 className={`px-3 py-1 uppercase border transition-colors ${
                   filter === s
-                    ? 'border-paper bg-paper text-canvas font-bold'
-                    : 'border-grey-700 text-grey-300 hover:text-pure'
+                    ? 'border-jv-ink bg-jv-ink text-jv-bg font-bold'
+                    : 'border-jv-rule text-jv-muted hover:text-jv-ink hover:border-jv-rule-strong'
                 }`}
               >
                 {s}
@@ -102,45 +102,45 @@ export const OpportunitiesView: React.FC = () => {
 
       {/* Manual Opportunity Ingress Form Modal */}
       {showAddModal && (
-        <form onSubmit={handleCreateOpportunity} className="p-6 border border-grey-700 bg-ink space-y-4">
-          <div className="flex items-center justify-between border-b border-grey-700 pb-2">
-            <span className="font-machine text-xs uppercase tracking-widest text-grey-300">
+        <form onSubmit={handleCreateOpportunity} className="p-6 border border-jv-rule bg-jv-surface space-y-4">
+          <div className="flex items-center justify-between border-b border-jv-rule pb-2">
+            <span className="font-machine text-xs uppercase tracking-widest text-jv-ink font-semibold">
               MANUAL PROSPECT REGISTRATION // INGRESS
             </span>
             <button
               type="button"
               onClick={() => setShowAddModal(false)}
-              className="font-machine text-xs text-grey-500 hover:text-pure"
+              className="font-machine text-xs text-jv-muted hover:text-jv-ink"
             >
               DISMISS [✕]
             </button>
           </div>
 
           {errorMsg && (
-            <div className="p-3 border border-grey-500 bg-canvas text-xs font-machine text-pure">
+            <div className="p-3 border border-jv-rule bg-jv-bg text-xs font-machine text-jv-ink">
               ERROR // {errorMsg}
             </div>
           )}
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-1">
-              <label className="font-machine text-xs uppercase text-grey-500">Title</label>
+              <label className="font-machine text-xs uppercase text-jv-muted">Title</label>
               <input
                 type="text"
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
                 placeholder="e.g. Senior Machine Learning Engineer"
                 required
-                className="w-full bg-canvas border border-grey-700 px-3 py-2 text-sm text-pure outline-none focus:border-paper"
+                className="w-full bg-jv-bg border border-jv-rule px-3 py-2 text-sm text-jv-ink outline-none focus:border-jv-ink"
               />
             </div>
 
             <div className="space-y-1">
-              <label className="font-machine text-xs uppercase text-grey-500">Type</label>
+              <label className="font-machine text-xs uppercase text-jv-muted">Type</label>
               <select
                 value={oppType}
                 onChange={(e) => setOppType(e.target.value as OpportunityType)}
-                className="w-full bg-canvas border border-grey-700 px-3 py-2 text-sm text-pure font-machine outline-none focus:border-paper"
+                className="w-full bg-jv-bg border border-jv-rule px-3 py-2 text-sm text-jv-ink font-machine outline-none focus:border-jv-ink"
               >
                 <option value="job">Job</option>
                 <option value="scholarship">Scholarship</option>
@@ -157,52 +157,52 @@ export const OpportunitiesView: React.FC = () => {
             </div>
 
             <div className="space-y-1">
-              <label className="font-machine text-xs uppercase text-grey-500">Organization</label>
+              <label className="font-machine text-xs uppercase text-jv-muted">Organization</label>
               <input
                 type="text"
                 value={organization}
                 onChange={(e) => setOrganization(e.target.value)}
                 placeholder="e.g. Acme Research Labs"
-                className="w-full bg-canvas border border-grey-700 px-3 py-2 text-sm text-pure outline-none focus:border-paper"
+                className="w-full bg-jv-bg border border-jv-rule px-3 py-2 text-sm text-jv-ink outline-none focus:border-jv-ink"
               />
             </div>
 
             <div className="space-y-1">
-              <label className="font-machine text-xs uppercase text-grey-500">Location</label>
+              <label className="font-machine text-xs uppercase text-jv-muted">Location</label>
               <input
                 type="text"
                 value={location}
                 onChange={(e) => setLocation(e.target.value)}
                 placeholder="e.g. Remote / Berlin, Germany"
-                className="w-full bg-canvas border border-grey-700 px-3 py-2 text-sm text-pure outline-none focus:border-paper"
+                className="w-full bg-jv-bg border border-jv-rule px-3 py-2 text-sm text-jv-ink outline-none focus:border-jv-ink"
               />
             </div>
 
             <div className="space-y-1">
-              <label className="font-machine text-xs uppercase text-grey-500">Source Name</label>
+              <label className="font-machine text-xs uppercase text-jv-muted">Source Name</label>
               <input
                 type="text"
                 value={sourceName}
                 onChange={(e) => setSourceName(e.target.value)}
                 placeholder="e.g. LinkedIn, Direct Board"
-                className="w-full bg-canvas border border-grey-700 px-3 py-2 text-sm text-pure outline-none focus:border-paper"
+                className="w-full bg-jv-bg border border-jv-rule px-3 py-2 text-sm text-jv-ink outline-none focus:border-jv-ink"
               />
             </div>
 
             <div className="space-y-1">
-              <label className="font-machine text-xs uppercase text-grey-500">Source URL</label>
+              <label className="font-machine text-xs uppercase text-jv-muted">Source URL</label>
               <input
                 type="url"
                 value={sourceUrl}
                 onChange={(e) => setSourceUrl(e.target.value)}
                 placeholder="https://..."
-                className="w-full bg-canvas border border-grey-700 px-3 py-2 text-sm text-pure outline-none focus:border-paper"
+                className="w-full bg-jv-bg border border-jv-rule px-3 py-2 text-sm text-jv-ink outline-none focus:border-jv-ink"
               />
             </div>
           </div>
 
           <div className="space-y-1">
-            <label className="font-machine text-xs uppercase text-grey-500">
+            <label className="font-machine text-xs uppercase text-jv-muted">
               Requirements (one per line)
             </label>
             <textarea
@@ -210,7 +210,7 @@ export const OpportunitiesView: React.FC = () => {
               onChange={(e) => setRequirementsInput(e.target.value)}
               placeholder="e.g. 3+ years experience with Python&#10;Work authorization in EU"
               rows={3}
-              className="w-full bg-canvas border border-grey-700 px-3 py-2 text-sm text-pure font-machine outline-none focus:border-paper"
+              className="w-full bg-jv-bg border border-jv-rule px-3 py-2 text-sm text-jv-ink font-machine outline-none focus:border-jv-ink"
             />
           </div>
 
@@ -226,56 +226,56 @@ export const OpportunitiesView: React.FC = () => {
       )}
 
       {isLoading ? (
-        <div className="py-16 text-center font-machine text-xs text-grey-500">
+        <div className="py-16 text-center font-machine text-xs text-jv-muted">
           SYNCHRONIZING OPPORTUNITY FEED...
         </div>
       ) : filtered.length === 0 ? (
-        <div className="py-20 border border-grey-700 text-center space-y-4 bg-ink/20">
-          <div className="font-machine text-xs text-grey-500 uppercase tracking-widest">
+        <div className="py-20 border border-jv-rule text-center space-y-4 bg-jv-surface/20">
+          <div className="font-machine text-xs text-jv-muted uppercase tracking-widest">
             ZERO DISCOVERED OPPORTUNITIES
           </div>
-          <p className="text-sm text-grey-300 max-w-sm mx-auto">
+          <p className="text-sm text-jv-muted max-w-sm mx-auto">
             No opportunities registered in this view. Use "+ Add Opportunity" to manually record
             prospects or wait for active discovery monitors.
           </p>
         </div>
       ) : (
-        <div className="divide-y divide-grey-700 border-y border-grey-700">
+        <div className="divide-y divide-jv-rule border-y border-jv-rule">
           {filtered.map((opp, idx) => (
             <div
               key={opp.opportunity_id}
               onClick={() => navigate(`/opportunities/${opp.opportunity_id}`)}
-              className="py-6 px-4 -mx-4 group flex flex-col md:flex-row md:items-baseline justify-between gap-4 hover:bg-ink/60 transition-colors cursor-pointer"
+              className="py-6 px-4 -mx-4 group flex flex-col md:flex-row md:items-baseline justify-between gap-4 hover:bg-jv-surface transition-colors cursor-pointer"
             >
               <div className="space-y-2 max-w-2xl">
                 <div className="flex items-center gap-3">
-                  <span className="font-machine text-xs text-grey-500">
+                  <span className="font-machine text-xs text-jv-muted">
                     {String(idx + 1).padStart(2, '0')}
                   </span>
-                  <span className="font-machine text-xs uppercase text-grey-500">
+                  <span className="font-machine text-xs uppercase text-jv-muted">
                     {opp.organization || 'Independent'}
                   </span>
-                  <h2 className="font-interface font-semibold text-lg text-pure group-hover:translate-x-1 transition-transform">
+                  <h2 className="font-interface font-semibold text-lg text-jv-ink group-hover:translate-x-1 transition-transform">
                     {opp.title}
                   </h2>
                 </div>
-                <div className="font-machine text-xs text-grey-300 pl-16 flex flex-wrap gap-4">
+                <div className="font-machine text-xs text-jv-muted pl-10 md:pl-16 flex flex-wrap gap-4">
                   {opp.location && <span>LOCATION: {opp.location}</span>}
                   {opp.source_name && <span>SOURCE: {opp.source_name}</span>}
                   {opp.discovered_at && (
-                    <span className="text-grey-500">
+                    <span>
                       DISCOVERED: {new Date(opp.discovered_at).toLocaleDateString()}
                     </span>
                   )}
                 </div>
               </div>
 
-              <div className="flex items-center gap-6 pl-16 md:pl-0">
+              <div className="flex items-center gap-6 pl-10 md:pl-0">
                 <TextureBadge status={opp.status} />
-                <span className="font-machine text-xs text-grey-500 uppercase">
+                <span className="font-machine text-xs text-jv-muted uppercase">
                   {opp.opportunity_type}
                 </span>
-                <ArrowUpRight className="w-5 h-5 text-grey-500 group-hover:text-pure group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-all" />
+                <ArrowUpRight className="w-5 h-5 text-jv-muted group-hover:text-jv-ink group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-all" />
               </div>
             </div>
           ))}

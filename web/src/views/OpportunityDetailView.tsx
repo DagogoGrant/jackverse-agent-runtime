@@ -15,7 +15,7 @@ export const OpportunityDetailView: React.FC = () => {
 
   if (isLoading) {
     return (
-      <div className="py-24 text-center font-machine text-xs text-grey-500">
+      <div className="py-24 text-center font-machine text-xs text-jv-muted">
         RETRIEVING OPPORTUNITY SPECIFICATION...
       </div>
     );
@@ -24,9 +24,9 @@ export const OpportunityDetailView: React.FC = () => {
   if (error || !oppData?.opportunity) {
     return (
       <div className="py-24 text-center space-y-4 font-interface">
-        <div className="font-machine text-xs text-grey-500 uppercase">HTTP 404 // NOT FOUND</div>
-        <h1 className="font-display text-4xl text-pure">Opportunity Not Found</h1>
-        <p className="text-sm text-grey-300">
+        <div className="font-machine text-xs text-jv-muted uppercase">HTTP 404 // NOT FOUND</div>
+        <h1 className="font-display text-4xl text-jv-ink">Opportunity Not Found</h1>
+        <p className="text-sm text-jv-muted">
           This prospect record does not exist or belongs to another user scope.
         </p>
         <TactileButton variant="primary" size="md" onClick={() => navigate('/opportunities')}>
@@ -60,12 +60,12 @@ export const OpportunityDetailView: React.FC = () => {
   const reqs = opp.requirements || [];
 
   return (
-    <div className="space-y-12 font-interface text-paper">
+    <div className="space-y-12 font-interface text-jv-ink">
       {/* Return Navigation */}
       <div>
         <Link
           to="/opportunities"
-          className="inline-flex items-center gap-2 font-machine text-xs text-grey-500 hover:text-pure transition-colors"
+          className="inline-flex items-center gap-2 font-machine text-xs text-jv-muted hover:text-jv-ink transition-colors"
         >
           <ArrowLeft className="w-3.5 h-3.5" />
           <span>RETURN TO OPPORTUNITY INBOX</span>
@@ -74,41 +74,41 @@ export const OpportunityDetailView: React.FC = () => {
 
       {/* Concurrency Notification */}
       {concurrencyNotice && (
-        <div className="p-4 border border-grey-500 bg-ink flex items-center gap-3 text-xs font-machine text-pure">
-          <AlertTriangle className="w-4 h-4 shrink-0 text-paper" />
+        <div className="p-4 border border-jv-rule bg-jv-surface flex items-center gap-3 text-xs font-machine text-jv-ink">
+          <AlertTriangle className="w-4 h-4 shrink-0 text-jv-ink" />
           <span>{concurrencyNotice}</span>
         </div>
       )}
 
       {/* Magazine Editorial Header */}
-      <div className="border-b border-grey-700 pb-8 space-y-4">
-        <div className="flex items-center justify-between font-machine text-xs text-grey-500">
-          <div>{opp.opportunity_type.toUpperCase()} // {opp.opportunity_id}</div>
+      <div className="border-b border-jv-rule pb-8 space-y-4">
+        <div className="flex items-center justify-between font-machine text-xs text-jv-muted">
+          <div>03 / FOLIO · OPPORTUNITY DOSSIER // {opp.opportunity_id}</div>
           <TextureBadge status={opp.status} />
         </div>
 
         <div className="space-y-1">
-          <div className="font-machine text-sm text-grey-300 uppercase tracking-widest">
+          <div className="font-machine text-sm text-jv-muted uppercase tracking-widest">
             {opp.organization || 'Direct Prospect'}
           </div>
-          <h1 className="font-display text-4xl lg:text-6xl text-pure tracking-tight leading-tight">
+          <h1 className="font-display font-normal text-4xl lg:text-6xl text-jv-ink tracking-tight leading-tight">
             {opp.title}
           </h1>
         </div>
 
-        <div className="flex flex-wrap items-center gap-6 font-machine text-xs text-grey-300 pt-2">
+        <div className="flex flex-wrap items-center gap-6 font-machine text-xs text-jv-muted pt-2">
           <span>STATUS: {opp.status.toUpperCase()}</span>
-          <span className="text-grey-700">|</span>
+          <span className="text-jv-rule">|</span>
           <span>DISCOVERED: {new Date(opp.discovered_at).toLocaleDateString()}</span>
           {opp.location && (
             <>
-              <span className="text-grey-700">|</span>
+              <span className="text-jv-rule">|</span>
               <span>LOCATION: {opp.location}</span>
             </>
           )}
           {opp.deadline && (
             <>
-              <span className="text-grey-700">|</span>
+              <span className="text-jv-rule">|</span>
               <span>DEADLINE: {new Date(opp.deadline).toLocaleDateString()}</span>
             </>
           )}
@@ -120,36 +120,36 @@ export const OpportunityDetailView: React.FC = () => {
         <div className="lg:col-span-8 space-y-8">
           {/* Metadata attributes */}
           <section className="space-y-4">
-            <h2 className="font-machine text-xs text-grey-500 uppercase tracking-widest border-b border-grey-700 pb-2">
+            <h2 className="font-machine text-xs text-jv-muted uppercase tracking-widest border-b border-jv-rule pb-2">
               PROSPECT ATTRIBUTES & PROVENANCE
             </h2>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 font-machine text-xs">
-              <div className="p-4 border border-grey-700 bg-ink space-y-1">
-                <span className="text-grey-500 uppercase">Provider / Organization</span>
-                <div className="text-pure text-sm">{opp.organization || 'Not Specified'}</div>
+              <div className="p-4 border border-jv-rule bg-jv-surface space-y-1">
+                <span className="text-jv-muted uppercase">Provider / Organization</span>
+                <div className="text-jv-ink text-sm font-semibold">{opp.organization || 'Not Specified'}</div>
               </div>
-              <div className="p-4 border border-grey-700 bg-ink space-y-1">
-                <span className="text-grey-500 uppercase">Geographic Scope</span>
-                <div className="text-pure text-sm">{opp.location || 'Remote / Unspecified'}</div>
+              <div className="p-4 border border-jv-rule bg-jv-surface space-y-1">
+                <span className="text-jv-muted uppercase">Geographic Scope</span>
+                <div className="text-jv-ink text-sm font-semibold">{opp.location || 'Remote / Unspecified'}</div>
               </div>
-              <div className="p-4 border border-grey-700 bg-ink space-y-1">
-                <span className="text-grey-500 uppercase">Source Platform</span>
-                <div className="text-pure text-sm">{opp.source_name || 'Direct Manual Ingress'}</div>
+              <div className="p-4 border border-jv-rule bg-jv-surface space-y-1">
+                <span className="text-jv-muted uppercase">Source Platform</span>
+                <div className="text-jv-ink text-sm font-semibold">{opp.source_name || 'Direct Manual Ingress'}</div>
               </div>
-              <div className="p-4 border border-grey-700 bg-ink space-y-1">
-                <span className="text-grey-500 uppercase">Cryptographic Fingerprint</span>
-                <div className="text-pure text-[11px] break-all">{opp.fingerprint}</div>
+              <div className="p-4 border border-jv-rule bg-jv-surface space-y-1">
+                <span className="text-jv-muted uppercase">Cryptographic Fingerprint</span>
+                <div className="text-jv-ink text-[11px] break-all">{opp.fingerprint}</div>
               </div>
             </div>
           </section>
 
           {/* Requirements List */}
           <section className="space-y-4">
-            <h2 className="font-machine text-xs text-grey-500 uppercase tracking-widest border-b border-grey-700 pb-2">
+            <h2 className="font-machine text-xs text-jv-muted uppercase tracking-widest border-b border-jv-rule pb-2">
               REQUIREMENTS & ELIGIBILITY ({reqs.length})
             </h2>
             {reqs.length === 0 ? (
-              <p className="font-machine text-xs text-grey-500">
+              <p className="font-machine text-xs text-jv-muted">
                 No formal eligibility requirements recorded for this prospect.
               </p>
             ) : (
@@ -157,12 +157,12 @@ export const OpportunityDetailView: React.FC = () => {
                 {reqs.map((req, idx) => (
                   <li
                     key={idx}
-                    className="flex items-start gap-3 p-3 border border-grey-700/60 bg-ink/40 text-sm text-grey-300"
+                    className="flex items-start gap-3 p-3.5 border border-jv-rule bg-jv-surface/50 text-sm text-jv-ink"
                   >
-                    <span className="font-machine text-xs text-grey-500 shrink-0 pt-0.5">
+                    <span className="font-machine text-xs text-jv-muted shrink-0 pt-0.5">
                       {String(idx + 1).padStart(2, '0')}.
                     </span>
-                    <span>{req}</span>
+                    <span className="leading-relaxed">{req}</span>
                   </li>
                 ))}
               </ul>
@@ -172,8 +172,8 @@ export const OpportunityDetailView: React.FC = () => {
 
         {/* Right Sidebar: Lifecycle Operations */}
         <div className="lg:col-span-4 space-y-6">
-          <div className="border border-grey-700 bg-ink p-6 space-y-4">
-            <div className="font-machine text-xs text-grey-500 uppercase tracking-widest border-b border-grey-700 pb-2">
+          <div className="border border-jv-rule bg-jv-surface p-6 space-y-4">
+            <div className="font-machine text-xs text-jv-muted uppercase tracking-widest border-b border-jv-rule pb-2">
               LIFECYCLE TRANSITIONS
             </div>
 
@@ -217,7 +217,7 @@ export const OpportunityDetailView: React.FC = () => {
                 <TactileButton
                   variant="outline"
                   size="sm"
-                  className="w-full justify-center text-grey-300"
+                  className="w-full justify-center text-jv-muted hover:text-jv-ink"
                   loading={transitionOpp.isPending}
                   onClick={() => handleTransition('archived')}
                 >
@@ -239,12 +239,12 @@ export const OpportunityDetailView: React.FC = () => {
             </div>
 
             {opp.source_url && (
-              <div className="pt-4 border-t border-grey-700">
+              <div className="pt-4 border-t border-jv-rule">
                 <a
                   href={opp.source_url}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="flex items-center justify-between text-xs font-machine text-grey-300 hover:text-pure p-2 border border-grey-700 bg-canvas"
+                  className="flex items-center justify-between text-xs font-machine text-jv-muted hover:text-jv-ink p-2 border border-jv-rule bg-jv-bg hover:border-jv-ink transition-colors"
                 >
                   <span>VISIT SOURCE LISTING</span>
                   <ExternalLink className="w-3.5 h-3.5" />
