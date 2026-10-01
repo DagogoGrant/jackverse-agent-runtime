@@ -103,31 +103,33 @@ export const NeedsYouView: React.FC = () => {
     action?.risk_level === 'critical' ||
     action?.requires_approval === true;
 
+  const pendingCount = allApprovals.filter((a) => a.status === 'pending').length;
+
   return (
-    <div className="space-y-12 font-interface text-paper">
+    <div className="space-y-12 font-interface text-jv-ink">
       {/* Concurrency Notification */}
       {concurrencyNotice && (
-        <div className="p-4 border border-grey-500 bg-ink flex items-center gap-3 text-xs font-machine text-pure">
-          <AlertTriangle className="w-4 h-4 shrink-0 text-paper" />
+        <div className="p-4 border border-jv-rule-strong bg-jv-surface flex items-center gap-3 text-xs font-machine text-jv-ink">
+          <AlertTriangle className="w-4 h-4 shrink-0 text-jv-ink" />
           <span>{concurrencyNotice}</span>
         </div>
       )}
 
       {/* Authorization Success Notice */}
       {authorizedNotice && (
-        <div className="p-4 border border-pure bg-pure text-canvas flex items-center gap-3 text-xs font-machine font-bold">
+        <div className="p-4 border border-jv-ink bg-jv-ink text-jv-bg flex items-center gap-3 text-xs font-machine font-bold">
           <ShieldCheck className="w-4 h-4 shrink-0" />
           <span>{authorizedNotice}</span>
         </div>
       )}
 
-      {/* Header */}
-      <div className="border-b border-grey-700 pb-6 flex flex-col md:flex-row md:items-end justify-between gap-4">
+      {/* Editorial Header */}
+      <div className="border-b border-jv-rule pb-6 flex flex-col md:flex-row md:items-end justify-between gap-4">
         <div className="space-y-2">
-          <div className="font-machine text-xs text-grey-500 uppercase">
-            CONSTITUTIONAL GATE // HUMAN DECISION QUEUE
+          <div className="font-machine text-[11px] text-jv-muted uppercase tracking-widest">
+            04 / FOLIO · HUMAN GOVERNANCE GATE
           </div>
-          <h1 className="font-display text-4xl text-pure tracking-tight">
+          <h1 className="font-display text-4xl sm:text-5xl text-jv-ink tracking-tight">
             Needs You
           </h1>
         </div>
@@ -137,21 +139,21 @@ export const NeedsYouView: React.FC = () => {
           <button
             type="button"
             onClick={() => setFilter('pending')}
-            className={`px-3 py-1 uppercase border transition-colors ${
+            className={`px-3 py-1 uppercase border text-xs tracking-wider transition-colors duration-fast ease-editorial ${
               filter === 'pending'
-                ? 'border-paper bg-paper text-canvas font-bold'
-                : 'border-grey-700 text-grey-300 hover:text-pure'
+                ? 'border-jv-ink bg-jv-ink text-jv-bg font-bold'
+                : 'border-jv-rule bg-jv-surface text-jv-muted hover:text-jv-ink hover:border-jv-rule-strong'
             }`}
           >
-            Pending ({allApprovals.filter((a) => a.status === 'pending').length})
+            Pending ({pendingCount})
           </button>
           <button
             type="button"
             onClick={() => setFilter('all')}
-            className={`px-3 py-1 uppercase border transition-colors ${
+            className={`px-3 py-1 uppercase border text-xs tracking-wider transition-colors duration-fast ease-editorial ${
               filter === 'all'
-                ? 'border-paper bg-paper text-canvas font-bold'
-                : 'border-grey-700 text-grey-300 hover:text-pure'
+                ? 'border-jv-ink bg-jv-ink text-jv-bg font-bold'
+                : 'border-jv-rule bg-jv-surface text-jv-muted hover:text-jv-ink hover:border-jv-rule-strong'
             }`}
           >
             All Decisions ({allApprovals.length})
@@ -160,15 +162,15 @@ export const NeedsYouView: React.FC = () => {
       </div>
 
       {listLoading ? (
-        <div className="py-24 text-center font-machine text-xs text-grey-500">
+        <div className="py-24 text-center font-machine text-xs text-jv-muted">
           INDEXING APPROVAL QUEUE...
         </div>
       ) : filtered.length === 0 ? (
-        <div className="py-20 border border-grey-700 text-center space-y-4 bg-ink/20">
-          <div className="font-machine text-xs text-grey-500 uppercase tracking-widest">
+        <div className="py-24 text-center space-y-3 max-w-md mx-auto">
+          <div className="font-display text-2xl text-jv-ink tracking-tight">
             ZERO PENDING APPROVALS
           </div>
-          <p className="text-sm text-grey-300 max-w-sm mx-auto">
+          <p className="text-sm text-jv-ink-soft leading-relaxed">
             Nothing currently requires your approval. Consequential agent actions will pause
             here for verification before external effect.
           </p>
@@ -176,7 +178,7 @@ export const NeedsYouView: React.FC = () => {
       ) : (
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
           {/* Left Column: Decision Selection List */}
-          <div className="lg:col-span-4 divide-y divide-grey-700 border-y border-grey-700">
+          <div className="lg:col-span-4 divide-y divide-jv-rule border-y border-jv-rule">
             {filtered.map((app) => {
               const isSelected = app.approval_id === effectiveApprovalId;
               return (
@@ -187,15 +189,15 @@ export const NeedsYouView: React.FC = () => {
                     setConcurrencyNotice(null);
                     setAuthorizedNotice(null);
                   }}
-                  className={`p-4 cursor-pointer transition-colors space-y-2 ${
+                  className={`p-4 cursor-pointer transition-colors duration-fast ease-editorial space-y-2 ${
                     isSelected
-                      ? 'bg-paper text-canvas'
-                      : 'hover:bg-ink text-paper'
+                      ? 'bg-jv-ink text-jv-bg'
+                      : 'hover:bg-jv-surface text-jv-ink'
                   }`}
                 >
                   <div className="flex items-center justify-between font-machine text-xs">
-                    <span className={isSelected ? 'text-canvas/70' : 'text-grey-500'}>
-                      {app.case_id}
+                    <span className={isSelected ? 'text-jv-bg/70' : 'text-jv-muted'}>
+                      {app.case_id.slice(0, 8)}
                     </span>
                     <TextureBadge status={app.status} />
                   </div>
@@ -206,7 +208,7 @@ export const NeedsYouView: React.FC = () => {
 
                   <div
                     className={`font-machine text-[11px] ${
-                      isSelected ? 'text-canvas/80' : 'text-grey-500'
+                      isSelected ? 'text-jv-bg/80' : 'text-jv-muted'
                     }`}
                   >
                     Requested: {new Date(app.requested_at).toLocaleDateString()}
@@ -218,39 +220,39 @@ export const NeedsYouView: React.FC = () => {
 
           {/* Right Column: Editorial Approval Dossier */}
           {activeApproval && (
-            <div className="lg:col-span-8 border border-grey-700 bg-ink p-6 md:p-8 space-y-6">
+            <div className="lg:col-span-8 border border-jv-rule bg-jv-surface p-6 md:p-8 space-y-6">
               {approvalLoading || actionLoading ? (
-                <div className="py-16 text-center font-machine text-xs text-grey-500">
+                <div className="py-16 text-center font-machine text-xs text-jv-muted">
                   LOADING ACTION METADATA & CONCURRENCY CONTEXT...
                 </div>
               ) : (
                 <>
                   <div className="space-y-3">
                     <div className="flex flex-wrap items-center gap-3">
-                      <span className="font-machine text-xs text-grey-500">
+                      <span className="font-machine text-xs text-jv-muted">
                         DECISION #{activeApproval.approval_id.slice(0, 8)} //
                       </span>
                       <TextureBadge status={activeApproval.status} />
-                      <span className="font-machine text-xs text-grey-300 uppercase">
-                        RISK: {action?.risk_level?.toUpperCase() || 'UNRATED'}
+                      <span className="font-machine text-xs text-jv-ink-soft uppercase font-semibold">
+                        RISK: {action?.risk_level?.toUpperCase() || 'STANDARD'}
                       </span>
                     </div>
 
-                    <h2 className="font-display text-3xl text-pure tracking-tight">
+                    <h2 className="font-display text-3xl sm:text-4xl text-jv-ink tracking-tight leading-tight">
                       {action?.description || 'Consequential Action Decision'}
                     </h2>
 
-                    <div className="font-machine text-xs text-grey-300">
+                    <div className="font-machine text-xs text-jv-muted">
                       CASE: {activeApproval.case_id} · ACTION: {activeApproval.action_id} · VERSION: v{activeApproval.version}
                     </div>
                   </div>
 
                   {/* Constitutional Rationale */}
-                  <div className="border-l-2 border-paper pl-4 py-1 text-sm text-grey-300 leading-relaxed space-y-1">
-                    <div className="font-medium text-pure">Constitutional Boundary:</div>
+                  <div className="border-l-2 border-jv-ink pl-4 py-1 text-sm text-jv-ink-soft leading-relaxed space-y-1">
+                    <div className="font-medium text-jv-ink">Constitutional Boundary:</div>
                     <div>
                       This action was categorized with risk level{' '}
-                      <span className="font-machine text-xs text-pure uppercase">
+                      <span className="font-machine text-xs text-jv-ink uppercase font-semibold">
                         {action?.risk_level || 'standard'}
                       </span>
                       . Under JackVerse security policy, consequential mutations and third-party
@@ -259,11 +261,11 @@ export const NeedsYouView: React.FC = () => {
                   </div>
 
                   {/* Action Parameters Inspector */}
-                  <div className="border border-grey-700">
+                  <div className="border border-jv-rule">
                     <button
                       type="button"
                       onClick={() => setShowParameters(!showParameters)}
-                      className="w-full flex items-center justify-between px-4 py-3 bg-canvas text-xs font-machine text-grey-300 hover:text-pure border-b border-grey-700"
+                      className="w-full flex items-center justify-between px-4 py-3 bg-jv-bg text-xs font-machine text-jv-ink hover:text-jv-ink-soft border-b border-jv-rule"
                     >
                       <span>INSPECT ACTION PARAMETERS & FINGERPRINT</span>
                       {showParameters ? (
@@ -274,17 +276,17 @@ export const NeedsYouView: React.FC = () => {
                     </button>
 
                     {showParameters && (
-                      <div className="p-4 space-y-3 font-machine text-xs bg-canvas/60">
+                      <div className="p-4 space-y-3 font-machine text-xs bg-jv-bg/60">
                         <div className="space-y-1">
-                          <span className="text-grey-500 uppercase">Cryptographic Fingerprint:</span>
-                          <div className="p-2 border border-grey-700 bg-ink text-paper break-all text-[11px]">
+                          <span className="text-jv-muted uppercase">Cryptographic Fingerprint:</span>
+                          <div className="p-2 border border-jv-rule bg-jv-surface text-jv-ink break-all text-[11px]">
                             {activeApproval.action_fingerprint}
                           </div>
                         </div>
 
                         <div className="space-y-1">
-                          <span className="text-grey-500 uppercase">Parameters:</span>
-                          <pre className="p-3 border border-grey-700 bg-ink text-paper text-[11px] overflow-x-auto">
+                          <span className="text-jv-muted uppercase">Parameters:</span>
+                          <pre className="p-2 border border-jv-rule bg-jv-surface text-jv-ink text-[11px] overflow-x-auto max-h-28 overflow-y-auto leading-relaxed">
                             {JSON.stringify(action?.parameters || {}, null, 2)}
                           </pre>
                         </div>
@@ -293,7 +295,7 @@ export const NeedsYouView: React.FC = () => {
                   </div>
 
                   {/* Decision Controls */}
-                  <div className="pt-4 border-t border-grey-700 space-y-4">
+                  <div className="pt-4 border-t border-jv-rule space-y-4">
                     {isPending ? (
                       <div className="space-y-4">
                         {isHighConsequential ? (
@@ -325,17 +327,17 @@ export const NeedsYouView: React.FC = () => {
                         </div>
                       </div>
                     ) : (
-                      <div className="p-4 border border-grey-700 bg-canvas text-xs font-machine space-y-1">
-                        <div className="text-pure uppercase">
+                      <div className="p-4 border border-jv-rule bg-jv-bg text-xs font-machine space-y-1">
+                        <div className="text-jv-ink uppercase font-bold">
                           DECISION RECORDED // STATUS: {activeApproval.status.toUpperCase()}
                         </div>
                         {activeApproval.reason && (
-                          <div className="text-grey-300">
+                          <div className="text-jv-ink-soft">
                             Reason: {activeApproval.reason}
                           </div>
                         )}
                         {activeApproval.decided_at && (
-                          <div className="text-grey-500">
+                          <div className="text-jv-muted">
                             Decided at: {new Date(activeApproval.decided_at).toLocaleString()}
                           </div>
                         )}

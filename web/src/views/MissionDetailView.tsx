@@ -10,6 +10,27 @@ import {
 } from '../hooks/useCaseworker';
 import { TextureBadge } from '../components/ui/TextureBadge';
 import { TactileButton } from '../components/ui/TactileButton';
+import { startViewTransition } from '../utils/transitions';
+
+function humanizeEventType(eventType: string): string {
+  const map: Record<string, string> = {
+    'mission.created': 'Mission created',
+    'mission.status_changed': 'Mission status changed',
+    'case.created': 'Case created',
+    'case.status_changed': 'Case status changed',
+    'claim.proposed': 'Claim asserted',
+    'claim.evaluated': 'Claim evaluated',
+    'action.created': 'Action planned',
+    'action.status_changed': 'Action status changed',
+    'approval.requested': 'Approval requested',
+    'approval.approved': 'You approved an action',
+    'approval.rejected': 'Action rejected',
+    'context.fact_recorded': 'Profile fact recorded',
+    'context.fact_verified': 'Profile fact verified',
+    'context.fact_superseded': 'Profile fact updated',
+  };
+  return map[eventType] || eventType.replace(/[._]/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+}
 
 export const MissionDetailView: React.FC = () => {
   const { missionId } = useParams<{ missionId: string }>();
@@ -30,7 +51,7 @@ export const MissionDetailView: React.FC = () => {
 
   if (missionLoading) {
     return (
-      <div className="py-24 text-center font-machine text-xs text-grey-500">
+      <div className="py-24 text-center font-machine text-xs text-jv-muted">
         LOADING MISSION DOSSIER...
       </div>
     );
@@ -38,13 +59,21 @@ export const MissionDetailView: React.FC = () => {
 
   if (missionError || !missionData?.mission) {
     return (
-      <div className="py-24 text-center space-y-4 font-interface">
-        <div className="font-machine text-xs text-grey-500 uppercase">HTTP 404 // NOT FOUND</div>
-        <h1 className="font-display text-4xl text-pure">Mission Dossier Not Found</h1>
-        <p className="text-sm text-grey-300">
+      <div className="py-24 text-center space-y-4 font-interface text-jv-ink">
+        <div className="font-machine text-xs text-jv-muted uppercase">HTTP 404 // NOT FOUND</div>
+        <h1 className="font-display text-4xl text-jv-ink">Mission Dossier Not Found</h1>
+        <p className="text-sm text-jv-ink-soft">
           This mission does not exist or belongs to another user scope.
         </p>
-        <TactileButton variant="primary" size="md" onClick={() => navigate('/missions')}>
+        <TactileButton
+          variant="primary"
+          size="md"
+          onClick={() => {
+            startViewTransition(() => {
+              navigate('/missions');
+            });
+          }}
+        >
           Back to Missions →
         </TactileButton>
       </div>
@@ -96,36 +125,39 @@ export const MissionDetailView: React.FC = () => {
   );
 
   return (
-    <div className="space-y-12 font-interface text-paper">
+    <div className="space-y-12 font-interface text-jv-ink">
       {/* Concurrency / 412 Notification */}
       {concurrencyNotice && (
-        <div className="p-4 border border-grey-500 bg-ink flex items-center gap-3 text-xs font-machine text-pure">
-          <AlertTriangle className="w-4 h-4 shrink-0 text-paper" />
+        <div className="p-4 border border-jv-rule-strong bg-jv-surface flex items-center gap-3 text-xs font-machine text-jv-ink">
+          <AlertTriangle className="w-4 h-4 shrink-0 text-jv-ink" />
           <span>{concurrencyNotice}</span>
         </div>
       )}
 
-      {/* Dossier Header */}
-      <div className="border-b border-grey-700 pb-8 space-y-4">
-        <div className="flex items-center justify-between font-machine text-xs text-grey-500">
-          <div>DOSSIER // {mission.mission_id}</div>
+      {/* Editorial Dossier Header */}
+      <div className="border-b border-jv-rule pb-8 space-y-4">
+        <div className="flex items-center justify-between font-machine text-xs text-jv-muted">
+          <div className="flex items-center gap-2">
+            <span>DOSSIER //</span>
+            <span className="text-jv-ink font-semibold">{mission.mission_id.slice(0, 8)}</span>
+          </div>
           <TextureBadge status={mission.status} />
         </div>
 
-        <h1 className="font-display text-4xl lg:text-5xl text-pure tracking-tight leading-tight">
+        <h1 className="font-display text-4xl sm:text-5xl text-jv-ink tracking-tight leading-[1.15]">
           {mission.title}
         </h1>
 
-        <div className="flex flex-wrap items-center gap-6 font-machine text-xs text-grey-300 pt-2">
+        <div className="flex flex-wrap items-center gap-4 sm:gap-6 font-machine text-xs text-jv-ink-soft pt-2">
           <span>KIND: {mission.kind.toUpperCase()}</span>
-          <span className="text-grey-700">|</span>
-          <span>SINCE: {new Date(mission.created_at).toLocaleDateString()}</span>
-          <span className="text-grey-700">|</span>
+          <span className="text-jv-rule-strong">·</span>
+          <span>STARTED: {new Date(mission.created_at).toLocaleDateString()}</span>
+          <span className="text-jv-rule-strong">·</span>
           <span>VERSION: v{mission.version}</span>
         </div>
 
         {/* Operational Transitions */}
-        <div className="flex items-center gap-3 pt-4 font-machine text-xs">
+        <div className="flex flex-wrap items-center gap-3 pt-4 font-machine text-xs">
           {mission.status === 'draft' && (
             <TactileButton
               variant="primary"
@@ -169,12 +201,12 @@ export const MissionDetailView: React.FC = () => {
         </div>
       </div>
 
-      {/* Two-Column Asymmetric Body */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-12">
+      {/* Two-Column Asymmetric Document Layout */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-10">
         {/* Left Column: Active Cases (8 cols) */}
         <div className="lg:col-span-8 space-y-8">
-          <div className="flex items-baseline justify-between border-b border-grey-700 pb-2">
-            <h2 className="font-display text-2xl text-pure tracking-tight">
+          <div className="flex items-baseline justify-between border-b border-jv-rule pb-2">
+            <h2 className="font-display text-2xl text-jv-ink tracking-tight">
               Active Cases Dossier
             </h2>
             <TactileButton
@@ -188,41 +220,41 @@ export const MissionDetailView: React.FC = () => {
 
           {/* Inline Case Creation Form */}
           {showCaseForm && (
-            <form onSubmit={handleCreateCase} className="border border-grey-700 bg-ink p-6 space-y-4">
-              <div className="font-machine text-xs text-grey-500 uppercase tracking-widest border-b border-grey-700 pb-2">
+            <form onSubmit={handleCreateCase} className="border border-jv-rule bg-jv-surface p-6 space-y-4 animate-fadeIn">
+              <div className="font-machine text-xs text-jv-muted uppercase tracking-widest border-b border-jv-rule pb-2">
                 CREATE NEW CONCRETE CASE
               </div>
 
-              <div className="space-y-2">
-                <label className="font-machine text-xs uppercase text-grey-500">Case Title</label>
+              <div className="space-y-1.5">
+                <label className="font-machine text-xs uppercase text-jv-muted">Case Title</label>
                 <input
                   type="text"
                   value={caseTitle}
                   onChange={(e) => setCaseTitle(e.target.value)}
                   placeholder="e.g. Forward-Deployed AI Application at Exxeta"
                   required
-                  className="w-full bg-canvas border border-grey-700 px-3 py-2 text-sm text-pure outline-none focus:border-paper"
+                  className="w-full bg-jv-bg border border-jv-rule px-3 py-2 text-sm text-jv-ink outline-none focus:border-jv-ink"
                 />
               </div>
 
-              <div className="space-y-2">
-                <label className="font-machine text-xs uppercase text-grey-500">Concrete Goal</label>
+              <div className="space-y-1.5">
+                <label className="font-machine text-xs uppercase text-jv-muted">Concrete Goal</label>
                 <textarea
                   value={caseGoal}
                   onChange={(e) => setCaseGoal(e.target.value)}
                   placeholder="Specific measurable goal for this case..."
                   required
                   rows={2}
-                  className="w-full bg-canvas border border-grey-700 px-3 py-2 text-sm text-pure outline-none focus:border-paper"
+                  className="w-full bg-jv-bg border border-jv-rule px-3 py-2 text-sm text-jv-ink outline-none focus:border-jv-ink"
                 />
               </div>
 
-              <div className="space-y-2">
-                <label className="font-machine text-xs uppercase text-grey-500">Case Type</label>
+              <div className="space-y-1.5">
+                <label className="font-machine text-xs uppercase text-jv-muted">Case Type</label>
                 <select
                   value={caseType}
                   onChange={(e) => setCaseType(e.target.value)}
-                  className="w-full bg-canvas border border-grey-700 px-3 py-2 text-sm text-pure outline-none font-machine"
+                  className="w-full bg-jv-bg border border-jv-rule px-3 py-2 text-sm text-jv-ink outline-none font-machine focus:border-jv-ink"
                 >
                   <option value="job_application">Job Application</option>
                   <option value="housing_search">Housing Search</option>
@@ -255,72 +287,76 @@ export const MissionDetailView: React.FC = () => {
 
           {/* Cases List */}
           {casesLoading ? (
-            <div className="py-8 font-machine text-xs text-grey-500">SYNCHRONIZING CASES...</div>
+            <div className="py-8 font-machine text-xs text-jv-muted">SYNCHRONIZING CASES...</div>
           ) : !cases || cases.length === 0 ? (
-            <div className="py-12 border border-grey-700 text-center space-y-2 bg-ink/20">
-              <div className="font-machine text-xs text-grey-500 uppercase">ZERO ACTIVE CASES</div>
-              <p className="text-xs text-grey-300">
-                No sub-cases registered under this mission yet.
+            <div className="py-12 text-center space-y-2 border-b border-jv-rule">
+              <div className="font-machine text-xs text-jv-muted uppercase">ZERO ACTIVE CASES</div>
+              <p className="text-xs text-jv-ink-soft">
+                No concrete sub-cases registered under this mission yet.
               </p>
             </div>
           ) : (
-            <div className="divide-y divide-grey-700 border-y border-grey-700">
+            <div className="divide-y divide-jv-rule border-b border-jv-rule">
               {cases.map((c) => (
                 <div
                   key={c.case_id}
-                  onClick={() => navigate(`/cases/${c.case_id}`)}
-                  className="py-5 group flex items-baseline justify-between gap-4 px-3 -mx-3 hover:bg-ink/60 transition-colors cursor-pointer"
+                  onClick={() => {
+                    startViewTransition(() => {
+                      navigate(`/cases/${c.case_id}`);
+                    });
+                  }}
+                  className="py-5 group flex items-baseline justify-between gap-4 px-3 -mx-3 hover:bg-jv-surface transition-colors cursor-pointer"
                 >
                   <div className="space-y-1.5">
                     <div className="flex items-center gap-3">
-                      <span className="font-machine text-xs text-grey-500">
+                      <span className="font-machine text-xs text-jv-muted">
                         {c.case_id.slice(0, 8)}
                       </span>
-                      <span className="font-interface font-medium text-base text-pure group-hover:translate-x-1 transition-transform">
+                      <span className="font-interface font-medium text-base text-jv-ink group-hover:translate-x-1 transition-transform duration-fast ease-editorial">
                         {c.title}
                       </span>
                     </div>
-                    <div className="font-machine text-xs text-grey-500 pl-11">
+                    <div className="font-machine text-xs text-jv-muted pl-11">
                       {c.case_type} · Goal: {c.goal}
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-4">
+                  <div className="flex items-center gap-4 shrink-0">
                     <TextureBadge status={c.status} />
-                    <ArrowUpRight className="w-4 h-4 text-grey-500 group-hover:text-pure transition-colors" />
+                    <ArrowUpRight className="w-4 h-4 text-jv-muted group-hover:text-jv-ink transition-colors" />
                   </div>
                 </div>
               ))}
             </div>
           )}
 
-          {/* Mission Parameters */}
-          <div className="border border-grey-700 p-6 space-y-3 bg-ink/30">
-            <div className="font-machine text-xs tracking-widest uppercase text-grey-500">
+          {/* Mission Scope & Goal Description */}
+          <div className="border border-jv-rule p-6 space-y-3 bg-jv-surface">
+            <div className="font-machine text-xs tracking-widest uppercase text-jv-muted">
               OPERATIONAL GOAL & SCOPE
             </div>
-            <p className="text-sm text-grey-300 leading-relaxed">{mission.goal}</p>
+            <p className="text-sm text-jv-ink-soft leading-relaxed">{mission.goal}</p>
           </div>
         </div>
 
-        {/* Right Column: Mission Activity Stream (4 cols) */}
+        {/* Right Column: Mission Chronicle (4 cols) */}
         <div className="lg:col-span-4 space-y-6">
-          <div className="border-b border-grey-700 pb-2">
-            <h2 className="font-display text-xl text-pure tracking-tight">
-              Mission Activity
+          <div className="border-b border-jv-rule pb-2">
+            <h2 className="font-display text-xl text-jv-ink tracking-tight">
+              Mission Chronicle
             </h2>
           </div>
 
           <div className="space-y-4 font-machine text-xs">
             {missionEvents.length === 0 ? (
-              <div className="text-grey-500">No activity recorded yet.</div>
+              <div className="text-jv-muted">No activity recorded yet.</div>
             ) : (
               missionEvents.slice(0, 8).map((ev) => (
-                <div key={ev.event_id} className="pb-3 border-b border-grey-700/50 space-y-1">
-                  <div className="text-grey-500">
+                <div key={ev.event_id} className="pb-3 border-b border-jv-rule space-y-1">
+                  <div className="text-jv-muted">
                     {new Date(ev.occurred_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                   </div>
-                  <div className="text-pure font-bold">{ev.event_type}</div>
+                  <div className="text-jv-ink font-medium">{humanizeEventType(ev.event_type)}</div>
                 </div>
               ))
             )}

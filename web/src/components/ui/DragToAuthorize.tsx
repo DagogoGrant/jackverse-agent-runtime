@@ -60,7 +60,7 @@ export const DragToAuthorize: React.FC<DragToAuthorizeProps> = ({
     setDragProgress(progress);
 
     if (progress >= 0.88) {
-      // Threshold reached!
+      // 88% travel threshold reached!
       setIsDragging(false);
       setDragProgress(1);
       executeAuthorize();
@@ -71,13 +71,13 @@ export const DragToAuthorize: React.FC<DragToAuthorizeProps> = ({
     if (!isDragging) return;
     setIsDragging(false);
     if (currentDragRef.current < 0.88) {
-      // Spring reset
+      // Smooth physical snapback
       setDragProgress(0);
       currentDragRef.current = 0;
     }
   };
 
-  // Keyboard accessibility: Enter or Space triggers step-by-step or instant confirmation
+  // Keyboard accessibility: Enter or Space triggers authorization
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (disabled || isAuthorized || isPending) return;
     if (e.key === 'Enter' || e.key === ' ') {
@@ -87,10 +87,10 @@ export const DragToAuthorize: React.FC<DragToAuthorizeProps> = ({
   };
 
   return (
-    <div className="w-full space-y-3 font-interface">
+    <div className="w-full space-y-3 font-interface text-jv-ink">
       {consequentialDescription && (
-        <div className="flex items-start gap-2 p-3 border border-grey-700 bg-ink text-xs text-grey-300">
-          <ShieldAlert className="w-4 h-4 text-paper shrink-0 mt-0.5" />
+        <div className="flex items-start gap-2 p-3 border border-jv-rule bg-jv-surface text-xs text-jv-ink-soft">
+          <ShieldAlert className="w-4 h-4 text-jv-ink shrink-0 mt-0.5" />
           <span>{consequentialDescription}</span>
         </div>
       )}
@@ -109,7 +109,7 @@ export const DragToAuthorize: React.FC<DragToAuthorizeProps> = ({
           </TactileButton>
           <button
             type="button"
-            className="text-xs text-grey-500 hover:text-paper underline"
+            className="text-xs text-jv-muted hover:text-jv-ink underline font-machine"
             onClick={() => setShowStandardFallback(false)}
           >
             Use slide control
@@ -130,29 +130,29 @@ export const DragToAuthorize: React.FC<DragToAuthorizeProps> = ({
             onPointerMove={handlePointerMove}
             onPointerUp={handlePointerUp}
             onPointerCancel={handlePointerUp}
-            className={`relative h-14 w-full select-none overflow-hidden border border-grey-700 bg-ink transition-colors focus:outline-none focus:border-paper ${
+            className={`relative h-14 w-full select-none overflow-hidden border border-jv-rule bg-jv-surface transition-colors focus:outline-none focus:border-jv-ink ${
               disabled ? 'opacity-40 cursor-not-allowed' : 'cursor-grab active:cursor-grabbing'
             }`}
           >
             {/* Background track line and text */}
             <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-              <span className="font-machine text-xs tracking-widest text-grey-500 uppercase">
-                {isAuthorized ? 'Authorized' : isPending ? 'Authorizing...' : label}
+              <span className="font-machine text-xs tracking-widest text-jv-muted uppercase">
+                {isAuthorized ? 'AUTHORIZED' : isPending ? 'AUTHORIZING...' : label}
               </span>
             </div>
 
             {/* Visual travel progress bar */}
             <div
-              className="absolute left-0 top-0 bottom-0 bg-grey-700/50 transition-all duration-75"
+              className="absolute left-0 top-0 bottom-0 bg-jv-rule transition-all duration-75"
               style={{ width: `${(dragProgress || 0) * 100}%` }}
             />
 
             {/* Sliding Thumb */}
             <div
               className={`absolute top-1 bottom-1 w-12 flex items-center justify-center transition-all ${
-                isDragging ? 'duration-0' : 'duration-200'
+                isDragging ? 'duration-0' : 'duration-fast ease-editorial'
               } ${
-                isAuthorized ? 'bg-pure text-canvas' : 'bg-paper text-canvas border border-pure'
+                isAuthorized ? 'bg-jv-ink text-jv-bg' : 'bg-jv-ink text-jv-bg border border-jv-ink shadow-sm'
               }`}
               style={{
                 left: `calc(${(dragProgress || 0) * 100}% - ${(dragProgress || 0) * 48}px + 4px)`,
@@ -166,11 +166,11 @@ export const DragToAuthorize: React.FC<DragToAuthorizeProps> = ({
             </div>
           </div>
 
-          <div className="mt-2 flex justify-between items-center text-[11px] font-machine text-grey-500">
+          <div className="mt-2 flex justify-between items-center text-[11px] font-machine text-jv-muted">
             <span>Press Space / Enter or slide to confirm</span>
             <button
               type="button"
-              className="hover:text-paper underline"
+              className="hover:text-jv-ink underline"
               onClick={() => setShowStandardFallback(true)}
             >
               Standard button fallback

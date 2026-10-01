@@ -1,6 +1,9 @@
 import React from 'react';
-import { NavLink } from 'react-router-dom';
+import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { useApprovals } from '../../hooks/useCaseworker';
+import { NumberRoll } from '../ui/NumberRoll';
+import { ArrowLeft } from 'lucide-react';
+import { startViewTransition } from '../../utils/transitions';
 
 interface NavItem {
   id: string;
@@ -13,11 +16,22 @@ interface NavItem {
 interface NavRailProps {
   className?: string;
   onNavigate?: () => void;
+  isMobileDrawer?: boolean;
 }
 
-export const NavRail: React.FC<NavRailProps> = ({ className = '', onNavigate }) => {
+export const NavRail: React.FC<NavRailProps> = ({
+  className = '',
+  onNavigate,
+  isMobileDrawer = false,
+}) => {
+  const location = useLocation();
+  const navigate = useNavigate();
   const { data: approvals } = useApprovals();
   const pendingCount = approvals?.filter((a) => a.status === 'pending').length || 0;
+
+  const pathname = location.pathname;
+  const isMissionDetail = pathname.startsWith('/missions/') && pathname !== '/missions';
+  const isCaseDetail = pathname.startsWith('/cases/');
 
   const navItems: NavItem[] = [
     { id: 'home', number: '01', label: 'Home', path: '/' },
@@ -29,53 +43,144 @@ export const NavRail: React.FC<NavRailProps> = ({ className = '', onNavigate }) 
   ];
 
   return (
-    <aside className={`border-grey-700 bg-canvas select-none font-interface flex flex-col justify-between p-6 ${className}`}>
-      <div className="space-y-10">
-        {/* Brand identity */}
+    <aside
+      className={`border-r border-jv-rule bg-jv-bg select-none font-interface flex flex-col justify-between p-4 md:p-5 transition-[width] duration-base ease-editorial overflow-hidden ${
+        isMobileDrawer
+          ? 'w-full'
+          : 'w-16 hover:w-60 focus-within:w-60 group/spine'
+      } ${className}`}
+    >
+      <div className="space-y-8">
+        {/* Brand Folio */}
         <div className="space-y-1">
-          <div className="font-machine text-xs tracking-widest uppercase text-grey-500">
-            JACKVERSE
+          <div className="font-machine text-[11px] tracking-widest uppercase text-jv-muted flex items-center gap-2">
+            <span>JV</span>
+            <span
+              className={`transition-opacity duration-fast ease-editorial whitespace-nowrap ${
+                isMobileDrawer ? 'inline' : 'hidden group-hover/spine:inline group-focus-within/spine:inline'
+              }`}
+            >
+              / CASEWORKER
+            </span>
           </div>
-          <div className="font-display text-2xl text-pure tracking-tight">
-            Caseworker
+
+          <div
+            className={`font-display text-xl text-jv-ink tracking-tight transition-opacity duration-fast ease-editorial whitespace-nowrap ${
+              isMobileDrawer ? 'block' : 'hidden group-hover/spine:block group-focus-within/spine:block'
+            }`}
+          >
+            Editorial System
           </div>
         </div>
 
-        {/* Numbered Navigation */}
-        <nav className="space-y-2">
+        {/* Contextual Folio Navigation if inside a Mission or Case */}
+        {(isMissionDetail || isCaseDetail) && (
+          <div className="border-y border-jv-rule py-3 space-y-1 font-machine text-xs">
+            {isMissionDetail && (
+              <button
+                type="button"
+                onClick={() => {
+                  startViewTransition(() => {
+                    navigate('/missions');
+                  });
+                  onNavigate?.();
+                }}
+                className="flex items-center gap-2 text-jv-muted hover:text-jv-ink transition-colors w-full text-left"
+                title="Return to Missions Index"
+                aria-label="Return to Missions Index"
+              >
+                <ArrowLeft className="w-3.5 h-3.5 shrink-0" />
+                <span
+                  className={`uppercase tracking-wider text-[11px] whitespace-nowrap ${
+                    isMobileDrawer
+                      ? 'inline'
+                      : 'hidden group-hover/spine:inline group-focus-within/spine:inline'
+                  }`}
+                >
+                  Missions Index
+                </span>
+              </button>
+            )}
+            {isCaseDetail && (
+              <button
+                type="button"
+                onClick={() => {
+                  startViewTransition(() => {
+                    navigate('/missions');
+                  });
+                  onNavigate?.();
+                }}
+                className="flex items-center gap-2 text-jv-muted hover:text-jv-ink transition-colors w-full text-left"
+                title="Return to Parent Mission"
+                aria-label="Return to Parent Mission"
+              >
+                <ArrowLeft className="w-3.5 h-3.5 shrink-0" />
+                <span
+                  className={`uppercase tracking-wider text-[11px] whitespace-nowrap ${
+                    isMobileDrawer
+                      ? 'inline'
+                      : 'hidden group-hover/spine:inline group-focus-within/spine:inline'
+                  }`}
+                >
+                  Parent Mission
+                </span>
+              </button>
+            )}
+          </div>
+        )}
+
+        {/* Book Spine Numbered Navigation */}
+        <nav className="space-y-1.5" aria-label="Main Navigation">
           {navItems.map((item) => (
             <NavLink
               key={item.id}
               to={item.path}
               end={item.path === '/'}
               onClick={onNavigate}
+              title={`${item.number} ${item.label}`}
+              aria-label={`${item.number} ${item.label}`}
               className={({ isActive }) =>
-                `group flex items-center justify-between py-2 px-2 text-sm tracking-wide transition-all duration-150 ${
+                `group flex items-center justify-between py-2 px-2 text-sm tracking-wide transition-colors duration-fast ease-editorial outline-none focus-visible:ring-1 focus-visible:ring-jv-ink ${
                   isActive
-                    ? 'bg-paper text-canvas font-semibold'
-                    : 'text-grey-300 hover:text-pure hover:translate-x-1'
+                    ? 'bg-jv-ink text-jv-bg font-semibold'
+                    : 'text-jv-muted hover:text-jv-ink hover:bg-jv-surface'
                 }`
               }
             >
               {({ isActive }) => (
                 <>
-                  <div className="flex items-center gap-3">
-                    <span className="font-machine text-xs opacity-60">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <span
+                      className={`font-machine text-xs shrink-0 ${
+                        isActive ? 'opacity-90' : 'opacity-60'
+                      }`}
+                    >
                       {isActive ? '■' : item.number}
                     </span>
-                    <span className="uppercase text-xs tracking-wider">
+                    <span
+                      className={`uppercase text-xs tracking-wider truncate whitespace-nowrap transition-opacity duration-fast ease-editorial ${
+                        isMobileDrawer
+                          ? 'inline'
+                          : 'hidden group-hover/spine:inline group-focus-within/spine:inline'
+                      }`}
+                    >
                       {item.label}
                     </span>
                   </div>
+
                   {item.badge !== undefined && item.badge > 0 && (
                     <span
-                      className={`font-machine text-[10px] px-1.5 py-0.2 border ${
+                      className={`font-machine text-[10px] px-1.5 py-0.2 border shrink-0 transition-opacity duration-fast ease-editorial ${
                         isActive
-                          ? 'border-canvas bg-canvas text-paper'
-                          : 'border-paper text-paper'
+                          ? 'border-jv-bg bg-jv-bg text-jv-ink'
+                          : 'border-jv-ink bg-jv-ink text-jv-bg'
+                      } ${
+                        isMobileDrawer
+                          ? 'inline'
+                          : 'hidden group-hover/spine:inline group-focus-within/spine:inline'
                       }`}
                     >
-                      {item.badge}
+                      <NumberRoll value={item.badge} />
                     </span>
                   )}
                 </>
@@ -85,10 +190,16 @@ export const NavRail: React.FC<NavRailProps> = ({ className = '', onNavigate }) 
         </nav>
       </div>
 
-      {/* System footprint */}
-      <div className="pt-6 border-t border-grey-700/60 font-machine text-[11px] text-grey-500 space-y-1">
-        <div>SYS // RUNTIME: v0.4.0</div>
-        <div>MODEL // DETERMINISTIC</div>
+      {/* System Footprint / Living Editorial Folio */}
+      <div className="pt-6 border-t border-jv-rule font-machine text-[10px] text-jv-muted space-y-1 whitespace-nowrap">
+        <div
+          className={`${
+            isMobileDrawer ? 'block' : 'hidden group-hover/spine:block group-focus-within/spine:block'
+          }`}
+        >
+          SYS // EDITORIAL v2.0
+        </div>
+        <div>01-06 INDEX</div>
       </div>
     </aside>
   );
