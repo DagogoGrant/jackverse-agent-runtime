@@ -46,7 +46,7 @@ export const MorphText: React.FC<MorphTextProps> = ({
 
   return (
     <Component
-      className={`inline-block transition-all duration-base ease-editorial ${
+      className={`inline-block transition-[transform,opacity] duration-base ease-editorial ${
         isTransitioning
           ? 'opacity-0 -translate-y-1'
           : 'opacity-100 translate-y-0'

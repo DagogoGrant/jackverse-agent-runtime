@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import { ArrowUpRight } from 'lucide-react';
 import { useMissions, useCreateMission, useApprovals } from '../hooks/useCaseworker';
 import { TactileButton } from '../components/ui/TactileButton';
@@ -52,9 +52,7 @@ export const HomeView: React.FC = () => {
       {/* Editorial Intent Dispatch Section */}
       <section className="space-y-6 pt-2">
         <div className="font-machine text-[11px] tracking-widest text-jv-muted uppercase flex items-center gap-2">
-          <span>01 / DISPATCH</span>
-          <span className="text-jv-rule-strong">·</span>
-          <span>INTENT ENTRY</span>
+          <span>01 / NEW MISSION</span>
         </div>
 
         <form onSubmit={handleInitializeMission} className="space-y-6">
@@ -72,7 +70,7 @@ export const HomeView: React.FC = () => {
               value={promptText}
               onChange={(e) => handlePromptChange(e.target.value)}
               onFocus={() => setShowCreateForm(true)}
-              placeholder="State a clear operational mission goal..."
+              placeholder="Describe what you want to accomplish…"
               className="w-full bg-transparent font-interface text-xl sm:text-2xl text-jv-ink placeholder:text-jv-muted/60 outline-none pr-12 tracking-wide"
             />
             <button
@@ -161,17 +159,19 @@ export const HomeView: React.FC = () => {
 
       {/* Flagship "Needs You" Highlight if Pending Approvals Exist */}
       {pendingApprovals.length > 0 && (
-        <section
-          onClick={() => {
+        <Link
+          to="/approvals"
+          onClick={(e) => {
+            e.preventDefault();
             startViewTransition(() => {
               navigate('/approvals');
             });
           }}
-          className="border border-jv-rule-strong bg-jv-surface p-6 sm:p-8 cursor-pointer hover:bg-jv-ink hover:text-jv-bg transition-colors group space-y-3"
+          className="block border border-jv-rule-strong bg-jv-surface p-6 sm:p-8 cursor-pointer hover:bg-jv-ink hover:text-jv-bg focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-jv-ink transition-colors group space-y-3"
         >
           <div className="flex items-center justify-between font-machine text-xs">
             <span className="uppercase tracking-widest font-semibold text-jv-muted group-hover:text-jv-bg/80">
-              ACTION REQUIRED // HUMAN GATE
+              Needs you
             </span>
             <span className="underline decoration-1 underline-offset-4 font-machine group-hover:text-jv-bg">
               REVIEW PENDING (<NumberRoll value={pendingApprovals.length} />) →
@@ -182,7 +182,7 @@ export const HomeView: React.FC = () => {
             {pendingApprovals.length === 1 ? 'action requires' : 'actions require'}{' '}
             your authorization
           </div>
-        </section>
+        </Link>
       )}
 
       {/* Editorial Index of Active Missions */}
@@ -192,13 +192,13 @@ export const HomeView: React.FC = () => {
             Active Missions Index
           </h2>
           <span className="font-machine text-xs text-jv-muted">
-            <NumberRoll value={missions?.length || 0} /> TRACKED OBJECTS
+            <NumberRoll value={missions?.length || 0} /> missions
           </span>
         </div>
 
         {missionsLoading ? (
           <div className="py-12 text-center font-machine text-xs text-jv-muted">
-            SYNCHRONIZING REPOSITORY STATE...
+            Loading missions…
           </div>
         ) : !missions || missions.length === 0 ? (
           <div className="py-16 text-center space-y-3">
@@ -206,20 +206,22 @@ export const HomeView: React.FC = () => {
               ZERO ACTIVE MISSIONS
             </div>
             <p className="text-sm text-jv-ink-soft max-w-sm mx-auto">
-              No operational missions registered under this profile. State an objective above to begin.
+              Nothing tracked yet. Describe a mission above to begin.
             </p>
           </div>
         ) : (
           <div className="divide-y divide-jv-rule border-b border-jv-rule">
             {missions.map((m, idx) => (
-              <div
+              <Link
                 key={m.mission_id}
-                onClick={() => {
+                to={`/missions/${m.mission_id}`}
+                onClick={(e) => {
+                  e.preventDefault();
                   startViewTransition(() => {
                     navigate(`/missions/${m.mission_id}`);
                   });
                 }}
-                className="group py-6 flex flex-col md:flex-row md:items-baseline justify-between gap-4 transition-colors hover:bg-jv-surface px-4 -mx-4 cursor-pointer"
+                className="group py-6 flex flex-col md:flex-row md:items-baseline justify-between gap-4 transition-colors hover:bg-jv-surface px-4 -mx-4 cursor-pointer focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-jv-ink focus-visible:bg-jv-surface"
               >
                 <div className="space-y-1.5 max-w-2xl">
                   <div className="flex items-baseline gap-4">
@@ -239,7 +241,7 @@ export const HomeView: React.FC = () => {
                   <TextureBadge status={m.status} />
                   <ArrowUpRight className="w-5 h-5 text-jv-muted group-hover:text-jv-ink group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform duration-fast ease-editorial" />
                 </div>
-              </div>
+              </Link>
             ))}
           </div>
         )}

@@ -1,6 +1,6 @@
 import React from 'react';
 import { NavLink, useLocation, useNavigate } from 'react-router-dom';
-import { useApprovals } from '../../hooks/useCaseworker';
+import { useApprovals, useCase } from '../../hooks/useCaseworker';
 import { NumberRoll } from '../ui/NumberRoll';
 import { ArrowLeft } from 'lucide-react';
 import { startViewTransition } from '../../utils/transitions';
@@ -32,6 +32,9 @@ export const NavRail: React.FC<NavRailProps> = ({
   const pathname = location.pathname;
   const isMissionDetail = pathname.startsWith('/missions/') && pathname !== '/missions';
   const isCaseDetail = pathname.startsWith('/cases/');
+  const currentCaseId = isCaseDetail ? pathname.split('/cases/')[1]?.split('/')[0] : undefined;
+  const { data: caseData } = useCase(currentCaseId);
+  const parentMissionId = caseData?.caseItem?.mission_id;
 
   const navItems: NavItem[] = [
     { id: 'home', number: '01', label: 'Home', path: '/' },
@@ -106,13 +109,13 @@ export const NavRail: React.FC<NavRailProps> = ({
                 type="button"
                 onClick={() => {
                   startViewTransition(() => {
-                    navigate('/missions');
+                    navigate(parentMissionId ? `/missions/${parentMissionId}` : '/missions');
                   });
                   onNavigate?.();
                 }}
                 className="flex items-center gap-2 text-jv-muted hover:text-jv-ink transition-colors w-full text-left"
-                title="Return to Parent Mission"
-                aria-label="Return to Parent Mission"
+                title={parentMissionId ? 'Return to Parent Mission' : 'Return to Missions Index'}
+                aria-label={parentMissionId ? 'Return to Parent Mission' : 'Return to Missions Index'}
               >
                 <ArrowLeft className="w-3.5 h-3.5 shrink-0" />
                 <span
@@ -122,7 +125,7 @@ export const NavRail: React.FC<NavRailProps> = ({
                       : 'hidden group-hover/spine:inline group-focus-within/spine:inline'
                   }`}
                 >
-                  Parent Mission
+                  {parentMissionId ? 'Parent Mission' : 'Missions Index'}
                 </span>
               </button>
             )}

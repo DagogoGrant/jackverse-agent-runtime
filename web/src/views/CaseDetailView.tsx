@@ -16,33 +16,7 @@ import { apiRequest } from '../api/client';
 import type { Claim } from '../api/types';
 import { TextureBadge } from '../components/ui/TextureBadge';
 import { TactileButton } from '../components/ui/TactileButton';
-
-function humanizeEvent(eventType: string): string {
-  switch (eventType) {
-    case 'case_created':
-      return 'Case created and registered';
-    case 'case_transitioned':
-      return 'Case status transitioned';
-    case 'case_resolved':
-      return 'Case resolved with verified outcome';
-    case 'action_proposed':
-      return 'Action proposed by runtime';
-    case 'action_approval_requested':
-      return 'Governance authorization requested';
-    case 'action_approved':
-      return 'Human authorization recorded';
-    case 'action_rejected':
-      return 'Human governance rejected proposal';
-    case 'action_dispatched':
-      return 'Action dispatched to execution';
-    case 'claim_proposed':
-      return 'Factual claim proposed';
-    case 'claim_evaluated':
-      return 'Claim evaluated against context vault';
-    default:
-      return eventType.replace(/_/g, ' ');
-  }
-}
+import { humanizeEvent, formatEventTime } from '../lib/eventPresentation';
 
 export const CaseDetailView: React.FC = () => {
   const { caseId } = useParams<{ caseId: string }>();
@@ -544,12 +518,9 @@ export const CaseDetailView: React.FC = () => {
               caseEvents.map((ev) => (
                 <div key={ev.event_id} className="pb-3 border-b border-jv-rule/50 space-y-1">
                   <div className="text-jv-muted text-[11px]">
-                    {new Date(ev.occurred_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                    {formatEventTime(ev.occurred_at)}
                   </div>
-                  <div className="text-jv-ink font-semibold">{humanizeEvent(ev.event_type)}</div>
-                  <div className="text-jv-muted text-[11px] truncate">
-                    VERSION v{ev.aggregate_version}
-                  </div>
+                  <div className="text-jv-ink font-semibold">{humanizeEvent(ev)}</div>
                 </div>
               ))
             )}

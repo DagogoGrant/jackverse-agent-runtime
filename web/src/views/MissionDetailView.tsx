@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, Link } from 'react-router-dom';
 import { ArrowUpRight, AlertTriangle } from 'lucide-react';
 import {
   useMission,
@@ -11,26 +11,7 @@ import {
 import { TextureBadge } from '../components/ui/TextureBadge';
 import { TactileButton } from '../components/ui/TactileButton';
 import { startViewTransition } from '../utils/transitions';
-
-function humanizeEventType(eventType: string): string {
-  const map: Record<string, string> = {
-    'mission.created': 'Mission created',
-    'mission.status_changed': 'Mission status changed',
-    'case.created': 'Case created',
-    'case.status_changed': 'Case status changed',
-    'claim.proposed': 'Claim asserted',
-    'claim.evaluated': 'Claim evaluated',
-    'action.created': 'Action planned',
-    'action.status_changed': 'Action status changed',
-    'approval.requested': 'Approval requested',
-    'approval.approved': 'You approved an action',
-    'approval.rejected': 'Action rejected',
-    'context.fact_recorded': 'Profile fact recorded',
-    'context.fact_verified': 'Profile fact verified',
-    'context.fact_superseded': 'Profile fact updated',
-  };
-  return map[eventType] || eventType.replace(/[._]/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
-}
+import { humanizeEvent, formatEventTime } from '../lib/eventPresentation';
 
 export const MissionDetailView: React.FC = () => {
   const { missionId } = useParams<{ missionId: string }>();
@@ -298,14 +279,16 @@ export const MissionDetailView: React.FC = () => {
           ) : (
             <div className="divide-y divide-jv-rule border-b border-jv-rule">
               {cases.map((c) => (
-                <div
+                <Link
                   key={c.case_id}
-                  onClick={() => {
+                  to={`/cases/${c.case_id}`}
+                  onClick={(e) => {
+                    e.preventDefault();
                     startViewTransition(() => {
                       navigate(`/cases/${c.case_id}`);
                     });
                   }}
-                  className="py-5 group flex items-baseline justify-between gap-4 px-3 -mx-3 hover:bg-jv-surface transition-colors cursor-pointer"
+                  className="py-5 group flex items-baseline justify-between gap-4 px-3 -mx-3 hover:bg-jv-surface transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-jv-ink focus-visible:bg-jv-surface"
                 >
                   <div className="space-y-1.5">
                     <div className="flex items-center gap-3">
@@ -325,7 +308,7 @@ export const MissionDetailView: React.FC = () => {
                     <TextureBadge status={c.status} />
                     <ArrowUpRight className="w-4 h-4 text-jv-muted group-hover:text-jv-ink transition-colors" />
                   </div>
-                </div>
+                </Link>
               ))}
             </div>
           )}
@@ -354,9 +337,9 @@ export const MissionDetailView: React.FC = () => {
               missionEvents.slice(0, 8).map((ev) => (
                 <div key={ev.event_id} className="pb-3 border-b border-jv-rule space-y-1">
                   <div className="text-jv-muted">
-                    {new Date(ev.occurred_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                    {formatEventTime(ev.occurred_at)}
                   </div>
-                  <div className="text-jv-ink font-medium">{humanizeEventType(ev.event_type)}</div>
+                  <div className="text-jv-ink font-medium">{humanizeEvent(ev)}</div>
                 </div>
               ))
             )}

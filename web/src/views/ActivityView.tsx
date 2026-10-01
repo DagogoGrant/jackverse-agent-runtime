@@ -2,44 +2,7 @@ import React, { useState } from 'react';
 import { useEvents } from '../hooks/useCaseworker';
 import { TactileButton } from '../components/ui/TactileButton';
 import { ChevronDown, ChevronRight } from 'lucide-react';
-
-function humanizeActivity(type: string): string {
-  switch (type) {
-    case 'mission_created':
-      return 'Mission initiated and registered';
-    case 'mission_transitioned':
-      return 'Mission lifecycle status transitioned';
-    case 'case_created':
-      return 'Case created and registered';
-    case 'case_transitioned':
-      return 'Case status transitioned';
-    case 'case_resolved':
-      return 'Case resolved with verified outcome';
-    case 'action_proposed':
-      return 'Action proposed by runtime';
-    case 'action_approval_requested':
-      return 'Governance authorization requested';
-    case 'action_approved':
-      return 'Human authorization recorded';
-    case 'action_rejected':
-      return 'Human governance rejected proposal';
-    case 'action_dispatched':
-      return 'Action dispatched to execution';
-    case 'claim_proposed':
-      return 'Factual claim proposed';
-    case 'claim_evaluated':
-      return 'Claim evaluated against context vault';
-    case 'context_fact_set':
-    case 'context_fact_updated':
-      return 'Context vault fact recorded';
-    case 'opportunity_discovered':
-      return 'Prospect discovered and catalogued';
-    case 'opportunity_transitioned':
-      return 'Opportunity lifecycle transitioned';
-    default:
-      return type.replace(/_/g, ' ');
-  }
-}
+import { humanizeEvent, formatEventTime } from '../lib/eventPresentation';
 
 function formatDateGroup(isoStr: string): string {
   const d = new Date(isoStr);
@@ -140,21 +103,15 @@ export const ActivityView: React.FC = () => {
                       <div className="flex flex-col md:flex-row md:items-baseline justify-between gap-2">
                         <div className="space-y-1 max-w-3xl">
                           <div className="flex items-center gap-3">
-                            <span className="text-jv-muted">
-                              POS #{ev.position !== undefined ? ev.position : '—'}
-                            </span>
                             <span className="font-interface font-medium text-jv-ink text-sm">
-                              {humanizeActivity(ev.event_type)}
-                            </span>
-                            <span className="text-jv-muted text-[11px]">
-                              [{ev.aggregate_type} / {ev.aggregate_id.slice(0, 8)} v{ev.aggregate_version}]
+                              {humanizeEvent(ev)}
                             </span>
                           </div>
                         </div>
 
                         <div className="flex items-center gap-4 text-jv-muted pl-6 md:pl-0 shrink-0">
                           <span className="text-[11px]">
-                            {new Date(ev.occurred_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                            {formatEventTime(ev.occurred_at)}
                           </span>
                           <button
                             type="button"
@@ -172,9 +129,12 @@ export const ActivityView: React.FC = () => {
                       </div>
 
                       {isExpanded && (
-                        <div className="p-3 bg-jv-surface border border-jv-rule text-[11px] font-machine text-jv-ink break-all mt-1">
-                          <div className="text-jv-muted uppercase mb-1">
-                            EVENT TYPE: {ev.event_type}
+                        <div className="p-3 bg-jv-surface border border-jv-rule text-[11px] font-machine text-jv-ink break-all mt-1 space-y-1">
+                          <div className="text-jv-muted uppercase">
+                            EVENT TYPE: {ev.event_type} · POS #{ev.position !== undefined ? ev.position : '—'}
+                          </div>
+                          <div className="text-jv-muted uppercase">
+                            AGGREGATE: [{ev.aggregate_type} / {ev.aggregate_id} v{ev.aggregate_version}]
                           </div>
                           <div>PAYLOAD: {JSON.stringify(ev.payload || {}, null, 2)}</div>
                         </div>

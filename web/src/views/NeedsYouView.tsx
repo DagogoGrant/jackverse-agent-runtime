@@ -182,14 +182,15 @@ export const NeedsYouView: React.FC = () => {
             {filtered.map((app) => {
               const isSelected = app.approval_id === effectiveApprovalId;
               return (
-                <div
+                <button
+                  type="button"
                   key={app.approval_id}
                   onClick={() => {
                     setSelectedApprovalId(app.approval_id);
                     setConcurrencyNotice(null);
                     setAuthorizedNotice(null);
                   }}
-                  className={`p-4 cursor-pointer transition-colors duration-fast ease-editorial space-y-2 ${
+                  className={`w-full text-left p-4 cursor-pointer transition-colors duration-fast ease-editorial space-y-2 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-jv-ink ${
                     isSelected
                       ? 'bg-jv-ink text-jv-bg'
                       : 'hover:bg-jv-surface text-jv-ink'
@@ -213,7 +214,7 @@ export const NeedsYouView: React.FC = () => {
                   >
                     Requested: {new Date(app.requested_at).toLocaleDateString()}
                   </div>
-                </div>
+                </button>
               );
             })}
           </div>

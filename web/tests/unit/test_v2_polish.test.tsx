@@ -1,0 +1,358 @@
+import React from 'react';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { render, screen, fireEvent, renderHook, act } from '@testing-library/react';
+import { MemoryRouter } from 'react-router-dom';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+
+import { humanizeEvent, formatEventTime } from '../../src/lib/eventPresentation';
+import { ActivityView } from '../../src/views/ActivityView';
+import { NavRail } from '../../src/components/layout/NavRail';
+import { HomeView } from '../../src/views/HomeView';
+import { OpportunitiesView } from '../../src/views/OpportunitiesView';
+import { NeedsYouView } from '../../src/views/NeedsYouView';
+import { NumberRoll } from '../../src/components/ui/NumberRoll';
+import { AmbientCanvas } from '../../src/components/ui/AmbientCanvas';
+import { useTheme } from '../../src/hooks/useTheme';
+
+import * as caseworkerHooks from '../../src/hooks/useCaseworker';
+
+describe('Design V2.0.1 Craft & Accessibility Polish', () => {
+  let queryClient: QueryClient;
+
+  beforeEach(() => {
+    queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    localStorage.clear();
+    delete document.documentElement.dataset.theme;
+    document.documentElement.className = '';
+    window.matchMedia = vi.fn().mockImplementation((query) => ({
+      matches: false,
+      media: query,
+      onchange: null,
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      dispatchEvent: vi.fn(),
+    }));
+    vi.useRealTimers();
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  describe('1. Centralized Human Event Presentation', () => {
+    it('correctly translates JackVerse dotted domain events', () => {
+      expect(humanizeEvent('mission.created')).toBe('Mission created');
+      expect(
+        humanizeEvent({
+          event_type: 'case.status_changed',
+          payload: { new_status: 'investigation' },
+        })
+      ).toBe('Case moved to Investigation');
+      expect(humanizeEvent('approval.requested')).toBe('Your approval was requested');
+      expect(humanizeEvent('approval.approved')).toBe('You approved an action');
+      expect(humanizeEvent('context.fact_superseded')).toBe('Profile information updated');
+    });
+
+    it('gracefully handles unknown dot and underscore event formats', () => {
+      expect(humanizeEvent('runtime.container_restarted')).toBe('Runtime Container Restarted');
+      expect(humanizeEvent('custom_stream_flushed')).toBe('Custom Stream Flushed');
+      expect(humanizeEvent('')).toBe('System event');
+    });
+
+    it('formats event timestamps cleanly into 24h clock', () => {
+      expect(formatEventTime(undefined)).toBe('--:--');
+      expect(formatEventTime('invalid-date')).toBe('--:--');
+      const timeStr = formatEventTime('2026-10-01T14:30:00Z');
+      expect(timeStr).toMatch(/\d{2}:\d{2}/);
+    });
+  });
+
+  describe('2. ActivityView Technical Metadata Isolation', () => {
+    it('hides technical metadata (POS, aggregate) until Inspect drawer is opened', () => {
+      vi.spyOn(caseworkerHooks, 'useEvents').mockReturnValue({
+        data: {
+          items: [
+            {
+              event_id: 'ev-100',
+              event_type: 'case.status_changed',
+              payload: { new_status: 'in_review' },
+              aggregate_type: 'case',
+              aggregate_id: 'case-998877665544',
+              aggregate_version: 3,
+              position: 42,
+              occurred_at: new Date().toISOString(),
+            },
+          ],
+          next_position: null,
+        },
+        isLoading: false,
+      } as any);
+
+      render(
+        <QueryClientProvider client={queryClient}>
+          <MemoryRouter>
+            <ActivityView />
+          </MemoryRouter>
+        </QueryClientProvider>
+      );
+
+      // Human title is present in the main row
+      expect(screen.getByText('Case moved to In Review')).toBeInTheDocument();
+
+      // Technical POS # and aggregate version are NOT in the unexpanded primary view
+      expect(screen.queryByText(/POS #42/)).not.toBeInTheDocument();
+      expect(screen.queryByText(/case-998877665544/)).not.toBeInTheDocument();
+
+      // Click Inspect button
+      const inspectBtn = screen.getByRole('button', { name: /inspect/i });
+      fireEvent.click(inspectBtn);
+
+      // Now technical metadata is visible inside the Inspect drawer
+      expect(screen.getByText(/POS #42/)).toBeInTheDocument();
+      expect(screen.getByText(/AGGREGATE: \[case \/ case-998877665544 v3\]/)).toBeInTheDocument();
+    });
+  });
+
+  describe('3. Case Book-Spine Parent Navigation', () => {
+    it('navigates to parent mission when mission_id is resolved on /cases/:id', () => {
+      vi.spyOn(caseworkerHooks, 'useCase').mockReturnValue({
+        data: {
+          caseItem: {
+            case_id: 'c-100',
+            mission_id: 'm-200',
+            title: 'Test Case',
+            case_type: 'job_application',
+            status: 'new',
+            version: 1,
+            created_at: new Date().toISOString(),
+          },
+          etag: '"v1"',
+        },
+        isLoading: false,
+      } as any);
+
+      render(
+        <QueryClientProvider client={queryClient}>
+          <MemoryRouter initialEntries={['/cases/c-100']}>
+            <NavRail />
+          </MemoryRouter>
+        </QueryClientProvider>
+      );
+
+      const parentBtn = screen.getByRole('button', { name: /return to parent mission/i });
+      expect(parentBtn).toBeInTheDocument();
+      expect(parentBtn).toHaveTextContent(/Parent Mission/i);
+    });
+
+    it('falls back to Missions Index if case has no parent mission_id', () => {
+      vi.spyOn(caseworkerHooks, 'useCase').mockReturnValue({
+        data: {
+          caseItem: {
+            case_id: 'c-100',
+            mission_id: null,
+            title: 'Standalone Case',
+            case_type: 'job_application',
+            status: 'new',
+            version: 1,
+            created_at: new Date().toISOString(),
+          },
+          etag: '"v1"',
+        },
+        isLoading: false,
+      } as any);
+
+      render(
+        <QueryClientProvider client={queryClient}>
+          <MemoryRouter initialEntries={['/cases/c-100']}>
+            <NavRail />
+          </MemoryRouter>
+        </QueryClientProvider>
+      );
+
+      const fallbackBtn = screen.getByRole('button', { name: /return to missions index/i });
+      expect(fallbackBtn).toBeInTheDocument();
+      expect(fallbackBtn).toHaveTextContent(/Missions Index/i);
+    });
+  });
+
+  describe('4. Semantic Keyboard Navigation & Consumer Polish', () => {
+    it('renders mission rows as semantic Link anchors on HomeView', () => {
+      vi.spyOn(caseworkerHooks, 'useMissions').mockReturnValue({
+        data: [
+          {
+            mission_id: 'm-001',
+            title: 'Lead AI Engineer at DeepMind',
+            goal: 'Secure an interview',
+            kind: 'opportunity_pursuit',
+            status: 'active',
+            version: 1,
+            created_at: new Date().toISOString(),
+          },
+        ],
+        isLoading: false,
+      } as any);
+
+      render(
+        <QueryClientProvider client={queryClient}>
+          <MemoryRouter>
+            <HomeView />
+          </MemoryRouter>
+        </QueryClientProvider>
+      );
+
+      // Check placeholder polish
+      expect(
+        screen.getByPlaceholderText('Describe what you want to accomplish…')
+      ).toBeInTheDocument();
+
+      // Check mission row is a semantic Link
+      const link = screen.getByRole('link', { name: /lead ai engineer at deepmind/i });
+      expect(link).toBeInTheDocument();
+      expect(link).toHaveAttribute('href', '/missions/m-001');
+    });
+
+    it('renders opportunity rows as semantic Link anchors on OpportunitiesView', () => {
+      vi.spyOn(caseworkerHooks, 'useOpportunities').mockReturnValue({
+        data: [
+          {
+            opportunity_id: 'opp-100',
+            title: 'Senior Systems Architect',
+            organization: 'Anthropic',
+            opportunity_type: 'job',
+            status: 'discovered',
+            requirements: [],
+            created_at: new Date().toISOString(),
+          },
+        ],
+        isLoading: false,
+      } as any);
+
+      render(
+        <QueryClientProvider client={queryClient}>
+          <MemoryRouter>
+            <OpportunitiesView />
+          </MemoryRouter>
+        </QueryClientProvider>
+      );
+
+      const link = screen.getByRole('link', { name: /senior systems architect/i });
+      expect(link).toBeInTheDocument();
+      expect(link).toHaveAttribute('href', '/opportunities/opp-100');
+    });
+
+    it('renders approval list items as semantic buttons in NeedsYouView', () => {
+      vi.spyOn(caseworkerHooks, 'useApprovals').mockReturnValue({
+        data: [
+          {
+            approval_id: 'app-999',
+            action_id: 'act-111',
+            case_id: 'case-222',
+            status: 'pending',
+            requested_at: new Date().toISOString(),
+          },
+        ],
+        isLoading: false,
+      } as any);
+
+      render(
+        <QueryClientProvider client={queryClient}>
+          <MemoryRouter>
+            <NeedsYouView />
+          </MemoryRouter>
+        </QueryClientProvider>
+      );
+
+      const button = screen.getByRole('button', { name: /approval #app-999/i });
+      expect(button).toBeInTheDocument();
+      expect(button.tagName.toLowerCase()).toBe('button');
+    });
+  });
+
+  describe('5. NumberRoll Spatial Transitions', () => {
+    it('renders the initial value statically without animation markup', () => {
+      const { container } = render(<NumberRoll value={5} />);
+      expect(screen.getByText('5')).toBeInTheDocument();
+      // Should not have rollState (absolute layer) on first mount
+      expect(container.querySelectorAll('.absolute').length).toBe(0);
+    });
+
+    it('respects prefers-reduced-motion by updating instantly without roll layers', async () => {
+      window.matchMedia = vi.fn().mockImplementation((query) => ({
+        matches: query === '(prefers-reduced-motion: reduce)',
+        media: query,
+        onchange: null,
+        addListener: vi.fn(),
+        removeListener: vi.fn(),
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+        dispatchEvent: vi.fn(),
+      }));
+
+      const { rerender, container } = render(<NumberRoll value={1} />);
+      expect(screen.getByText('1')).toBeInTheDocument();
+
+      rerender(<NumberRoll value={2} />);
+      expect(await screen.findByText('2')).toBeInTheDocument();
+      expect(container.querySelectorAll('.absolute').length).toBe(0);
+    });
+  });
+
+  describe('6. Theme Wash Timer Race Prevention', () => {
+    it('cancels previous wash timer when rapidly toggling themes', () => {
+      vi.useFakeTimers();
+
+      const { result } = renderHook(() => useTheme());
+
+      act(() => {
+        result.current.setTheme('ink');
+      });
+      expect(document.documentElement.classList.contains('theme-wash')).toBe(true);
+
+      // Fast forward only 200ms (less than 450ms timeout) and toggle again
+      act(() => {
+        vi.advanceTimersByTime(200);
+        result.current.setTheme('paper');
+      });
+      expect(document.documentElement.classList.contains('theme-wash')).toBe(true);
+
+      // Fast forward another 300ms (original timer would have fired at 450ms, but was reset)
+      act(() => {
+        vi.advanceTimersByTime(300);
+      });
+      // Second timer is still alive (only 300ms of 450ms elapsed)
+      expect(document.documentElement.classList.contains('theme-wash')).toBe(true);
+
+      // Fast forward remaining 200ms -> total 500ms since second toggle
+      act(() => {
+        vi.advanceTimersByTime(200);
+      });
+      expect(document.documentElement.classList.contains('theme-wash')).toBe(false);
+
+      vi.useRealTimers();
+    });
+  });
+
+  describe('7. AmbientCanvas Reduced Motion & Lifecycle', () => {
+    it('does not start animation loop when prefers-reduced-motion is active', () => {
+      const rafSpy = vi.spyOn(window, 'requestAnimationFrame');
+
+      window.matchMedia = vi.fn().mockImplementation((query) => ({
+        matches: query === '(prefers-reduced-motion: reduce)',
+        media: query,
+        onchange: null,
+        addListener: vi.fn(),
+        removeListener: vi.fn(),
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+        dispatchEvent: vi.fn(),
+      }));
+
+      render(<AmbientCanvas />);
+      expect(rafSpy).not.toHaveBeenCalled();
+    });
+  });
+});

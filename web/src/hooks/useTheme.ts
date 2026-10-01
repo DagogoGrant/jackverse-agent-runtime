@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 
 export type Theme = 'paper' | 'ink';
 
@@ -13,7 +13,7 @@ export function getInitialTheme(): Theme {
   } catch {
     // Ignore storage errors
   }
-  const domTheme = document.documentElement.dataset.theme;
+  const domTheme = typeof document !== 'undefined' ? document.documentElement.dataset.theme : undefined;
   if (domTheme === 'ink' || domTheme === 'paper') {
     return domTheme;
   }
@@ -22,36 +22,50 @@ export function getInitialTheme(): Theme {
 
 export function useTheme() {
   const [theme, setThemeState] = useState<Theme>(getInitialTheme);
+  const washTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (washTimerRef.current) {
+        clearTimeout(washTimerRef.current);
+      }
+    };
+  }, []);
 
   useEffect(() => {
     // Ensure external DOM reflects initial theme
     const current = getInitialTheme();
-    document.documentElement.dataset.theme = current;
+    if (typeof document !== 'undefined') {
+      document.documentElement.dataset.theme = current;
+    }
 
     const handleSync = () => {
-      const activeTheme = (document.documentElement.dataset.theme as Theme) || getInitialTheme();
+      const activeTheme = (typeof document !== 'undefined' ? document.documentElement.dataset.theme as Theme : undefined) || getInitialTheme();
       if (activeTheme === 'paper' || activeTheme === 'ink') {
         setThemeState(activeTheme);
       }
     };
 
-    const observer = new MutationObserver((mutations) => {
-      for (const m of mutations) {
-        if (m.type === 'attributes' && m.attributeName === 'data-theme') {
-          handleSync();
+    let observer: MutationObserver | null = null;
+    if (typeof document !== 'undefined') {
+      observer = new MutationObserver((mutations) => {
+        for (const m of mutations) {
+          if (m.type === 'attributes' && m.attributeName === 'data-theme') {
+            handleSync();
+          }
         }
-      }
-    });
+      });
 
-    observer.observe(document.documentElement, {
-      attributes: true,
-      attributeFilter: ['data-theme'],
-    });
+      observer.observe(document.documentElement, {
+        attributes: true,
+        attributeFilter: ['data-theme'],
+      });
+    }
 
     window.addEventListener('storage', handleSync);
 
     return () => {
-      observer.disconnect();
+      observer?.disconnect();
       window.removeEventListener('storage', handleSync);
     };
   }, []);
@@ -59,8 +73,7 @@ export function useTheme() {
   const setTheme = useCallback((newTheme: Theme) => {
     const prefersReducedMotion =
       typeof window !== 'undefined' &&
-      window.matchMedia &&
-      window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      Boolean(window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches);
 
     try {
       localStorage.setItem(STORAGE_KEY, newTheme);
@@ -68,22 +81,33 @@ export function useTheme() {
       // Ignore storage errors
     }
 
+    if (washTimerRef.current) {
+      clearTimeout(washTimerRef.current);
+      washTimerRef.current = null;
+    }
+
     if (prefersReducedMotion) {
-      document.documentElement.dataset.theme = newTheme;
+      if (typeof document !== 'undefined') {
+        document.documentElement.classList.remove('theme-wash');
+        document.documentElement.dataset.theme = newTheme;
+      }
       setThemeState(newTheme);
       return;
     }
 
     // Apply temporary theme wash class for authored 400ms transition
-    document.documentElement.classList.add('theme-wash');
-    document.documentElement.dataset.theme = newTheme;
+    if (typeof document !== 'undefined') {
+      document.documentElement.classList.add('theme-wash');
+      document.documentElement.dataset.theme = newTheme;
+    }
     setThemeState(newTheme);
 
-    const timer = setTimeout(() => {
-      document.documentElement.classList.remove('theme-wash');
+    washTimerRef.current = setTimeout(() => {
+      if (typeof document !== 'undefined') {
+        document.documentElement.classList.remove('theme-wash');
+      }
+      washTimerRef.current = null;
     }, 450);
-
-    return () => clearTimeout(timer);
   }, []);
 
   const toggleTheme = useCallback(() => {

@@ -1,9 +1,10 @@
 import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import { ArrowUpRight } from 'lucide-react';
 import { useOpportunities, useCreateOpportunity } from '../hooks/useCaseworker';
 import { TextureBadge } from '../components/ui/TextureBadge';
 import { TactileButton } from '../components/ui/TactileButton';
+import { startViewTransition } from '../utils/transitions';
 import type { OpportunityType } from '../api/types';
 
 export const OpportunitiesView: React.FC = () => {
@@ -242,10 +243,16 @@ export const OpportunitiesView: React.FC = () => {
       ) : (
         <div className="divide-y divide-jv-rule border-y border-jv-rule">
           {filtered.map((opp, idx) => (
-            <div
+            <Link
               key={opp.opportunity_id}
-              onClick={() => navigate(`/opportunities/${opp.opportunity_id}`)}
-              className="py-6 px-4 -mx-4 group flex flex-col md:flex-row md:items-baseline justify-between gap-4 hover:bg-jv-surface transition-colors cursor-pointer"
+              to={`/opportunities/${opp.opportunity_id}`}
+              onClick={(e) => {
+                e.preventDefault();
+                startViewTransition(() => {
+                  navigate(`/opportunities/${opp.opportunity_id}`);
+                });
+              }}
+              className="py-6 px-4 -mx-4 group flex flex-col md:flex-row md:items-baseline justify-between gap-4 hover:bg-jv-surface transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-jv-ink focus-visible:bg-jv-surface"
             >
               <div className="space-y-2 max-w-2xl">
                 <div className="flex items-center gap-3">
@@ -255,7 +262,7 @@ export const OpportunitiesView: React.FC = () => {
                   <span className="font-machine text-xs uppercase text-jv-muted">
                     {opp.organization || 'Independent'}
                   </span>
-                  <h2 className="font-interface font-semibold text-lg text-jv-ink group-hover:translate-x-1 transition-transform">
+                  <h2 className="font-interface font-semibold text-lg text-jv-ink group-hover:translate-x-1 transition-transform duration-fast ease-editorial">
                     {opp.title}
                   </h2>
                 </div>
@@ -275,9 +282,9 @@ export const OpportunitiesView: React.FC = () => {
                 <span className="font-machine text-xs text-jv-muted uppercase">
                   {opp.opportunity_type}
                 </span>
-                <ArrowUpRight className="w-5 h-5 text-jv-muted group-hover:text-jv-ink group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-all" />
+                <ArrowUpRight className="w-5 h-5 text-jv-muted group-hover:text-jv-ink group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform duration-fast ease-editorial" />
               </div>
-            </div>
+            </Link>
           ))}
         </div>
       )}

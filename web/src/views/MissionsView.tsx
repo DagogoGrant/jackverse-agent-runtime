@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import { ArrowUpRight } from 'lucide-react';
 import { useMissions } from '../hooks/useCaseworker';
 import { TextureBadge } from '../components/ui/TextureBadge';
@@ -77,14 +77,16 @@ export const MissionsView: React.FC = () => {
       ) : (
         <div className="divide-y divide-jv-rule border-b border-jv-rule">
           {filteredMissions.map((m, idx) => (
-            <div
+            <Link
               key={m.mission_id}
-              onClick={() => {
+              to={`/missions/${m.mission_id}`}
+              onClick={(e) => {
+                e.preventDefault();
                 startViewTransition(() => {
                   navigate(`/missions/${m.mission_id}`);
                 });
               }}
-              className="py-6 px-4 -mx-4 group flex flex-col md:flex-row md:items-baseline justify-between gap-4 hover:bg-jv-surface transition-colors cursor-pointer"
+              className="py-6 px-4 -mx-4 group flex flex-col md:flex-row md:items-baseline justify-between gap-4 hover:bg-jv-surface transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-jv-ink focus-visible:bg-jv-surface"
             >
               <div className="space-y-1.5 max-w-2xl">
                 <div className="flex items-baseline gap-4">
@@ -110,7 +112,7 @@ export const MissionsView: React.FC = () => {
                 </span>
                 <ArrowUpRight className="w-5 h-5 text-jv-muted group-hover:text-jv-ink group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform duration-fast ease-editorial" />
               </div>
-            </div>
+            </Link>
           ))}
         </div>
       )}
