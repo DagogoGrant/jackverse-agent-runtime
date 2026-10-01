@@ -1220,30 +1220,33 @@ class SQLiteClaimRepository(ClaimRepository):
         row = cur.fetchone()
         return self._row_to_claim(row) if row else None
 
-    def list_by_user(self, user_id: str, status: ClaimStatus | None = None) -> list[Claim]:
+    def list_by_user(
+        self,
+        user_id: str,
+        status: ClaimStatus | None = None,
+        case_id: str | None = None,
+        mission_id: str | None = None,
+    ) -> list[Claim]:
         cur = self.conn.cursor()
+        query = """
+            SELECT claim_id, user_id, case_id, mission_id, purpose, text,
+                   status, supporting_fact_ids, created_at, updated_at,
+                   verified_at, rejection_reason, version
+            FROM claims WHERE user_id = ?
+        """
+        params: list[Any] = [user_id]
         if status is not None:
-            cur.execute(
-                """
-                SELECT claim_id, user_id, case_id, mission_id, purpose, text,
-                       status, supporting_fact_ids, created_at, updated_at,
-                       verified_at, rejection_reason, version
-                FROM claims WHERE user_id = ? AND status = ?
-                ORDER BY created_at DESC
-                """,
-                (user_id, status.value),
-            )
-        else:
-            cur.execute(
-                """
-                SELECT claim_id, user_id, case_id, mission_id, purpose, text,
-                       status, supporting_fact_ids, created_at, updated_at,
-                       verified_at, rejection_reason, version
-                FROM claims WHERE user_id = ?
-                ORDER BY created_at DESC
-                """,
-                (user_id,),
-            )
+            query += " AND status = ?"
+            params.append(status.value if hasattr(status, "value") else str(status))
+        if case_id is not None:
+            query += " AND case_id = ?"
+            params.append(case_id)
+        if mission_id is not None:
+            query += " AND mission_id = ?"
+            params.append(mission_id)
+
+        query += " ORDER BY created_at DESC"
+        cur.execute(query, tuple(params))
         return [self._row_to_claim(r) for r in cur.fetchall()]
 
     def list_by_case(self, case_id: str) -> list[Claim]:

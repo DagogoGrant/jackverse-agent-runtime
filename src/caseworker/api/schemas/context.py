@@ -67,6 +67,25 @@ class SupersedeFactRequest(BaseModel):
     expires_at: datetime | None = Field(None, description="New expiration timestamp.")
 
 
+class FactSummaryResponse(BaseModel):
+    """Sanitized context fact summary for lists and personal index, omitting raw sensitive values and references."""
+
+    fact_id: str
+    user_id: str
+    namespace: str
+    key: str
+    sensitivity: str
+    verification_status: str
+    source_id: str | None = None
+    source_type: str
+    confidence: float
+    updated_at: str
+    expires_at: str | None = None
+    version: int
+    has_value: bool = True
+    preview: str | None = None
+
+
 class FactResponse(BaseModel):
     fact_id: str
     user_id: str
@@ -86,6 +105,31 @@ class FactResponse(BaseModel):
     expires_at: str | None = None
     superseded_by_fact_id: str | None = None
     version: int
+
+
+class RequirementItem(BaseModel):
+    requirement_id: str
+    purpose: str
+    namespace: str
+    key: str
+    label: str
+    is_mandatory: bool
+    minimum_verification: str
+
+
+class ProfileReadinessResponse(BaseModel):
+    purpose: str
+    title: str
+    is_ready: bool
+    completeness_ratio: float
+    satisfied_count: int
+    missing_count: int
+    unverifiable_count: int
+    expired_count: int
+    satisfied: list[RequirementItem] = Field(default_factory=list)
+    missing: list[RequirementItem] = Field(default_factory=list)
+    unverifiable: list[RequirementItem] = Field(default_factory=list)
+    expired: list[RequirementItem] = Field(default_factory=list)
 
 
 class CreatePackageRequest(BaseModel):

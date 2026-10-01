@@ -417,7 +417,7 @@ Phase 1:  Domain Foundation                     (COMPLETE)
 Phase 2:  Personal Context Vault + Claim Ledger  (COMPLETE)
 Milestone 2.1: Security & Integrity Hardening   (COMPLETE)
 Phase 3:  API Service Layer                     (COMPLETE)
-Phase 4:  Consumer Web UI
+Phase 4:  Consumer Web UI                       (COMPLETE)
 Phase 5:  Opportunity Discovery Engine
 Phase 6:  Governed Async Subagents
 Phase 7:  Planning / Dependency DAG
@@ -429,4 +429,20 @@ Phase 12: Evals + Replay
 Phase 13: Security Hardening
 Phase 14: Multi-user Production Hardening
 ```
+
+---
+
+## 10. Consumer Web UI Architecture (Phase 4)
+
+Phase 4 delivers the user-facing web surface embodying **Monochrome Kinetic Editorialism**:
+- **Design Philosophy**: High contrast (#050505 canvas, #F4F3EF paper), architectural three-voice typography (Instrument Serif, Geist Sans, Geist Mono locally bundled via `@fontsource`), zero card soup, 1px hairlines, and tactile physical controls.
+- **Numbered Editorial Hierarchy**: Numbered desktop rail (`01 HOME`, `02 MISSIONS`, `03 OPPORTUNITIES`, `04 NEEDS YOU`, `05 MY CONTEXT`, `06 ACTIVITY`) with responsive collapsing mobile navigation drawer.
+- **Dedicated Case Workspace**: Granular `/cases/:caseId` view with state transition triggers, optimistic ETag precondition validation, action lists, and claim linkages.
+- **Tactile Authorization**: Flagship Halaska-inspired `DragToAuthorize` slider requiring deliberate 88% travel threshold, spring-reset, and double-submit lockout for consequential actions.
+- **Context Privacy Gating**: Masked sensitive facts (`PRIVATE ••••••••••••`) revealed strictly on demand without local storage persistence.
+- **Truthful System State**: `AgentGlyph` reflects real network/HTTP activity with zero simulated thinking illusions.
+- **Dev Isolation Split**: Diagnostic user switcher isolated to `docker-compose.dev.yml` under `VITE_JACKVERSE_DEV_AUTH=true`, clearing the TanStack Query cache on user switches.
+
+See [Design System Specification](DESIGN.md) and [Caseworker Web Specification](CASEWORKER_WEB.md) for complete details.
+
 

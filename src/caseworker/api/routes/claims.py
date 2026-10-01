@@ -73,9 +73,16 @@ async def list_claims(
     service: Annotated[ClaimLedgerService, Depends(get_claim_service)],
     pagination: Annotated[PaginationParams, Depends()],
     status_filter: ClaimStatus | None = None,
+    case_id: str | None = None,
+    mission_id: str | None = None,
 ) -> PaginatedResponse[ClaimResponse]:
-    """List claims belonging to the authenticated user."""
-    all_claims = service.list_user_claims(principal.user_id, status=status_filter)
+    """List claims belonging to the authenticated user, optionally filtered by status, case_id, or mission_id."""
+    all_claims = service.list_user_claims(
+        principal.user_id,
+        status=status_filter,
+        case_id=case_id,
+        mission_id=mission_id,
+    )
     total = len(all_claims)
     page_items = all_claims[pagination.offset : pagination.offset + pagination.limit]
     return PaginatedResponse(

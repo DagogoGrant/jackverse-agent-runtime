@@ -189,8 +189,14 @@ class ClaimRepository(Protocol):
         """Retrieve a claim by its unique ID."""
         ...
 
-    def list_by_user(self, user_id: str, status: ClaimStatus | None = None) -> list[Claim]:
-        """List claims belonging to a user, optionally filtered by status."""
+    def list_by_user(
+        self,
+        user_id: str,
+        status: ClaimStatus | None = None,
+        case_id: str | None = None,
+        mission_id: str | None = None,
+    ) -> list[Claim]:
+        """List claims belonging to a user, optionally filtered by status, case_id, or mission_id."""
         ...
 
     def list_by_case(self, case_id: str) -> list[Claim]:

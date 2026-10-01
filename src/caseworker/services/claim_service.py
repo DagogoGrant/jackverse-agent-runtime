@@ -237,10 +237,21 @@ class ClaimLedgerService:
 
         return self.reject_claim(claim_id, reason=reason)
 
-    def list_user_claims(self, user_id: str, status: ClaimStatus | None = None) -> list[Claim]:
-        """List claims belonging to a user, optionally filtered by status."""
+    def list_user_claims(
+        self,
+        user_id: str,
+        status: ClaimStatus | None = None,
+        case_id: str | None = None,
+        mission_id: str | None = None,
+    ) -> list[Claim]:
+        """List claims belonging to a user, optionally filtered by status, case_id, or mission_id."""
         with self.storage.unit_of_work() as uow:
-            return uow.claims.list_by_user(user_id=user_id, status=status)
+            return uow.claims.list_by_user(
+                user_id=user_id,
+                status=status,
+                case_id=case_id,
+                mission_id=mission_id,
+            )
 
     def list_case_claims(self, case_id: str) -> list[Claim]:
         """List all claims linked to a specific case."""

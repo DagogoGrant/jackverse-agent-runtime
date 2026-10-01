@@ -1,0 +1,67 @@
+@import "@fontsource/instrument-serif";
+@import "@fontsource/geist-sans";
+@import "@fontsource/geist-mono";
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --color-canvas: #050505;
+    --color-ink: #0A0A0A;
+    --color-paper: #F4F3EF;
+    --color-white: #FFFFFF;
+    --color-grey-100: #E8E7E3;
+    --color-grey-300: #B8B7B2;
+    --color-grey-500: #777672;
+    --color-grey-700: #2D2D2B;
+
+    --font-display: "Instrument Serif", Georgia, serif;
+    --font-interface: "Geist", -apple-system, BlinkMacSystemFont, sans-serif;
+    --font-machine: "Geist Mono", ui-monospace, monospace;
+  }
+
+  body {
+    background-color: var(--color-canvas);
+    color: var(--color-paper);
+    font-family: var(--font-interface);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  ::selection {
+    background-color: var(--color-paper);
+    color: var(--color-canvas);
+  }
+}
+
+@layer utilities {
+  .texture-hatch {
+    background-image: repeating-linear-gradient(
+      -45deg,
+      #2D2D2B,
+      #2D2D2B 2px,
+      transparent 2px,
+      transparent 6px
+    );
+  }
+
+  .texture-dots {
+    background-image: radial-gradient(#2D2D2B 1px, transparent 1px);
+    background-size: 8px 8px;
+  }
+
+  .border-hairline {
+    border-width: 1px;
+    border-color: #2D2D2B;
+  }
+
+  .border-hairline-light {
+    border-width: 1px;
+    border-color: #777672;
+  }
+}

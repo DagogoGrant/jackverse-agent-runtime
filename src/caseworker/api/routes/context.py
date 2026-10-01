@@ -17,16 +17,25 @@ from caseworker.api.schemas.context import (
     ContextPackageResponse,
     CreatePackageRequest,
     FactResponse,
+    FactSummaryResponse,
+    ProfileReadinessResponse,
     RecordFactRequest,
     RegisterSourceRequest,
     RejectFactRequest,
+    RequirementItem,
     SafeSourceResponse,
     SupersedeFactRequest,
     VerifyFactRequest,
 )
+from caseworker.domain.completeness import (
+    ProfileRequirement,
+    standard_housing_application_requirements,
+    standard_job_application_requirements,
+)
 from caseworker.domain.context import ContextFact
 from caseworker.domain.context_package import ContextPackage
-from caseworker.domain.errors import EntityNotFoundError
+from caseworker.domain.enums import SensitivityLevel
+from caseworker.domain.errors import DomainValidationError, EntityNotFoundError
 from caseworker.domain.source import ContextSource
 from caseworker.domain.types import to_iso_utc
 from caseworker.services.vault_service import ContextVaultService
@@ -43,6 +52,34 @@ def _to_safe_source_response(s: ContextSource) -> SafeSourceResponse:
         sensitivity=s.sensitivity.value if hasattr(s.sensitivity, "value") else str(s.sensitivity),
         created_at=to_iso_utc(s.created_at),
         version=s.version,
+    )
+
+
+def _to_fact_summary_response(f: ContextFact) -> FactSummaryResponse:
+    preview = None
+    sens_val = f.sensitivity.value if hasattr(f.sensitivity, "value") else str(f.sensitivity)
+    if sens_val == SensitivityLevel.PUBLIC.value and isinstance(f.value, (str, int, float, bool)):
+        preview = str(f.value)[:40]
+
+    return FactSummaryResponse(
+        fact_id=f.fact_id,
+        user_id=f.user_id,
+        namespace=f.namespace,
+        key=f.key,
+        sensitivity=sens_val,
+        verification_status=(
+            f.verification_status.value
+            if hasattr(f.verification_status, "value")
+            else str(f.verification_status)
+        ),
+        source_id=f.source_id,
+        source_type=f.source_type.value if hasattr(f.source_type, "value") else str(f.source_type),
+        confidence=f.confidence,
+        updated_at=to_iso_utc(f.updated_at),
+        expires_at=to_iso_utc(f.expires_at) if f.expires_at else None,
+        version=f.version,
+        has_value=f.value is not None,
+        preview=preview,
     )
 
 
@@ -164,19 +201,19 @@ async def record_fact(
     return _to_fact_response(fact)
 
 
-@router.get("/facts", response_model=PaginatedResponse[FactResponse])
+@router.get("/facts", response_model=PaginatedResponse[FactSummaryResponse])
 async def list_facts(
     principal: Annotated[Principal, Depends(get_principal)],
     service: Annotated[ContextVaultService, Depends(get_vault_service)],
     pagination: Annotated[PaginationParams, Depends()],
     namespace: str | None = None,
-) -> PaginatedResponse[FactResponse]:
-    """List active context facts belonging to the authenticated user."""
+) -> PaginatedResponse[FactSummaryResponse]:
+    """List active context facts belonging to the authenticated user (sanitized summaries)."""
     all_facts = service.list_active_facts(principal.user_id, namespace=namespace)
     total = len(all_facts)
     page_items = all_facts[pagination.offset : pagination.offset + pagination.limit]
     return PaginatedResponse(
-        items=[_to_fact_response(f) for f in page_items],
+        items=[_to_fact_summary_response(f) for f in page_items],
         total=total,
         limit=pagination.limit,
         offset=pagination.offset,
@@ -298,3 +335,54 @@ async def create_context_package(
     )
     set_etag_header(response, "package", pkg.package_id, 1)
     return _to_package_response(pkg)
+
+
+# -----------------------------------------------------------------------------
+# Profile Readiness & Completeness
+# -----------------------------------------------------------------------------
+
+@router.get("/readiness/{purpose}", response_model=ProfileReadinessResponse)
+async def get_profile_readiness(
+    purpose: str,
+    principal: Annotated[Principal, Depends(get_principal)],
+    service: Annotated[ContextVaultService, Depends(get_vault_service)],
+) -> ProfileReadinessResponse:
+    """Evaluate user profile completeness/readiness against authoritative domain requirement sets."""
+    normalized = purpose.strip().lower()
+    if normalized in ("job_application", "job"):
+        req_set = standard_job_application_requirements()
+    elif normalized in ("housing_application", "housing_search", "housing"):
+        req_set = standard_housing_application_requirements()
+    else:
+        raise DomainValidationError(
+            f"Unsupported profile readiness purpose '{purpose}'. Supported purposes: 'job_application', 'housing_application'."
+        )
+
+    result = service.evaluate_completeness(principal.user_id, req_set)
+
+    def _map_req(r: ProfileRequirement) -> RequirementItem:
+        min_ver = r.minimum_verification.value if hasattr(r.minimum_verification, "value") else str(r.minimum_verification)
+        return RequirementItem(
+            requirement_id=r.requirement_id,
+            purpose=r.purpose,
+            namespace=r.namespace,
+            key=r.key,
+            label=r.label,
+            is_mandatory=r.is_mandatory,
+            minimum_verification=min_ver,
+        )
+
+    return ProfileReadinessResponse(
+        purpose=result.purpose,
+        title=req_set.title,
+        is_ready=result.is_ready,
+        completeness_ratio=result.completeness_ratio,
+        satisfied_count=len(result.satisfied),
+        missing_count=len(result.missing),
+        unverifiable_count=len(result.unverifiable),
+        expired_count=len(result.expired),
+        satisfied=[_map_req(r) for r in result.satisfied],
+        missing=[_map_req(r) for r in result.missing],
+        unverifiable=[_map_req(r) for r in result.unverifiable],
+        expired=[_map_req(r) for r in result.expired],
+    )

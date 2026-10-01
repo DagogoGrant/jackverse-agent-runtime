@@ -109,8 +109,9 @@ flowchart TD
 - **Transactional State + Immutable Event Log**: Atomic domain mutations and `DomainEvents` committed in a single Unit-of-Work boundary over SQLite (current state is stored directly; the event log provides audit history, deterministic sequencing, and future replay foundations).
 - **Security & Integrity Hardening (Milestone 2.1)**: Deterministic monotonic sequence versioning for context access streams, structured reason-coded denied-access audits, strict cross-user ownership isolation, and privacy-hardened event payloads (hashing assertions and omitting raw PII).
 - **API Service Layer (Phase 3)**: High-performance, production-ready FastAPI service exposing RESTful endpoints for Missions, Cases, Opportunities, Context Vault, Claim Ledger, Actions, Approvals, and Events. Features resource-bound ETags (`If-Match`), RFC 9457 Problem Details (`application/problem+json`), server-side `ActionPolicy` risk derivation, idempotent human approvals, user-scoped deduplication, monotonic SQLite cursor streaming, fail-closed auth, and thread-safe SQLite connection handling.
+- **Consumer Web UI (Phase 4)**: Editorial, tactile consumer web experience built with React 19, TypeScript, Vite, and Tailwind CSS under the *"Monochrome Kinetic Editorialism"* design system. Delivers an anti-card layout, numbered navigation rail with responsive mobile drawer, Halaska-inspired "Needs you" approval queue, tactile DragToAuthorize consequential action gating, live truthful agent state reflection, on-demand context vault privacy reveal, and ETag-driven optimistic concurrency.
 
-See the complete [Caseworker API Specification](docs/CASEWORKER_API.md) and [Caseworker Architecture Specification](docs/CASEWORKER_ARCHITECTURE.md) for full details.
+See the complete [Caseworker API Specification](docs/CASEWORKER_API.md), [Caseworker Web Specification](docs/CASEWORKER_WEB.md), [Design System Specification](docs/DESIGN.md), and [Caseworker Architecture Specification](docs/CASEWORKER_ARCHITECTURE.md) for full details.
 
 ---
 
