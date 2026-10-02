@@ -45,8 +45,8 @@ export const CaseDetailView: React.FC = () => {
 
   if (isLoading) {
     return (
-      <div className="py-24 text-center font-machine text-xs text-jv-muted">
-        RETRIEVING CASE DOSSIER...
+      <div className="py-24 text-center font-interface text-sm text-jv-muted">
+        Loading case dossier…
       </div>
     );
   }
@@ -165,18 +165,18 @@ export const CaseDetailView: React.FC = () => {
         {caseItem.mission_id ? (
           <Link
             to={`/missions/${caseItem.mission_id}`}
-            className="inline-flex items-center gap-2 font-machine text-xs text-jv-muted hover:text-jv-ink transition-colors"
+            className="inline-flex items-center gap-2 font-interface text-sm text-jv-muted hover:text-jv-ink transition-colors"
           >
             <ArrowLeft className="w-3.5 h-3.5" />
-            <span>RETURN TO PARENT MISSION // {caseItem.mission_id.slice(0, 8)}</span>
+            <span>Return to parent mission // <span className="font-machine text-xs">{caseItem.mission_id.slice(0, 8)}</span></span>
           </Link>
         ) : (
           <Link
             to="/missions"
-            className="inline-flex items-center gap-2 font-machine text-xs text-jv-muted hover:text-jv-ink transition-colors"
+            className="inline-flex items-center gap-2 font-interface text-sm text-jv-muted hover:text-jv-ink transition-colors"
           >
             <ArrowLeft className="w-3.5 h-3.5" />
-            <span>RETURN TO MISSIONS</span>
+            <span>Return to missions</span>
           </Link>
         )}
       </div>
@@ -192,7 +192,7 @@ export const CaseDetailView: React.FC = () => {
       {/* Case Header */}
       <div className="border-b border-jv-rule pb-8 space-y-4">
         <div className="flex items-center justify-between font-machine text-xs text-jv-muted">
-          <div>02 / FOLIO · CASE DOSSIER // {caseItem.case_id}</div>
+          <div>CASE / {caseItem.case_id.slice(0, 8)}</div>
           <TextureBadge status={caseItem.status} />
         </div>
 
@@ -200,22 +200,22 @@ export const CaseDetailView: React.FC = () => {
           {caseItem.title}
         </h1>
 
-        <div className="flex flex-wrap items-center gap-6 font-machine text-xs text-jv-muted pt-1">
+        <div className="flex flex-wrap items-center gap-4 sm:gap-6 font-machine text-xs text-jv-muted pt-1">
           <span>TYPE: {caseItem.case_type.toUpperCase()}</span>
-          <span className="text-jv-rule">|</span>
-          <span>STATUS: {caseItem.status.toUpperCase().replace(/_/g, ' ')}</span>
-          <span className="text-jv-rule">|</span>
+          <span className="text-jv-rule">·</span>
+          <span>STATUS: {caseItem.status.toUpperCase()}</span>
+          <span className="text-jv-rule">·</span>
           <span>VERSION: v{caseItem.version}</span>
           {caseItem.deadline && (
             <>
-              <span className="text-jv-rule">|</span>
+              <span className="text-jv-rule">·</span>
               <span>DEADLINE: {new Date(caseItem.deadline).toLocaleDateString()}</span>
             </>
           )}
         </div>
 
         {/* State Machine Transition Controls */}
-        <div className="flex flex-wrap items-center gap-3 pt-4 font-machine text-xs">
+        <div className="flex flex-wrap items-center gap-3 pt-4">
           {caseItem.status === 'new' && (
             <TactileButton
               variant="primary"
@@ -290,8 +290,8 @@ export const CaseDetailView: React.FC = () => {
         {/* Inline Resolve Form */}
         {showResolveForm && (
           <form onSubmit={handleResolve} className="mt-4 p-4 border border-jv-rule bg-jv-surface space-y-3">
-            <div className="font-machine text-xs uppercase text-jv-muted">
-              RESOLVE CASE // SPECIFY OPERATIONAL OUTCOME
+            <div className="font-interface font-medium text-sm text-jv-ink">
+              Specify operational outcome
             </div>
             <input
               type="text"
@@ -299,7 +299,7 @@ export const CaseDetailView: React.FC = () => {
               onChange={(e) => setResolveOutcome(e.target.value)}
               placeholder="e.g. Accepted offer; contract executed"
               required
-              className="w-full bg-jv-bg border border-jv-rule px-3 py-2 text-sm text-jv-ink outline-none focus:border-jv-ink"
+              className="w-full bg-jv-bg border border-jv-rule px-3 py-2 text-sm text-jv-ink outline-none focus:border-jv-ink font-interface"
             />
             <div className="flex justify-end gap-3">
               <TactileButton type="button" variant="outline" size="sm" onClick={() => setShowResolveForm(false)}>
@@ -319,22 +319,22 @@ export const CaseDetailView: React.FC = () => {
         <div className="lg:col-span-8 space-y-12">
           {/* Section 1: Overview */}
           <section className="space-y-4">
-            <h2 className="font-display font-normal text-2xl text-jv-ink tracking-tight border-b border-jv-rule pb-2">
-              Case Parameters & Goal
+            <h2 className="font-interface font-medium text-xl text-jv-ink tracking-tight border-b border-jv-rule pb-2">
+              Case parameters
             </h2>
             <div className="p-6 border border-jv-rule bg-jv-surface/50 space-y-4">
               <div>
-                <span className="font-machine text-xs uppercase text-jv-muted block mb-1">
-                  Primary Objective:
+                <span className="font-interface text-xs text-jv-muted block mb-1">
+                  Primary objective:
                 </span>
                 <p className="text-sm text-jv-ink leading-relaxed">{caseItem.goal}</p>
               </div>
 
               {caseItem.outcome && (
                 <div className="border-t border-jv-rule pt-3">
-                  <span className="font-machine text-xs uppercase text-jv-ink flex items-center gap-2 mb-1">
+                  <span className="font-interface text-xs text-jv-ink flex items-center gap-2 mb-1">
                     <CheckCircle2 className="w-4 h-4 text-jv-ink" />
-                    Operational Outcome:
+                    Operational outcome:
                   </span>
                   <p className="text-sm text-jv-ink font-medium">{caseItem.outcome}</p>
                 </div>
@@ -345,8 +345,8 @@ export const CaseDetailView: React.FC = () => {
           {/* Section 2: Associated Claims */}
           <section className="space-y-4">
             <div className="flex items-baseline justify-between border-b border-jv-rule pb-2">
-              <h2 className="font-display font-normal text-2xl text-jv-ink tracking-tight">
-                Claim Ledger
+              <h2 className="font-interface font-medium text-xl text-jv-ink tracking-tight">
+                Claims
               </h2>
               <TactileButton variant="outline" size="sm" onClick={() => setShowClaimForm(!showClaimForm)}>
                 {showClaimForm ? 'Cancel' : '+ Propose Claim'}
@@ -356,15 +356,15 @@ export const CaseDetailView: React.FC = () => {
             {/* Inline Propose Claim Form */}
             {showClaimForm && (
               <form onSubmit={handleProposeClaim} className="border border-jv-rule bg-jv-surface p-4 space-y-3">
-                <div className="font-machine text-xs uppercase text-jv-muted">
-                  PROPOSE CLAIM BOUND TO THIS CASE
+                <div className="font-interface font-medium text-sm text-jv-ink">
+                  Propose claim
                 </div>
                 <div className="space-y-1">
-                  <label className="font-machine text-[11px] uppercase text-jv-muted">Claim Purpose</label>
+                  <label className="font-interface text-sm text-jv-muted">Claim purpose</label>
                   <select
                     value={claimPurpose}
                     onChange={(e) => setClaimPurpose(e.target.value)}
-                    className="w-full bg-jv-bg border border-jv-rule px-3 py-1.5 text-xs text-jv-ink font-machine outline-none focus:border-jv-ink"
+                    className="w-full bg-jv-bg border border-jv-rule px-3 py-1.5 text-sm text-jv-ink font-interface outline-none focus:border-jv-ink"
                   >
                     <option value="job_application">Job Application</option>
                     <option value="housing_search">Housing Search</option>
@@ -372,7 +372,7 @@ export const CaseDetailView: React.FC = () => {
                   </select>
                 </div>
                 <div className="space-y-1">
-                  <label className="font-machine text-[11px] uppercase text-jv-muted">
+                  <label className="font-interface text-sm text-jv-muted">
                     Supporting Fact IDs (optional, space or comma-separated)
                   </label>
                   <input
@@ -380,7 +380,7 @@ export const CaseDetailView: React.FC = () => {
                     value={supportingFactsInput}
                     onChange={(e) => setSupportingFactsInput(e.target.value)}
                     placeholder="e.g. fact_abc123 fact_xyz789"
-                    className="w-full bg-jv-bg border border-jv-rule px-3 py-1.5 text-xs text-jv-ink font-machine outline-none focus:border-jv-ink"
+                    className="w-full bg-jv-bg border border-jv-rule px-3 py-1.5 text-sm text-jv-ink font-interface outline-none focus:border-jv-ink"
                   />
                 </div>
                 <textarea
@@ -389,7 +389,7 @@ export const CaseDetailView: React.FC = () => {
                   placeholder="State claim assertion (e.g. 5 years Python engineering experience)..."
                   required
                   rows={2}
-                  className="w-full bg-jv-bg border border-jv-rule px-3 py-2 text-sm text-jv-ink outline-none focus:border-jv-ink"
+                  className="w-full bg-jv-bg border border-jv-rule px-3 py-2 text-sm text-jv-ink font-interface outline-none focus:border-jv-ink"
                 />
                 <div className="flex justify-end gap-3">
                   <TactileButton type="button" variant="outline" size="sm" onClick={() => setShowClaimForm(false)}>
@@ -403,10 +403,10 @@ export const CaseDetailView: React.FC = () => {
             )}
 
             {claimsLoading ? (
-              <div className="py-6 font-machine text-xs text-jv-muted">LOADING CLAIMS...</div>
+              <div className="py-6 font-interface text-sm text-jv-muted">Loading claims…</div>
             ) : !claims || claims.length === 0 ? (
-              <div className="p-8 border border-jv-rule text-center font-machine text-xs text-jv-muted bg-jv-surface/20">
-                NO CLAIMS BOUND TO THIS CASE
+              <div className="p-8 border border-jv-rule text-center font-interface text-sm text-jv-muted bg-jv-surface/20">
+                No claims bound to this case yet.
               </div>
             ) : (
               <div className="divide-y divide-jv-rule border-y border-jv-rule">
@@ -428,7 +428,7 @@ export const CaseDetailView: React.FC = () => {
                         )}
                       </div>
                     </div>
-                    <p className="text-sm text-jv-ink">{cl.text}</p>
+                    <p className="text-sm text-jv-ink font-interface">{cl.text}</p>
                     <div className="font-machine text-[11px] text-jv-muted">
                       PURPOSE: {cl.purpose} · FACTS LINKED: {cl.supporting_fact_ids?.length || 0}
                     </div>
@@ -441,16 +441,16 @@ export const CaseDetailView: React.FC = () => {
           {/* Section 3: Case Actions */}
           <section className="space-y-4">
             <div className="border-b border-jv-rule pb-2">
-              <h2 className="font-display font-normal text-2xl text-jv-ink tracking-tight">
-                Case Actions
+              <h2 className="font-interface font-medium text-xl text-jv-ink tracking-tight">
+                Actions
               </h2>
             </div>
 
             {actionsLoading ? (
-              <div className="py-6 font-machine text-xs text-jv-muted">LOADING ACTIONS...</div>
+              <div className="py-6 font-interface text-sm text-jv-muted">Loading actions…</div>
             ) : !actions || actions.length === 0 ? (
-              <div className="p-8 border border-jv-rule text-center font-machine text-xs text-jv-muted bg-jv-surface/20">
-                ZERO ACTIONS PENDING OR DISPATCHED
+              <div className="p-8 border border-jv-rule text-center font-interface text-sm text-jv-muted bg-jv-surface/20">
+                No actions recorded yet.
               </div>
             ) : (
               <div className="divide-y divide-jv-rule border-y border-jv-rule">
@@ -469,8 +469,8 @@ export const CaseDetailView: React.FC = () => {
                       </div>
                     </div>
                     <div className="flex items-center justify-between pt-1">
-                      <div className="font-machine text-xs text-jv-muted">
-                        TYPE: {act.action_type} · REQUIRES APPROVAL: {act.requires_approval ? 'YES' : 'NO'}
+                      <div className="font-interface text-xs text-jv-muted">
+                        Type: {act.action_type} · Approval required: {act.requires_approval ? 'Yes' : 'No'}
                       </div>
                       {act.status === 'proposed' && act.requires_approval && (
                         <TactileButton
@@ -506,21 +506,21 @@ export const CaseDetailView: React.FC = () => {
         {/* Right Column: Case Timeline (4 cols) */}
         <div className="lg:col-span-4 space-y-6">
           <div className="border-b border-jv-rule pb-2">
-            <h2 className="font-display font-normal text-xl text-jv-ink tracking-tight">
-              Case Chronicle
+            <h2 className="font-interface font-medium text-xl text-jv-ink tracking-tight">
+              Case chronicle
             </h2>
           </div>
 
-          <div className="space-y-4 font-machine text-xs">
+          <div className="space-y-4">
             {caseEvents.length === 0 ? (
-              <div className="text-jv-muted">No events recorded for this case.</div>
+              <div className="text-jv-muted font-interface text-sm">No activity recorded yet.</div>
             ) : (
               caseEvents.map((ev) => (
                 <div key={ev.event_id} className="pb-3 border-b border-jv-rule/50 space-y-1">
-                  <div className="text-jv-muted text-[11px]">
+                  <div className="text-jv-muted font-machine text-xs">
                     {formatEventTime(ev.occurred_at)}
                   </div>
-                  <div className="text-jv-ink font-semibold">{humanizeEvent(ev)}</div>
+                  <div className="text-jv-ink font-medium font-interface text-sm">{humanizeEvent(ev)}</div>
                 </div>
               ))
             )}

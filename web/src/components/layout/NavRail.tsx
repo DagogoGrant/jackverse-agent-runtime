@@ -56,19 +56,19 @@ export const NavRail: React.FC<NavRailProps> = ({
       <div className="space-y-8">
         {/* Brand Folio */}
         <div className="space-y-1">
-          <div className="font-machine text-[11px] tracking-widest uppercase text-jv-muted flex items-center gap-2">
+          <div className="font-machine text-[11px] tracking-widest text-jv-muted flex items-center gap-1.5">
             <span>JV</span>
             <span
               className={`transition-opacity duration-fast ease-editorial whitespace-nowrap ${
                 isMobileDrawer ? 'inline' : 'hidden group-hover/spine:inline group-focus-within/spine:inline'
               }`}
             >
-              / CASEWORKER
+              / Caseworker
             </span>
           </div>
 
           <div
-            className={`font-display text-xl text-jv-ink tracking-tight transition-opacity duration-fast ease-editorial whitespace-nowrap ${
+            className={`font-display text-lg text-jv-ink tracking-tight transition-opacity duration-fast ease-editorial whitespace-nowrap ${
               isMobileDrawer ? 'block' : 'hidden group-hover/spine:block group-focus-within/spine:block'
             }`}
           >
@@ -78,7 +78,7 @@ export const NavRail: React.FC<NavRailProps> = ({
 
         {/* Contextual Folio Navigation if inside a Mission or Case */}
         {(isMissionDetail || isCaseDetail) && (
-          <div className="border-y border-jv-rule py-3 space-y-1 font-machine text-xs">
+          <div className="border-y border-jv-rule py-3 space-y-1 font-interface text-xs">
             {isMissionDetail && (
               <button
                 type="button"
@@ -94,7 +94,7 @@ export const NavRail: React.FC<NavRailProps> = ({
               >
                 <ArrowLeft className="w-3.5 h-3.5 shrink-0" />
                 <span
-                  className={`uppercase tracking-wider text-[11px] whitespace-nowrap ${
+                  className={`text-xs whitespace-nowrap ${
                     isMobileDrawer
                       ? 'inline'
                       : 'hidden group-hover/spine:inline group-focus-within/spine:inline'
@@ -119,7 +119,7 @@ export const NavRail: React.FC<NavRailProps> = ({
               >
                 <ArrowLeft className="w-3.5 h-3.5 shrink-0" />
                 <span
-                  className={`uppercase tracking-wider text-[11px] whitespace-nowrap ${
+                  className={`text-xs whitespace-nowrap ${
                     isMobileDrawer
                       ? 'inline'
                       : 'hidden group-hover/spine:inline group-focus-within/spine:inline'
@@ -161,7 +161,7 @@ export const NavRail: React.FC<NavRailProps> = ({
                       {isActive ? '■' : item.number}
                     </span>
                     <span
-                      className={`uppercase text-xs tracking-wider truncate whitespace-nowrap transition-opacity duration-fast ease-editorial ${
+                      className={`text-sm font-medium truncate whitespace-nowrap transition-opacity duration-fast ease-editorial ${
                         isMobileDrawer
                           ? 'inline'
                           : 'hidden group-hover/spine:inline group-focus-within/spine:inline'
@@ -194,15 +194,15 @@ export const NavRail: React.FC<NavRailProps> = ({
       </div>
 
       {/* System Footprint / Living Editorial Folio */}
-      <div className="pt-6 border-t border-jv-rule font-machine text-[10px] text-jv-muted space-y-1 whitespace-nowrap">
+      <div className="pt-6 border-t border-jv-rule font-machine text-[10px] text-jv-muted space-y-0.5 whitespace-nowrap">
         <div
           className={`${
             isMobileDrawer ? 'block' : 'hidden group-hover/spine:block group-focus-within/spine:block'
           }`}
         >
-          SYS // EDITORIAL v2.0
+          v2.0.2
         </div>
-        <div>01-06 INDEX</div>
+        <div>01–06 Index</div>
       </div>
     </aside>
   );

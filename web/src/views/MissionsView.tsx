@@ -30,15 +30,15 @@ export const MissionsView: React.FC = () => {
         </div>
 
         {/* Status Filters */}
-        <div className="flex items-center gap-1.5 font-machine text-xs">
+        <div className="flex items-center gap-1.5 font-interface text-xs">
           {(['all', 'active', 'paused', 'completed'] as const).map((s) => (
             <button
               key={s}
               type="button"
               onClick={() => setFilter(s)}
-              className={`px-3 py-1 uppercase border text-xs tracking-wider transition-colors duration-fast ease-editorial ${
+              className={`px-3 py-1 capitalize border text-xs transition-colors duration-fast ease-editorial ${
                 filter === s
-                  ? 'border-jv-ink bg-jv-ink text-jv-bg font-bold'
+                  ? 'border-jv-ink bg-jv-ink text-jv-bg font-semibold'
                   : 'border-jv-rule text-jv-muted hover:text-jv-ink hover:border-jv-rule-strong bg-jv-surface'
               }`}
             >
@@ -49,13 +49,13 @@ export const MissionsView: React.FC = () => {
       </div>
 
       {isLoading ? (
-        <div className="py-16 text-center font-machine text-xs text-jv-muted">
-          SYNCHRONIZING MISSIONS...
+        <div className="py-16 text-center font-interface text-sm text-jv-muted">
+          Loading missions…
         </div>
       ) : filteredMissions.length === 0 ? (
         <div className="py-24 text-center space-y-4 max-w-md mx-auto">
-          <div className="font-display text-2xl text-jv-ink tracking-tight">
-            NO MISSIONS YET
+          <div className="font-interface font-medium text-xl text-jv-ink tracking-tight">
+            No missions yet
           </div>
           <p className="text-sm text-jv-ink-soft leading-relaxed">
             Tell JackVerse what you want to move forward. Your active missions will appear here.

@@ -15,8 +15,8 @@ export const OpportunityDetailView: React.FC = () => {
 
   if (isLoading) {
     return (
-      <div className="py-24 text-center font-machine text-xs text-jv-muted">
-        RETRIEVING OPPORTUNITY SPECIFICATION...
+      <div className="py-24 text-center font-interface text-sm text-jv-muted">
+        Loading opportunity…
       </div>
     );
   }
@@ -24,7 +24,7 @@ export const OpportunityDetailView: React.FC = () => {
   if (error || !oppData?.opportunity) {
     return (
       <div className="py-24 text-center space-y-4 font-interface">
-        <div className="font-machine text-xs text-jv-muted uppercase">HTTP 404 // NOT FOUND</div>
+        <div className="font-machine text-xs text-jv-muted uppercase">404 // NOT FOUND</div>
         <h1 className="font-display text-4xl text-jv-ink">Opportunity Not Found</h1>
         <p className="text-sm text-jv-muted">
           This prospect record does not exist or belongs to another user scope.
@@ -65,10 +65,10 @@ export const OpportunityDetailView: React.FC = () => {
       <div>
         <Link
           to="/opportunities"
-          className="inline-flex items-center gap-2 font-machine text-xs text-jv-muted hover:text-jv-ink transition-colors"
+          className="inline-flex items-center gap-2 font-interface text-sm text-jv-muted hover:text-jv-ink transition-colors"
         >
           <ArrowLeft className="w-3.5 h-3.5" />
-          <span>RETURN TO OPPORTUNITY INBOX</span>
+          <span>Return to opportunities</span>
         </Link>
       </div>
 
@@ -83,12 +83,12 @@ export const OpportunityDetailView: React.FC = () => {
       {/* Magazine Editorial Header */}
       <div className="border-b border-jv-rule pb-8 space-y-4">
         <div className="flex items-center justify-between font-machine text-xs text-jv-muted">
-          <div>03 / FOLIO · OPPORTUNITY DOSSIER // {opp.opportunity_id}</div>
+          <div>OPPORTUNITY / {opp.opportunity_id.slice(0, 8)}</div>
           <TextureBadge status={opp.status} />
         </div>
 
         <div className="space-y-1">
-          <div className="font-machine text-sm text-jv-muted uppercase tracking-widest">
+          <div className="font-interface text-sm font-medium text-jv-muted">
             {opp.organization || 'Direct Prospect'}
           </div>
           <h1 className="font-display font-normal text-4xl lg:text-6xl text-jv-ink tracking-tight leading-tight">
@@ -96,20 +96,20 @@ export const OpportunityDetailView: React.FC = () => {
           </h1>
         </div>
 
-        <div className="flex flex-wrap items-center gap-6 font-machine text-xs text-jv-muted pt-2">
-          <span>STATUS: {opp.status.toUpperCase()}</span>
-          <span className="text-jv-rule">|</span>
-          <span>DISCOVERED: {new Date(opp.discovered_at).toLocaleDateString()}</span>
+        <div className="flex flex-wrap items-center gap-4 sm:gap-6 font-machine text-xs text-jv-muted pt-2">
+          <span>Status: {opp.status.replace(/_/g, ' ')}</span>
+          <span className="text-jv-rule">·</span>
+          <span>Discovered: {new Date(opp.discovered_at).toLocaleDateString()}</span>
           {opp.location && (
             <>
-              <span className="text-jv-rule">|</span>
-              <span>LOCATION: {opp.location}</span>
+              <span className="text-jv-rule">·</span>
+              <span>Location: {opp.location}</span>
             </>
           )}
           {opp.deadline && (
             <>
-              <span className="text-jv-rule">|</span>
-              <span>DEADLINE: {new Date(opp.deadline).toLocaleDateString()}</span>
+              <span className="text-jv-rule">·</span>
+              <span>Deadline: {new Date(opp.deadline).toLocaleDateString()}</span>
             </>
           )}
         </div>
@@ -120,36 +120,36 @@ export const OpportunityDetailView: React.FC = () => {
         <div className="lg:col-span-8 space-y-8">
           {/* Metadata attributes */}
           <section className="space-y-4">
-            <h2 className="font-machine text-xs text-jv-muted uppercase tracking-widest border-b border-jv-rule pb-2">
-              PROSPECT ATTRIBUTES & PROVENANCE
+            <h2 className="font-interface font-medium text-xl text-jv-ink tracking-tight border-b border-jv-rule pb-2">
+              Attributes & provenance
             </h2>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 font-machine text-xs">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
               <div className="p-4 border border-jv-rule bg-jv-surface space-y-1">
-                <span className="text-jv-muted uppercase">Provider / Organization</span>
-                <div className="text-jv-ink text-sm font-semibold">{opp.organization || 'Not Specified'}</div>
+                <span className="font-interface text-xs text-jv-muted">Provider / Organization</span>
+                <div className="font-interface text-jv-ink text-sm font-semibold">{opp.organization || 'Not Specified'}</div>
               </div>
               <div className="p-4 border border-jv-rule bg-jv-surface space-y-1">
-                <span className="text-jv-muted uppercase">Geographic Scope</span>
-                <div className="text-jv-ink text-sm font-semibold">{opp.location || 'Remote / Unspecified'}</div>
+                <span className="font-interface text-xs text-jv-muted">Geographic Scope</span>
+                <div className="font-interface text-jv-ink text-sm font-semibold">{opp.location || 'Remote / Unspecified'}</div>
               </div>
               <div className="p-4 border border-jv-rule bg-jv-surface space-y-1">
-                <span className="text-jv-muted uppercase">Source Platform</span>
-                <div className="text-jv-ink text-sm font-semibold">{opp.source_name || 'Direct Manual Ingress'}</div>
+                <span className="font-interface text-xs text-jv-muted">Source Platform</span>
+                <div className="font-interface text-jv-ink text-sm font-semibold">{opp.source_name || 'Direct Manual Ingress'}</div>
               </div>
               <div className="p-4 border border-jv-rule bg-jv-surface space-y-1">
-                <span className="text-jv-muted uppercase">Cryptographic Fingerprint</span>
-                <div className="text-jv-ink text-[11px] break-all">{opp.fingerprint}</div>
+                <span className="font-interface text-xs text-jv-muted">Cryptographic Fingerprint</span>
+                <div className="font-machine text-jv-ink text-[11px] break-all">{opp.fingerprint}</div>
               </div>
             </div>
           </section>
 
           {/* Requirements List */}
           <section className="space-y-4">
-            <h2 className="font-machine text-xs text-jv-muted uppercase tracking-widest border-b border-jv-rule pb-2">
-              REQUIREMENTS & ELIGIBILITY ({reqs.length})
+            <h2 className="font-interface font-medium text-xl text-jv-ink tracking-tight border-b border-jv-rule pb-2">
+              Requirements ({reqs.length})
             </h2>
             {reqs.length === 0 ? (
-              <p className="font-machine text-xs text-jv-muted">
+              <p className="font-interface text-sm text-jv-muted">
                 No formal eligibility requirements recorded for this prospect.
               </p>
             ) : (
@@ -157,7 +157,7 @@ export const OpportunityDetailView: React.FC = () => {
                 {reqs.map((req, idx) => (
                   <li
                     key={idx}
-                    className="flex items-start gap-3 p-3.5 border border-jv-rule bg-jv-surface/50 text-sm text-jv-ink"
+                    className="flex items-start gap-3 p-3.5 border border-jv-rule bg-jv-surface/50 text-sm text-jv-ink font-interface"
                   >
                     <span className="font-machine text-xs text-jv-muted shrink-0 pt-0.5">
                       {String(idx + 1).padStart(2, '0')}.
@@ -173,8 +173,8 @@ export const OpportunityDetailView: React.FC = () => {
         {/* Right Sidebar: Lifecycle Operations */}
         <div className="lg:col-span-4 space-y-6">
           <div className="border border-jv-rule bg-jv-surface p-6 space-y-4">
-            <div className="font-machine text-xs text-jv-muted uppercase tracking-widest border-b border-jv-rule pb-2">
-              LIFECYCLE TRANSITIONS
+            <div className="font-interface font-medium text-sm text-jv-ink border-b border-jv-rule pb-2">
+              Lifecycle transitions
             </div>
 
             <div className="space-y-2">
@@ -244,9 +244,9 @@ export const OpportunityDetailView: React.FC = () => {
                   href={opp.source_url}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="flex items-center justify-between text-xs font-machine text-jv-muted hover:text-jv-ink p-2 border border-jv-rule bg-jv-bg hover:border-jv-ink transition-colors"
+                  className="flex items-center justify-between text-xs font-interface text-jv-muted hover:text-jv-ink p-2 border border-jv-rule bg-jv-bg hover:border-jv-ink transition-colors"
                 >
-                  <span>VISIT SOURCE LISTING</span>
+                  <span>Visit source listing</span>
                   <ExternalLink className="w-3.5 h-3.5" />
                 </a>
               </div>

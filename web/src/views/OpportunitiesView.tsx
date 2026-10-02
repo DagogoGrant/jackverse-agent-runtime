@@ -79,15 +79,15 @@ export const OpportunitiesView: React.FC = () => {
 
         <div className="flex flex-wrap items-center gap-4">
           {/* Status Filters */}
-          <div className="flex items-center gap-1.5 font-machine text-xs">
+          <div className="flex items-center gap-1.5 font-interface text-xs">
             {(['all', 'discovered', 'evaluating', 'shortlisted', 'archived'] as const).map((s) => (
               <button
                 key={s}
                 onClick={() => setFilter(s)}
-                className={`px-3 py-1 uppercase border transition-colors ${
+                className={`px-3 py-1 capitalize border transition-colors ${
                   filter === s
-                    ? 'border-jv-ink bg-jv-ink text-jv-bg font-bold'
-                    : 'border-jv-rule text-jv-muted hover:text-jv-ink hover:border-jv-rule-strong'
+                    ? 'border-jv-ink bg-jv-ink text-jv-bg font-semibold'
+                    : 'border-jv-rule text-jv-muted hover:text-jv-ink hover:border-jv-rule-strong bg-jv-surface'
                 }`}
               >
                 {s}
@@ -105,15 +105,15 @@ export const OpportunitiesView: React.FC = () => {
       {showAddModal && (
         <form onSubmit={handleCreateOpportunity} className="p-6 border border-jv-rule bg-jv-surface space-y-4">
           <div className="flex items-center justify-between border-b border-jv-rule pb-2">
-            <span className="font-machine text-xs uppercase tracking-widest text-jv-ink font-semibold">
-              MANUAL PROSPECT REGISTRATION // INGRESS
+            <span className="font-interface font-medium text-base text-jv-ink">
+              Add opportunity
             </span>
             <button
               type="button"
               onClick={() => setShowAddModal(false)}
-              className="font-machine text-xs text-jv-muted hover:text-jv-ink"
+              className="font-interface text-xs text-jv-muted hover:text-jv-ink"
             >
-              DISMISS [✕]
+              Dismiss [✕]
             </button>
           </div>
 
@@ -125,23 +125,23 @@ export const OpportunitiesView: React.FC = () => {
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-1">
-              <label className="font-machine text-xs uppercase text-jv-muted">Title</label>
+              <label className="font-interface text-sm text-jv-muted">Title</label>
               <input
                 type="text"
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
                 placeholder="e.g. Senior Machine Learning Engineer"
                 required
-                className="w-full bg-jv-bg border border-jv-rule px-3 py-2 text-sm text-jv-ink outline-none focus:border-jv-ink"
+                className="w-full bg-jv-bg border border-jv-rule px-3 py-2 text-sm text-jv-ink outline-none focus:border-jv-ink font-interface"
               />
             </div>
 
             <div className="space-y-1">
-              <label className="font-machine text-xs uppercase text-jv-muted">Type</label>
+              <label className="font-interface text-sm text-jv-muted">Type</label>
               <select
                 value={oppType}
                 onChange={(e) => setOppType(e.target.value as OpportunityType)}
-                className="w-full bg-jv-bg border border-jv-rule px-3 py-2 text-sm text-jv-ink font-machine outline-none focus:border-jv-ink"
+                className="w-full bg-jv-bg border border-jv-rule px-3 py-2 text-sm text-jv-ink font-interface outline-none focus:border-jv-ink"
               >
                 <option value="job">Job</option>
                 <option value="scholarship">Scholarship</option>
@@ -158,52 +158,52 @@ export const OpportunitiesView: React.FC = () => {
             </div>
 
             <div className="space-y-1">
-              <label className="font-machine text-xs uppercase text-jv-muted">Organization</label>
+              <label className="font-interface text-sm text-jv-muted">Organization</label>
               <input
                 type="text"
                 value={organization}
                 onChange={(e) => setOrganization(e.target.value)}
                 placeholder="e.g. Acme Research Labs"
-                className="w-full bg-jv-bg border border-jv-rule px-3 py-2 text-sm text-jv-ink outline-none focus:border-jv-ink"
+                className="w-full bg-jv-bg border border-jv-rule px-3 py-2 text-sm text-jv-ink outline-none focus:border-jv-ink font-interface"
               />
             </div>
 
             <div className="space-y-1">
-              <label className="font-machine text-xs uppercase text-jv-muted">Location</label>
+              <label className="font-interface text-sm text-jv-muted">Location</label>
               <input
                 type="text"
                 value={location}
                 onChange={(e) => setLocation(e.target.value)}
                 placeholder="e.g. Remote / Berlin, Germany"
-                className="w-full bg-jv-bg border border-jv-rule px-3 py-2 text-sm text-jv-ink outline-none focus:border-jv-ink"
+                className="w-full bg-jv-bg border border-jv-rule px-3 py-2 text-sm text-jv-ink outline-none focus:border-jv-ink font-interface"
               />
             </div>
 
             <div className="space-y-1">
-              <label className="font-machine text-xs uppercase text-jv-muted">Source Name</label>
+              <label className="font-interface text-sm text-jv-muted">Source name</label>
               <input
                 type="text"
                 value={sourceName}
                 onChange={(e) => setSourceName(e.target.value)}
                 placeholder="e.g. LinkedIn, Direct Board"
-                className="w-full bg-jv-bg border border-jv-rule px-3 py-2 text-sm text-jv-ink outline-none focus:border-jv-ink"
+                className="w-full bg-jv-bg border border-jv-rule px-3 py-2 text-sm text-jv-ink outline-none focus:border-jv-ink font-interface"
               />
             </div>
 
             <div className="space-y-1">
-              <label className="font-machine text-xs uppercase text-jv-muted">Source URL</label>
+              <label className="font-interface text-sm text-jv-muted">Source URL</label>
               <input
                 type="url"
                 value={sourceUrl}
                 onChange={(e) => setSourceUrl(e.target.value)}
                 placeholder="https://..."
-                className="w-full bg-jv-bg border border-jv-rule px-3 py-2 text-sm text-jv-ink outline-none focus:border-jv-ink"
+                className="w-full bg-jv-bg border border-jv-rule px-3 py-2 text-sm text-jv-ink outline-none focus:border-jv-ink font-interface"
               />
             </div>
           </div>
 
           <div className="space-y-1">
-            <label className="font-machine text-xs uppercase text-jv-muted">
+            <label className="font-interface text-sm text-jv-muted">
               Requirements (one per line)
             </label>
             <textarea
@@ -211,7 +211,7 @@ export const OpportunitiesView: React.FC = () => {
               onChange={(e) => setRequirementsInput(e.target.value)}
               placeholder="e.g. 3+ years experience with Python&#10;Work authorization in EU"
               rows={3}
-              className="w-full bg-jv-bg border border-jv-rule px-3 py-2 text-sm text-jv-ink font-machine outline-none focus:border-jv-ink"
+              className="w-full bg-jv-bg border border-jv-rule px-3 py-2 text-sm text-jv-ink font-interface outline-none focus:border-jv-ink"
             />
           </div>
 
@@ -227,13 +227,13 @@ export const OpportunitiesView: React.FC = () => {
       )}
 
       {isLoading ? (
-        <div className="py-16 text-center font-machine text-xs text-jv-muted">
-          SYNCHRONIZING OPPORTUNITY FEED...
+        <div className="py-16 text-center font-interface text-sm text-jv-muted">
+          Loading opportunities…
         </div>
       ) : filtered.length === 0 ? (
-        <div className="py-20 border border-jv-rule text-center space-y-4 bg-jv-surface/20">
-          <div className="font-machine text-xs text-jv-muted uppercase tracking-widest">
-            ZERO DISCOVERED OPPORTUNITIES
+        <div className="py-20 border border-jv-rule text-center space-y-3 bg-jv-surface/20">
+          <div className="font-interface font-medium text-xl text-jv-ink tracking-tight">
+            No opportunities found
           </div>
           <p className="text-sm text-jv-muted max-w-sm mx-auto">
             No opportunities registered in this view. Use "+ Add Opportunity" to manually record
@@ -259,19 +259,19 @@ export const OpportunitiesView: React.FC = () => {
                   <span className="font-machine text-xs text-jv-muted">
                     {String(idx + 1).padStart(2, '0')}
                   </span>
-                  <span className="font-machine text-xs uppercase text-jv-muted">
+                  <span className="font-interface text-xs text-jv-muted font-medium">
                     {opp.organization || 'Independent'}
                   </span>
                   <h2 className="font-interface font-semibold text-lg text-jv-ink group-hover:translate-x-1 transition-transform duration-fast ease-editorial">
                     {opp.title}
                   </h2>
                 </div>
-                <div className="font-machine text-xs text-jv-muted pl-10 md:pl-16 flex flex-wrap gap-4">
-                  {opp.location && <span>LOCATION: {opp.location}</span>}
-                  {opp.source_name && <span>SOURCE: {opp.source_name}</span>}
+                <div className="font-interface text-xs text-jv-muted pl-10 md:pl-16 flex flex-wrap gap-4">
+                  {opp.location && <span>Location: {opp.location}</span>}
+                  {opp.source_name && <span>Source: {opp.source_name}</span>}
                   {opp.discovered_at && (
                     <span>
-                      DISCOVERED: {new Date(opp.discovered_at).toLocaleDateString()}
+                      Discovered: {new Date(opp.discovered_at).toLocaleDateString()}
                     </span>
                   )}
                 </div>

@@ -10,7 +10,7 @@ async function createMission(page: Page, promptText: string, kind?: string) {
     await kindSelect.selectOption(kind);
   }
 
-  const submitBtn = page.locator('button[type="submit"]:has-text("Initialize Mission")');
+  const submitBtn = page.locator('button[type="submit"]:has-text("Create mission"), button[type="submit"]:has-text("Initialize Mission")');
   if (await submitBtn.isVisible()) {
     await submitBtn.click();
   } else {

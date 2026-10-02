@@ -32,7 +32,7 @@ export const PrototypeC_NeedsYou: React.FC = () => {
             </span>
           </div>
 
-          <h2 className="font-display text-2xl lg:text-3xl text-pure tracking-tight">
+          <h2 className="font-interface font-semibold text-2xl lg:text-3xl text-pure tracking-tight">
             Submit Application: Forward-Deployed AI Engineer
           </h2>
 

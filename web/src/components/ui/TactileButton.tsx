@@ -36,7 +36,7 @@ export const TactileButton: React.FC<TactileButtonProps> = ({
   };
 
   const sizes = {
-    sm: 'text-xs px-2.5 py-1 tracking-wider uppercase font-machine',
+    sm: 'text-xs px-2.5 py-1 tracking-wide font-interface',
     md: 'text-sm px-4 py-2 tracking-wide font-interface',
     lg: 'text-base px-6 py-3 tracking-wide font-interface',
   };

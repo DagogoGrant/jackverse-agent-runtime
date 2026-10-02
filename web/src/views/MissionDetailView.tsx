@@ -32,8 +32,8 @@ export const MissionDetailView: React.FC = () => {
 
   if (missionLoading) {
     return (
-      <div className="py-24 text-center font-machine text-xs text-jv-muted">
-        LOADING MISSION DOSSIER...
+      <div className="py-24 text-center font-interface text-sm text-jv-muted">
+        Loading mission dossier…
       </div>
     );
   }
@@ -119,7 +119,7 @@ export const MissionDetailView: React.FC = () => {
       <div className="border-b border-jv-rule pb-8 space-y-4">
         <div className="flex items-center justify-between font-machine text-xs text-jv-muted">
           <div className="flex items-center gap-2">
-            <span>DOSSIER //</span>
+            <span>MISSION /</span>
             <span className="text-jv-ink font-semibold">{mission.mission_id.slice(0, 8)}</span>
           </div>
           <TextureBadge status={mission.status} />
@@ -138,7 +138,7 @@ export const MissionDetailView: React.FC = () => {
         </div>
 
         {/* Operational Transitions */}
-        <div className="flex flex-wrap items-center gap-3 pt-4 font-machine text-xs">
+        <div className="flex flex-wrap items-center gap-3 pt-4">
           {mission.status === 'draft' && (
             <TactileButton
               variant="primary"
@@ -187,7 +187,7 @@ export const MissionDetailView: React.FC = () => {
         {/* Left Column: Active Cases (8 cols) */}
         <div className="lg:col-span-8 space-y-8">
           <div className="flex items-baseline justify-between border-b border-jv-rule pb-2">
-            <h2 className="font-display text-2xl text-jv-ink tracking-tight">
+            <h2 className="font-interface font-medium text-xl text-jv-ink tracking-tight">
               Active Cases Dossier
             </h2>
             <TactileButton
@@ -202,40 +202,40 @@ export const MissionDetailView: React.FC = () => {
           {/* Inline Case Creation Form */}
           {showCaseForm && (
             <form onSubmit={handleCreateCase} className="border border-jv-rule bg-jv-surface p-6 space-y-4 animate-fadeIn">
-              <div className="font-machine text-xs text-jv-muted uppercase tracking-widest border-b border-jv-rule pb-2">
-                CREATE NEW CONCRETE CASE
+              <div className="font-interface font-medium text-base text-jv-ink border-b border-jv-rule pb-2">
+                New case
               </div>
 
               <div className="space-y-1.5">
-                <label className="font-machine text-xs uppercase text-jv-muted">Case Title</label>
+                <label className="font-interface text-sm text-jv-muted">Case title</label>
                 <input
                   type="text"
                   value={caseTitle}
                   onChange={(e) => setCaseTitle(e.target.value)}
                   placeholder="e.g. Forward-Deployed AI Application at Exxeta"
                   required
-                  className="w-full bg-jv-bg border border-jv-rule px-3 py-2 text-sm text-jv-ink outline-none focus:border-jv-ink"
+                  className="w-full bg-jv-bg border border-jv-rule px-3 py-2 text-sm text-jv-ink outline-none focus:border-jv-ink font-interface"
                 />
               </div>
 
               <div className="space-y-1.5">
-                <label className="font-machine text-xs uppercase text-jv-muted">Concrete Goal</label>
+                <label className="font-interface text-sm text-jv-muted">Concrete goal</label>
                 <textarea
                   value={caseGoal}
                   onChange={(e) => setCaseGoal(e.target.value)}
                   placeholder="Specific measurable goal for this case..."
                   required
                   rows={2}
-                  className="w-full bg-jv-bg border border-jv-rule px-3 py-2 text-sm text-jv-ink outline-none focus:border-jv-ink"
+                  className="w-full bg-jv-bg border border-jv-rule px-3 py-2 text-sm text-jv-ink outline-none focus:border-jv-ink font-interface"
                 />
               </div>
 
               <div className="space-y-1.5">
-                <label className="font-machine text-xs uppercase text-jv-muted">Case Type</label>
+                <label className="font-interface text-sm text-jv-muted">Case type</label>
                 <select
                   value={caseType}
                   onChange={(e) => setCaseType(e.target.value)}
-                  className="w-full bg-jv-bg border border-jv-rule px-3 py-2 text-sm text-jv-ink outline-none font-machine focus:border-jv-ink"
+                  className="w-full bg-jv-bg border border-jv-rule px-3 py-2 text-sm text-jv-ink outline-none font-interface focus:border-jv-ink"
                 >
                   <option value="job_application">Job Application</option>
                   <option value="housing_search">Housing Search</option>
@@ -268,10 +268,10 @@ export const MissionDetailView: React.FC = () => {
 
           {/* Cases List */}
           {casesLoading ? (
-            <div className="py-8 font-machine text-xs text-jv-muted">SYNCHRONIZING CASES...</div>
+            <div className="py-8 font-interface text-sm text-jv-muted">Loading cases…</div>
           ) : !cases || cases.length === 0 ? (
             <div className="py-12 text-center space-y-2 border-b border-jv-rule">
-              <div className="font-machine text-xs text-jv-muted uppercase">ZERO ACTIVE CASES</div>
+              <p className="font-interface font-medium text-base text-jv-ink">No cases created yet.</p>
               <p className="text-xs text-jv-ink-soft">
                 No concrete sub-cases registered under this mission yet.
               </p>
@@ -299,8 +299,8 @@ export const MissionDetailView: React.FC = () => {
                         {c.title}
                       </span>
                     </div>
-                    <div className="font-machine text-xs text-jv-muted pl-11">
-                      {c.case_type} · Goal: {c.goal}
+                    <div className="font-interface text-xs text-jv-muted pl-11">
+                      {c.case_type.replace(/_/g, ' ')} · Goal: {c.goal}
                     </div>
                   </div>
 
@@ -315,31 +315,31 @@ export const MissionDetailView: React.FC = () => {
 
           {/* Mission Scope & Goal Description */}
           <div className="border border-jv-rule p-6 space-y-3 bg-jv-surface">
-            <div className="font-machine text-xs tracking-widest uppercase text-jv-muted">
-              OPERATIONAL GOAL & SCOPE
+            <div className="font-interface text-xs font-semibold tracking-wider uppercase text-jv-muted">
+              Operational goal & scope
             </div>
-            <p className="text-sm text-jv-ink-soft leading-relaxed">{mission.goal}</p>
+            <p className="font-interface text-sm text-jv-ink-soft leading-relaxed">{mission.goal}</p>
           </div>
         </div>
 
         {/* Right Column: Mission Chronicle (4 cols) */}
         <div className="lg:col-span-4 space-y-6">
           <div className="border-b border-jv-rule pb-2">
-            <h2 className="font-display text-xl text-jv-ink tracking-tight">
-              Mission Chronicle
+            <h2 className="font-interface font-medium text-xl text-jv-ink tracking-tight">
+              Mission chronicle
             </h2>
           </div>
 
-          <div className="space-y-4 font-machine text-xs">
+          <div className="space-y-4">
             {missionEvents.length === 0 ? (
-              <div className="text-jv-muted">No activity recorded yet.</div>
+              <div className="text-jv-muted font-interface text-sm">No activity recorded yet.</div>
             ) : (
               missionEvents.slice(0, 8).map((ev) => (
                 <div key={ev.event_id} className="pb-3 border-b border-jv-rule space-y-1">
-                  <div className="text-jv-muted">
+                  <div className="font-machine text-xs text-jv-muted">
                     {formatEventTime(ev.occurred_at)}
                   </div>
-                  <div className="text-jv-ink font-medium">{humanizeEvent(ev)}</div>
+                  <div className="font-interface text-sm text-jv-ink font-medium">{humanizeEvent(ev)}</div>
                 </div>
               ))
             )}

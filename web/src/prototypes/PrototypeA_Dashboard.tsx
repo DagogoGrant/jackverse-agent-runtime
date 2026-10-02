@@ -80,39 +80,39 @@ export const PrototypeA_Dashboard: React.FC = () => {
         {showCreateForm && (
           <div className="border border-grey-700 bg-ink p-6 space-y-6 mt-4 transition-all">
             <div className="flex items-center justify-between border-b border-grey-700 pb-3">
-              <span className="font-machine text-xs tracking-widest uppercase text-grey-300">
-                MISSION // INLINE SPECIFICATION
+              <span className="font-interface font-medium text-base text-pure">
+                Mission details
               </span>
               <button
                 type="button"
                 onClick={() => setShowCreateForm(false)}
-                className="font-machine text-xs text-grey-500 hover:text-pure"
+                className="font-interface text-xs text-grey-500 hover:text-pure"
               >
-                DISMISS [ESC]
+                Dismiss [Esc]
               </button>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div className="space-y-2">
-                <label className="font-machine text-xs uppercase text-grey-500">
-                  Mission Title
+                <label className="font-interface text-sm text-grey-500">
+                  Mission title
                 </label>
                 <input
                   type="text"
                   value={title}
                   onChange={(e) => setTitle(e.target.value)}
-                  className="w-full bg-canvas border border-grey-700 px-3 py-2 text-sm text-pure outline-none focus:border-paper"
+                  className="w-full bg-canvas border border-grey-700 px-3 py-2 text-sm text-pure outline-none focus:border-paper font-interface"
                 />
               </div>
 
               <div className="space-y-2">
-                <label className="font-machine text-xs uppercase text-grey-500">
-                  Classification Kind
+                <label className="font-interface text-sm text-grey-500">
+                  Mission type
                 </label>
                 <select
                   value={kind}
                   onChange={(e) => setKind(e.target.value)}
-                  className="w-full bg-canvas border border-grey-700 px-3 py-2 text-sm text-pure outline-none focus:border-paper font-machine"
+                  className="w-full bg-canvas border border-grey-700 px-3 py-2 text-sm text-pure outline-none focus:border-paper font-interface"
                 >
                   <option value="opportunity_pursuit">Opportunity Pursuit</option>
                   <option value="capability_expansion">Capability Expansion</option>
@@ -126,12 +126,12 @@ export const PrototypeA_Dashboard: React.FC = () => {
               <button
                 type="button"
                 onClick={() => setShowCreateForm(false)}
-                className="font-machine text-xs uppercase tracking-wider text-grey-500 hover:text-paper"
+                className="font-interface text-sm text-grey-500 hover:text-paper"
               >
                 Cancel
               </button>
               <TactileButton variant="primary" size="md">
-                Initialize Mission →
+                Create mission →
               </TactileButton>
             </div>
           </div>
@@ -141,8 +141,8 @@ export const PrototypeA_Dashboard: React.FC = () => {
       {/* Editorial Index of Active Missions (Anti-card row layout) */}
       <section className="space-y-6">
         <div className="flex items-baseline justify-between border-b border-grey-700 pb-2">
-          <h2 className="font-display text-2xl text-pure tracking-tight">
-            Active Missions Index
+          <h2 className="font-interface font-medium text-2xl text-pure tracking-tight">
+            Active missions
           </h2>
           <span className="font-machine text-xs text-grey-500">
             03 TRACKED OBJECTS

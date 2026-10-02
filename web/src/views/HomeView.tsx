@@ -93,40 +93,40 @@ export const HomeView: React.FC = () => {
           {showCreateForm && (
             <div className="border border-jv-rule bg-jv-surface p-6 space-y-6 mt-4 transition-all animate-fadeIn">
               <div className="flex items-center justify-between border-b border-jv-rule pb-3">
-                <span className="font-machine text-xs tracking-widest uppercase text-jv-muted">
-                  MISSION // SPECIFICATION
+                <span className="font-interface font-medium text-base text-jv-ink">
+                  Mission details
                 </span>
                 <button
                   type="button"
                   onClick={() => setShowCreateForm(false)}
-                  className="font-machine text-xs text-jv-muted hover:text-jv-ink"
+                  className="font-interface text-xs text-jv-muted hover:text-jv-ink"
                 >
-                  DISMISS [ESC]
+                  Dismiss [Esc]
                 </button>
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div className="space-y-1.5">
-                  <label className="font-machine text-xs uppercase text-jv-muted">
-                    Mission Title
+                  <label className="font-interface text-sm text-jv-muted">
+                    Mission title
                   </label>
                   <input
                     type="text"
                     value={title}
                     onChange={(e) => setTitle(e.target.value)}
                     required
-                    className="w-full bg-jv-bg border border-jv-rule px-3 py-2 text-sm text-jv-ink outline-none focus:border-jv-ink"
+                    className="w-full bg-jv-bg border border-jv-rule px-3 py-2 text-sm text-jv-ink outline-none focus:border-jv-ink font-interface"
                   />
                 </div>
 
                 <div className="space-y-1.5">
-                  <label className="font-machine text-xs uppercase text-jv-muted">
-                    Classification Kind
+                  <label className="font-interface text-sm text-jv-muted">
+                    Mission type
                   </label>
                   <select
                     value={kind}
                     onChange={(e) => setKind(e.target.value)}
-                    className="w-full bg-jv-bg border border-jv-rule px-3 py-2 text-sm text-jv-ink outline-none focus:border-jv-ink font-machine"
+                    className="w-full bg-jv-bg border border-jv-rule px-3 py-2 text-sm text-jv-ink outline-none focus:border-jv-ink font-interface"
                   >
                     <option value="opportunity_pursuit">Opportunity Pursuit</option>
                     <option value="problem_resolution">Problem Resolution</option>
@@ -139,7 +139,7 @@ export const HomeView: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => setShowCreateForm(false)}
-                  className="font-machine text-xs uppercase tracking-wider text-jv-muted hover:text-jv-ink"
+                  className="font-interface text-sm text-jv-muted hover:text-jv-ink"
                 >
                   Cancel
                 </button>
@@ -149,7 +149,7 @@ export const HomeView: React.FC = () => {
                   size="md"
                   loading={createMission.isPending}
                 >
-                  Initialize Mission →
+                  Create mission →
                 </TactileButton>
               </div>
             </div>
@@ -173,11 +173,11 @@ export const HomeView: React.FC = () => {
             <span className="uppercase tracking-widest font-semibold text-jv-muted group-hover:text-jv-bg/80">
               Needs you
             </span>
-            <span className="underline decoration-1 underline-offset-4 font-machine group-hover:text-jv-bg">
+            <span className="font-interface text-xs underline decoration-1 underline-offset-4 group-hover:text-jv-bg">
               REVIEW PENDING (<NumberRoll value={pendingApprovals.length} />) →
             </span>
           </div>
-          <div className="font-display text-3xl sm:text-4xl tracking-tight">
+          <div className="font-interface font-semibold text-2xl sm:text-3xl tracking-tight">
             <NumberRoll value={pendingApprovals.length} />{' '}
             {pendingApprovals.length === 1 ? 'action requires' : 'actions require'}{' '}
             your authorization
@@ -188,25 +188,25 @@ export const HomeView: React.FC = () => {
       {/* Editorial Index of Active Missions */}
       <section className="space-y-6">
         <div className="flex items-baseline justify-between border-b border-jv-rule pb-3">
-          <h2 className="font-display text-2xl sm:text-3xl text-jv-ink tracking-tight">
-            Active Missions Index
+          <h2 className="font-interface font-medium text-2xl text-jv-ink tracking-tight">
+            Active missions
           </h2>
           <span className="font-machine text-xs text-jv-muted">
-            <NumberRoll value={missions?.length || 0} /> missions
+            <NumberRoll value={missions?.length || 0} /> MISSIONS
           </span>
         </div>
 
         {missionsLoading ? (
-          <div className="py-12 text-center font-machine text-xs text-jv-muted">
+          <div className="py-12 text-center font-interface text-sm text-jv-muted">
             Loading missions…
           </div>
         ) : !missions || missions.length === 0 ? (
-          <div className="py-16 text-center space-y-3">
-            <div className="font-machine text-xs text-jv-muted uppercase tracking-widest">
-              ZERO ACTIVE MISSIONS
-            </div>
-            <p className="text-sm text-jv-ink-soft max-w-sm mx-auto">
-              Nothing tracked yet. Describe a mission above to begin.
+          <div className="py-16 text-center space-y-2">
+            <p className="font-interface font-medium text-base text-jv-ink">
+              Nothing tracked yet.
+            </p>
+            <p className="font-interface text-sm text-jv-ink-soft max-w-sm mx-auto">
+              Describe a mission above to begin.
             </p>
           </div>
         ) : (

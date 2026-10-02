@@ -64,7 +64,7 @@ export const PrototypeB_MissionWorkspace: React.FC = () => {
         {/* Left column: Active Cases List (8 cols) */}
         <div className="lg:col-span-8 space-y-8">
           <div className="flex items-baseline justify-between border-b border-grey-700 pb-2">
-            <h2 className="font-display text-2xl text-pure tracking-tight">
+            <h2 className="font-interface font-medium text-2xl text-pure tracking-tight">
               Active Cases Dossier
             </h2>
             <TactileButton variant="outline" size="sm">
@@ -100,7 +100,7 @@ export const PrototypeB_MissionWorkspace: React.FC = () => {
 
           {/* Goals & Success Criteria */}
           <div className="border border-grey-700 p-6 space-y-4 bg-ink/30">
-            <div className="font-machine text-xs tracking-widest uppercase text-grey-500">
+            <div className="font-interface text-xs font-semibold uppercase tracking-wider text-grey-500">
               OPERATIONAL PARAMETERS
             </div>
             <p className="text-sm text-grey-300 leading-relaxed">
@@ -114,7 +114,7 @@ export const PrototypeB_MissionWorkspace: React.FC = () => {
         {/* Right column: Recent Activity Stream (4 cols) */}
         <div className="lg:col-span-4 space-y-6">
           <div className="border-b border-grey-700 pb-2">
-            <h2 className="font-display text-xl text-pure tracking-tight">
+            <h2 className="font-interface font-medium text-xl text-pure tracking-tight">
               Recent Stream
             </h2>
           </div>

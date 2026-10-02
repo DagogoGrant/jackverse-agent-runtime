@@ -216,7 +216,7 @@ test.describe('JackVerse Caseworker Design V2 - Four-Surface Prototype Gate (16 
     // 1440x900 Paper
     await setThemeAndNavigate(page, url, 'paper', 1440, 900);
     await expect(page.locator('h1')).toContainText('My Context');
-    await expect(page.locator('text=skills.primary_domain')).toBeVisible();
+    await expect(page.locator('text=skills.primary_domain').first()).toBeVisible();
     await page.screenshot({ path: path.join(outDir, 'context_paper_1440.png'), fullPage: false });
 
     // 1440x900 Ink

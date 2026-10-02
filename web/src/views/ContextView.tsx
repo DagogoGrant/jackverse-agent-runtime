@@ -65,7 +65,7 @@ const FactRow: React.FC<FactRowProps> = ({ fact, onVerify, onReject, onSupersede
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
         <div className="space-y-1 max-w-xl">
           <div className="flex flex-wrap items-center gap-3">
-            <span className="font-machine text-xs text-jv-muted uppercase font-semibold">
+            <span className="font-interface text-sm font-medium text-jv-ink">
               {fact.namespace}.{fact.key}
             </span>
             {fact.verification_status === 'user_verified' || fact.verification_status === 'source_verified' ? (
@@ -91,13 +91,13 @@ const FactRow: React.FC<FactRowProps> = ({ fact, onVerify, onReject, onSupersede
             {isSensitive ? (
               detailOpen ? (
                 isLoading ? (
-                  <span className="font-machine text-xs text-jv-muted">
+                  <span className="font-interface text-xs text-jv-muted">
                     Fetching protected detail...
                   </span>
                 ) : (
                   <div className="flex items-center gap-2">
                     <Lock className="w-3.5 h-3.5 text-jv-ink shrink-0" />
-                    <span className="font-machine text-xs bg-jv-bg px-2 py-0.5 border border-jv-rule">
+                    <span className="font-interface text-sm bg-jv-bg px-2 py-0.5 border border-jv-rule">
                       {String(detailData?.detail?.value ?? '[EMPTY]')}
                     </span>
                   </div>
@@ -110,7 +110,7 @@ const FactRow: React.FC<FactRowProps> = ({ fact, onVerify, onReject, onSupersede
             ) : isPersonal ? (
               detailOpen ? (
                 isLoading ? (
-                  <span className="font-machine text-xs text-jv-muted">
+                  <span className="font-interface text-xs text-jv-muted">
                     Fetching personal detail...
                   </span>
                 ) : (
@@ -119,18 +119,18 @@ const FactRow: React.FC<FactRowProps> = ({ fact, onVerify, onReject, onSupersede
                   </span>
                 )
               ) : (
-                <span className="font-machine text-xs text-jv-muted italic">
+                <span className="font-interface text-xs text-jv-muted italic">
                   Personal record · Detail on demand
                 </span>
               )
             ) : (
-              <span className="font-medium">{fact.preview || 'Recorded Value'}</span>
+              <span className="font-medium font-interface">{fact.preview || 'Recorded Value'}</span>
             )}
           </div>
         </div>
 
         <div className="flex flex-wrap items-center gap-4 pl-0 md:pl-4">
-          <span className="font-machine text-xs uppercase text-jv-muted">
+          <span className="font-machine text-[10px] uppercase text-jv-muted">
             {fact.sensitivity}
           </span>
 
@@ -139,7 +139,7 @@ const FactRow: React.FC<FactRowProps> = ({ fact, onVerify, onReject, onSupersede
             <button
               type="button"
               onClick={handleToggleDetail}
-              className="flex items-center gap-1.5 font-machine text-xs text-jv-ink-soft hover:text-jv-ink underline underline-offset-4"
+              className="flex items-center gap-1.5 font-interface text-xs text-jv-ink-soft hover:text-jv-ink underline underline-offset-4"
             >
               {detailOpen ? (
                 <>
@@ -159,7 +159,7 @@ const FactRow: React.FC<FactRowProps> = ({ fact, onVerify, onReject, onSupersede
             <button
               type="button"
               onClick={handleToggleDetail}
-              className="flex items-center gap-1.5 font-machine text-xs text-jv-ink-soft hover:text-jv-ink underline underline-offset-4"
+              className="flex items-center gap-1.5 font-interface text-xs text-jv-ink-soft hover:text-jv-ink underline underline-offset-4"
             >
               {detailOpen ? (
                 <>
@@ -179,7 +179,7 @@ const FactRow: React.FC<FactRowProps> = ({ fact, onVerify, onReject, onSupersede
           <button
             type="button"
             onClick={() => setIsEditing(!isEditing)}
-            className="font-machine text-xs text-jv-ink-soft hover:text-jv-ink underline underline-offset-4"
+            className="font-interface text-xs text-jv-ink-soft hover:text-jv-ink underline underline-offset-4"
           >
             {isEditing ? 'Cancel' : 'Update'}
           </button>
@@ -190,7 +190,7 @@ const FactRow: React.FC<FactRowProps> = ({ fact, onVerify, onReject, onSupersede
               <button
                 type="button"
                 onClick={() => onVerify(fact.fact_id, fact.version)}
-                className="p-1 border border-jv-rule hover:border-jv-ink text-jv-ink-soft hover:text-jv-ink text-xs font-machine"
+                className="p-1 border border-jv-rule hover:border-jv-ink text-jv-ink-soft hover:text-jv-ink text-xs font-interface"
                 title="Verify fact assertion"
               >
                 <Check className="w-3.5 h-3.5" />
@@ -198,7 +198,7 @@ const FactRow: React.FC<FactRowProps> = ({ fact, onVerify, onReject, onSupersede
               <button
                 type="button"
                 onClick={() => onReject(fact.fact_id, fact.version)}
-                className="p-1 border border-jv-rule hover:border-jv-ink text-jv-muted hover:text-jv-ink text-xs font-machine"
+                className="p-1 border border-jv-rule hover:border-jv-ink text-jv-muted hover:text-jv-ink text-xs font-interface"
                 title="Reject fact assertion"
               >
                 <X className="w-3.5 h-3.5" />
@@ -215,17 +215,17 @@ const FactRow: React.FC<FactRowProps> = ({ fact, onVerify, onReject, onSupersede
           className="mt-3 p-4 border border-jv-rule bg-jv-surface space-y-3 animate-fadeIn"
         >
           <div className="flex items-center justify-between border-b border-jv-rule pb-1.5">
-            <span className="font-machine text-[10px] text-jv-muted uppercase tracking-widest">
-              SUPERSEDE FACT // HISTORICAL LINEAGE PRESERVED
+            <span className="font-interface text-xs font-medium text-jv-muted">
+              Supersede fact // Historical lineage preserved
             </span>
             <span className="font-machine text-[10px] text-jv-muted">
-              CURRENT: v{fact.version}
+              v{fact.version}
             </span>
           </div>
 
           <div className="space-y-1">
-            <label className="font-machine text-[10px] text-jv-muted uppercase">
-              Replacement Value
+            <label className="font-interface text-xs text-jv-muted">
+              Replacement value
             </label>
             <input
               type="text"
@@ -238,8 +238,8 @@ const FactRow: React.FC<FactRowProps> = ({ fact, onVerify, onReject, onSupersede
           </div>
 
           <div className="space-y-1">
-            <label className="font-machine text-[10px] text-jv-muted uppercase">
-              Reason for Change (Optional)
+            <label className="font-interface text-xs text-jv-muted">
+              Reason for change (optional)
             </label>
             <input
               type="text"
@@ -258,14 +258,14 @@ const FactRow: React.FC<FactRowProps> = ({ fact, onVerify, onReject, onSupersede
                 setNewValue('');
                 setUpdateReason('');
               }}
-              className="px-2.5 py-1 text-xs font-machine border border-jv-rule hover:border-jv-ink text-jv-muted hover:text-jv-ink"
+              className="px-2.5 py-1 text-xs font-interface border border-jv-rule hover:border-jv-ink text-jv-muted hover:text-jv-ink"
             >
               Cancel
             </button>
             <button
               type="submit"
               disabled={isSubmitting || !newValue.trim()}
-              className="px-3 py-1 text-xs font-machine bg-jv-ink text-jv-bg font-medium hover:opacity-90 disabled:opacity-50"
+              className="px-3 py-1 text-xs font-interface bg-jv-ink text-jv-bg font-medium hover:opacity-90 disabled:opacity-50"
             >
               {isSubmitting ? 'Updating...' : 'Save Update →'}
             </button>
@@ -390,7 +390,7 @@ export const ContextView: React.FC = () => {
     <div className="space-y-16 font-interface text-jv-ink">
       {/* Concurrency Notification */}
       {concurrencyNotice && (
-        <div className="p-4 border border-jv-rule-strong bg-jv-surface flex items-center gap-3 text-xs font-machine text-jv-ink">
+        <div className="p-4 border border-jv-rule-strong bg-jv-surface flex items-center gap-3 text-sm font-interface text-jv-ink">
           <AlertTriangle className="w-4 h-4 shrink-0 text-jv-ink" />
           <span>{concurrencyNotice}</span>
         </div>
@@ -415,20 +415,20 @@ export const ContextView: React.FC = () => {
       {/* Profile Readiness Dossier */}
       {jobReadiness && (
         <section className="p-6 sm:p-8 border border-jv-rule bg-jv-surface space-y-4">
-          <div className="flex items-center justify-between font-machine text-xs">
-            <span className="text-jv-muted uppercase tracking-widest font-semibold">
-              PROFILE READINESS // {jobReadiness.title}
+          <div className="flex items-center justify-between">
+            <span className="font-interface text-xs font-semibold uppercase tracking-wider text-jv-muted">
+              Profile readiness · {jobReadiness.title}
             </span>
             <TextureBadge status={jobReadiness.is_ready ? 'complete' : 'waiting'} />
           </div>
 
           <div className="flex flex-col md:flex-row md:items-baseline gap-6">
-            <div className="font-display text-4xl sm:text-5xl text-jv-ink">
+            <div className="font-interface font-semibold text-4xl sm:text-5xl text-jv-ink tracking-tight">
               {Math.round(jobReadiness.completeness_ratio * 100)}%
             </div>
-            <div className="font-machine text-xs text-jv-ink-soft space-y-1">
+            <div className="font-interface text-xs text-jv-ink-soft space-y-1">
               <div>
-                Satisfied: {jobReadiness.satisfied_count} · Missing: {jobReadiness.missing_count}
+                Satisfied: <span className="font-machine">{jobReadiness.satisfied_count}</span> · Missing: <span className="font-machine">{jobReadiness.missing_count}</span>
               </div>
               <div className="text-jv-muted">
                 Authoritative evaluation against domain application requirements
@@ -439,10 +439,10 @@ export const ContextView: React.FC = () => {
           {/* Missing Requirements List */}
           {(jobReadiness.missing?.length || 0) > 0 && (
             <div className="pt-3 border-t border-jv-rule space-y-2">
-              <span className="font-machine text-xs text-jv-muted uppercase">
-                Missing Requirements:
+              <span className="font-interface text-xs text-jv-muted">
+                Missing requirements:
               </span>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 font-machine text-xs">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 font-interface text-xs">
                 {jobReadiness.missing?.map((req) => (
                   <div key={req.requirement_id} className="flex items-center gap-2 text-jv-ink-soft">
                     <X className="w-3.5 h-3.5 text-jv-muted shrink-0" />
@@ -458,17 +458,17 @@ export const ContextView: React.FC = () => {
       {/* Inline Add Fact Form */}
       {showAddFact && (
         <form onSubmit={handleRecord} className="p-6 border border-jv-rule bg-jv-surface space-y-4 animate-fadeIn">
-          <div className="font-machine text-xs text-jv-muted uppercase tracking-widest border-b border-jv-rule pb-2">
-            RECORD CONTEXT FACT
+          <div className="font-interface font-medium text-base text-jv-ink border-b border-jv-rule pb-2">
+            Record context fact
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div className="space-y-1">
-              <label className="font-machine text-xs text-jv-muted uppercase">Namespace</label>
+              <label className="font-interface text-xs text-jv-muted">Namespace</label>
               <select
                 value={namespace}
                 onChange={(e) => setNamespace(e.target.value)}
-                className="w-full bg-jv-bg border border-jv-rule px-3 py-2 text-sm text-jv-ink font-machine outline-none focus:border-jv-ink"
+                className="w-full bg-jv-bg border border-jv-rule px-3 py-2 text-sm text-jv-ink font-interface outline-none focus:border-jv-ink"
               >
                 <option value="identity">Identity</option>
                 <option value="contact">Contact</option>
@@ -480,23 +480,23 @@ export const ContextView: React.FC = () => {
             </div>
 
             <div className="space-y-1">
-              <label className="font-machine text-xs text-jv-muted uppercase">Fact Key</label>
+              <label className="font-interface text-xs text-jv-muted">Fact key</label>
               <input
                 type="text"
                 value={key}
                 onChange={(e) => setKey(e.target.value)}
                 placeholder="e.g. legal_name, years_experience"
                 required
-                className="w-full bg-jv-bg border border-jv-rule px-3 py-2 text-sm text-jv-ink outline-none focus:border-jv-ink"
+                className="w-full bg-jv-bg border border-jv-rule px-3 py-2 text-sm text-jv-ink font-interface outline-none focus:border-jv-ink"
               />
             </div>
 
             <div className="space-y-1">
-              <label className="font-machine text-xs text-jv-muted uppercase">Sensitivity</label>
+              <label className="font-interface text-xs text-jv-muted">Sensitivity</label>
               <select
                 value={sensitivity}
                 onChange={(e) => setSensitivity(e.target.value)}
-                className="w-full bg-jv-bg border border-jv-rule px-3 py-2 text-sm text-jv-ink font-machine outline-none focus:border-jv-ink"
+                className="w-full bg-jv-bg border border-jv-rule px-3 py-2 text-sm text-jv-ink font-interface outline-none focus:border-jv-ink"
               >
                 <option value="public">Public</option>
                 <option value="personal">Personal</option>
@@ -506,14 +506,14 @@ export const ContextView: React.FC = () => {
           </div>
 
           <div className="space-y-1">
-            <label className="font-machine text-xs text-jv-muted uppercase">Fact Value</label>
+            <label className="font-interface text-xs text-jv-muted">Fact value</label>
             <input
               type="text"
               value={value}
               onChange={(e) => setValue(e.target.value)}
               placeholder="e.g. John Doe, or salary target"
               required
-              className="w-full bg-jv-bg border border-jv-rule px-3 py-2 text-sm text-jv-ink outline-none focus:border-jv-ink"
+              className="w-full bg-jv-bg border border-jv-rule px-3 py-2 text-sm text-jv-ink font-interface outline-none focus:border-jv-ink"
             />
           </div>
 
@@ -530,15 +530,15 @@ export const ContextView: React.FC = () => {
 
       {/* Fact Groupings */}
       {isLoading ? (
-        <div className="py-24 text-center font-machine text-xs text-jv-muted">
-          INDEXING VAULT FACTS...
+        <div className="py-24 text-center font-interface text-sm text-jv-muted">
+          Indexing vault facts…
         </div>
       ) : Object.keys(groupedFacts).length === 0 ? (
         <div className="py-20 text-center space-y-4 max-w-md mx-auto">
-          <div className="font-display text-2xl text-jv-ink tracking-tight">
-            ZERO RECORDED CONTEXT FACTS
+          <div className="font-interface font-medium text-xl text-jv-ink tracking-tight">
+            No context facts recorded yet
           </div>
-          <p className="text-sm text-jv-ink-soft leading-relaxed">
+          <p className="font-interface text-sm text-jv-ink-soft leading-relaxed">
             Your personal context vault is currently empty. Record verified identity, career,
             and preference items to ground all future agent proposals.
           </p>
@@ -548,11 +548,11 @@ export const ContextView: React.FC = () => {
           {Object.entries(groupedFacts).map(([groupName, groupItems]) => (
             <section key={groupName} className="space-y-4">
               <div className="flex items-baseline justify-between border-b border-jv-rule pb-2">
-                <h2 className="font-display text-2xl text-jv-ink tracking-tight">
-                  {groupName}
+                <h2 className="font-interface font-semibold text-xl capitalize text-jv-ink tracking-tight">
+                  {groupName.toLowerCase()}
                 </h2>
                 <span className="font-machine text-xs text-jv-muted">
-                  {groupItems.length} FACTS
+                  {groupItems.length} {groupItems.length === 1 ? 'fact' : 'facts'}
                 </span>
               </div>
 

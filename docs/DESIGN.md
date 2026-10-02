@@ -175,3 +175,36 @@ Design V2 preserves 100% of JackVerse's functional and operational contracts:
 - **OpenAPI Drift**: Zero drift (`export_caseworker_openapi.py` diff clean).
 - **Bundle Footprint**: Maintained well within <= 15% budget constraint.
 - **Docker Production**: Web container serving on `127.0.0.1:3001` with clean SPA routing and zero-flash theme bootstrap.
+
+---
+
+## 9. Typographic Law & Hierarchical Discipline
+
+JackVerse Design V2.0.2 formalizes a strict, non-negotiable typographic hierarchy to resolve visual conflict and prevent multiple typefaces from competing within small viewport areas.
+
+### The Typographic Law: Three Voices, One Rule
+
+| Voice | Target Ratio | Primary Purpose | Allowed Locations | Strictly Prohibited Locations |
+| :--- | :--- | :--- | :--- | :--- |
+| **Instrument Serif** (`font-display`) | **15–20%** | **Editorial Emotion** | Exactly ONE dominant serif moment per major viewport region (e.g. main page headline or dominant dossier title). | Form labels, inputs, select dropdowns, repeated section subheadings (`h2`), table headers, metadata badges. |
+| **Geist Sans** (`font-interface`) | **65–75%** | **The Product Voice** | Default consumer voice: form labels, inputs, selects, buttons, section subheadings, empty states, descriptions, and body copy. | Hex hashes, raw JSON payloads, row indices, monotonic timestamps. |
+| **Geist Mono** (`font-machine`) | **10–15%** | **Evidence Only** | Identifiers (`JV-M001`), row indices, ISO/monotonic timestamps, versions (`v2`), cryptographic hashes, small folio markers, raw payloads. | Form labels, button text, section subheadings, sentence-case descriptions, loading prompts, empty states. |
+
+> [!IMPORTANT]
+> **Mono is seasoning, not a third equal hierarchy.**
+> Monospace font must never compete with Geist Sans for conversational space. If a piece of text is human-readable prose, instructional copy, or an interactive control label, it belongs in Geist Sans. Monospace is strictly reserved for verifiable, machine-level evidence.
+
+### Good vs. Bad Architectural Patterns
+
+| Surface / Component | ❌ Incorrect (Compromised Hierarchy) | ✅ Correct (V2.0.2 Typographic Law) |
+| :--- | :--- | :--- |
+| **Section Headings** (`h2`) | `<h2 className="font-display text-2xl">Active Missions Index</h2>` | `<h2 className="font-interface font-medium text-2xl">Active missions</h2>` |
+| **Form Labels** | `<label className="font-machine text-xs uppercase">Mission Title</label>` | `<label className="font-interface text-sm text-jv-muted">Mission title</label>` |
+| **Select Dropdowns** | `<select className="font-machine uppercase text-xs">` | `<select className="font-interface text-sm">` |
+| **Action Buttons** | `<button className="font-machine uppercase text-xs">CREATE MISSION →</button>` | `<TactileButton size="sm">Create mission →</TactileButton>` (`font-interface`) |
+| **Empty States** | `<div className="font-display text-2xl">ZERO ACTIVE MISSIONS</div>` | `<div className="font-interface font-medium text-xl">Nothing tracked yet.</div>` |
+| **Loading Prompts** | `<div className="font-machine text-xs uppercase">INDEXING VAULT FACTS...</div>` | `<div className="font-interface text-sm text-jv-muted">Indexing vault facts…</div>` |
+| **Event Presentation** | Raw event names (`mission.created`, `case.assigned`) in uppercase mono | Humanized event text in `font-interface text-sm font-medium`, with timestamp in `font-machine text-xs` |
+| **Context Namespace Headers** | `<h2 className="font-display text-2xl">{groupName}</h2>` on all sections | `<h2 className="font-interface font-semibold text-xl capitalize">{groupName.toLowerCase()}</h2>` |
+| **Activity Date Headers** | `TODAY`, `YESTERDAY` in uppercase mono tracking | `Today`, `Yesterday`, `Oct 2, 2026` in `font-interface font-medium text-sm` |
+

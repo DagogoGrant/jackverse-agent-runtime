@@ -11,7 +11,7 @@ function formatDateGroup(isoStr: string): string {
     d.getDate() === now.getDate() &&
     d.getMonth() === now.getMonth() &&
     d.getFullYear() === now.getFullYear();
-  if (isToday) return 'TODAY';
+  if (isToday) return 'Today';
 
   const yesterday = new Date(now);
   yesterday.setDate(now.getDate() - 1);
@@ -19,13 +19,13 @@ function formatDateGroup(isoStr: string): string {
     d.getDate() === yesterday.getDate() &&
     d.getMonth() === yesterday.getMonth() &&
     d.getFullYear() === yesterday.getFullYear();
-  if (isYesterday) return 'YESTERDAY';
+  if (isYesterday) return 'Yesterday';
 
   return d.toLocaleDateString(undefined, {
     month: 'short',
     day: 'numeric',
     year: 'numeric',
-  }).toUpperCase();
+  });
 }
 
 export const ActivityView: React.FC = () => {
@@ -57,7 +57,7 @@ export const ActivityView: React.FC = () => {
       {/* Editorial Header */}
       <div className="border-b border-jv-rule pb-6 flex flex-col md:flex-row md:items-end justify-between gap-4">
         <div className="space-y-2">
-          <div className="font-machine text-xs text-jv-muted uppercase">
+          <div className="font-machine text-[11px] text-jv-muted uppercase tracking-widest">
             06 / CHRONICLE · IMMUTABLE AUDIT LOG
           </div>
           <h1 className="font-display font-normal text-4xl lg:text-5xl text-jv-ink tracking-tight">
@@ -66,20 +66,20 @@ export const ActivityView: React.FC = () => {
         </div>
 
         <div className="font-machine text-xs text-jv-muted">
-          STREAM: MONOTONIC ROWID CURSOR
+          Monotonic stream
         </div>
       </div>
 
       {isLoading ? (
-        <div className="py-24 text-center font-machine text-xs text-jv-muted">
-          STREAMING AUDIT EVENTS...
+        <div className="py-24 text-center font-interface text-sm text-jv-muted">
+          Streaming audit events…
         </div>
       ) : items.length === 0 ? (
-        <div className="py-20 border border-jv-rule text-center space-y-4 bg-jv-surface/20">
-          <div className="font-machine text-xs text-jv-muted uppercase tracking-widest">
-            ZERO RECORDED AUDIT EVENTS
+        <div className="py-20 border border-jv-rule text-center space-y-3 bg-jv-surface/20">
+          <div className="font-interface font-medium text-xl text-jv-ink tracking-tight">
+            No activity recorded yet
           </div>
-          <p className="text-sm text-jv-muted max-w-sm mx-auto">
+          <p className="font-interface text-sm text-jv-muted max-w-sm mx-auto">
             No system or operational domain events recorded in this scope.
           </p>
         </div>
@@ -87,9 +87,9 @@ export const ActivityView: React.FC = () => {
         <div className="space-y-10">
           {groupedEvents.map((group) => (
             <div key={group.group} className="space-y-3">
-              <div className="font-machine text-xs text-jv-muted tracking-widest uppercase border-b border-jv-rule pb-1 flex items-center justify-between">
+              <div className="font-interface font-medium text-sm text-jv-muted border-b border-jv-rule pb-1 flex items-center justify-between">
                 <span>{group.group}</span>
-                <span>{group.events.length} RECORDED</span>
+                <span className="font-machine text-xs">{group.events.length} {group.events.length === 1 ? 'event' : 'events'}</span>
               </div>
 
               <div className="divide-y divide-jv-rule border-b border-jv-rule font-machine text-xs">
@@ -116,7 +116,7 @@ export const ActivityView: React.FC = () => {
                           <button
                             type="button"
                             onClick={() => toggleExpand(ev.event_id)}
-                            className="inline-flex items-center gap-1 text-[11px] uppercase text-jv-muted hover:text-jv-ink font-machine"
+                            className="inline-flex items-center gap-1 text-xs text-jv-muted hover:text-jv-ink font-interface"
                           >
                             <span>{isExpanded ? 'Hide' : 'Inspect'}</span>
                             {isExpanded ? (
@@ -129,11 +129,11 @@ export const ActivityView: React.FC = () => {
                       </div>
 
                       {isExpanded && (
-                        <div className="p-3 bg-jv-surface border border-jv-rule text-[11px] font-machine text-jv-ink break-all mt-1 space-y-1">
-                          <div className="text-jv-muted uppercase">
+                        <div className="p-3 bg-jv-surface border border-jv-rule text-xs font-machine text-jv-ink break-all mt-1 space-y-1">
+                          <div className="text-jv-muted">
                             EVENT TYPE: {ev.event_type} · POS #{ev.position !== undefined ? ev.position : '—'}
                           </div>
-                          <div className="text-jv-muted uppercase">
+                          <div className="text-jv-muted">
                             AGGREGATE: [{ev.aggregate_type} / {ev.aggregate_id} v{ev.aggregate_version}]
                           </div>
                           <div>PAYLOAD: {JSON.stringify(ev.payload || {}, null, 2)}</div>
@@ -147,14 +147,14 @@ export const ActivityView: React.FC = () => {
           ))}
 
           {/* Cursor Pagination */}
-          <div className="flex items-center justify-between pt-4 font-machine text-xs">
+          <div className="flex items-center justify-between pt-4 font-interface text-xs">
             {cursor !== undefined ? (
               <button
                 type="button"
                 onClick={() => setCursor(undefined)}
                 className="text-jv-muted hover:text-jv-ink underline"
               >
-                ← Return to Head
+                ← Return to start
               </button>
             ) : (
               <div />
@@ -166,11 +166,11 @@ export const ActivityView: React.FC = () => {
                 size="sm"
                 onClick={() => setCursor(nextPosition)}
               >
-                Stream Following Position ({nextPosition}) →
+                Next page ({nextPosition}) →
               </TactileButton>
             ) : (
-              <span className="text-jv-muted uppercase">
-                End of Active Stream
+              <span className="text-jv-muted">
+                End of active log
               </span>
             )}
           </div>
