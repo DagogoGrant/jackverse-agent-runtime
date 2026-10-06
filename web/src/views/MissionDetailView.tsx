@@ -6,6 +6,9 @@ import {
   useMissionCases,
   useCreateCase,
   useTransitionMission,
+  useCancelMission,
+  useArchiveMission,
+  useRestoreMission,
   useEvents,
 } from '../hooks/useCaseworker';
 import { TextureBadge } from '../components/ui/TextureBadge';
@@ -23,12 +26,19 @@ export const MissionDetailView: React.FC = () => {
 
   const createCase = useCreateCase();
   const transitionMission = useTransitionMission();
+  const cancelMission = useCancelMission();
+  const archiveMission = useArchiveMission();
+  const restoreMission = useRestoreMission();
 
   const [showCaseForm, setShowCaseForm] = useState(false);
   const [caseTitle, setCaseTitle] = useState('');
   const [caseGoal, setCaseGoal] = useState('');
   const [caseType, setCaseType] = useState('job_application');
   const [concurrencyNotice, setConcurrencyNotice] = useState<string | null>(null);
+
+  const [showArchiveConfirm, setShowArchiveConfirm] = useState(false);
+  const [showCancelConfirm, setShowCancelConfirm] = useState(false);
+  const [archiveActiveNotice, setArchiveActiveNotice] = useState(false);
 
   if (missionLoading) {
     return (
@@ -82,6 +92,67 @@ export const MissionDetailView: React.FC = () => {
     }
   };
 
+  const handleCancel = async () => {
+    if (!etag) return;
+    setConcurrencyNotice(null);
+    try {
+      await cancelMission.mutateAsync({
+        missionId: mission.mission_id,
+        etag,
+        reason: 'Mission cancelled by user',
+      });
+      setShowCancelConfirm(false);
+    } catch (err: any) {
+      if (err.name === 'PreconditionFailedError' || err.status === 412) {
+        setConcurrencyNotice("This changed elsewhere. We've loaded the latest version.");
+        refetchMission();
+      } else {
+        setConcurrencyNotice(err.message || 'Cancellation failed');
+      }
+      setShowCancelConfirm(false);
+    }
+  };
+
+  const handleArchive = async () => {
+    if (!etag) return;
+    setConcurrencyNotice(null);
+    try {
+      await archiveMission.mutateAsync({
+        missionId: mission.mission_id,
+        etag,
+      });
+      setShowArchiveConfirm(false);
+    } catch (err: any) {
+      if (err.status === 409) {
+        setConcurrencyNotice(err.message || 'Active missions must be paused or cancelled before archiving.');
+      } else if (err.name === 'PreconditionFailedError' || err.status === 412) {
+        setConcurrencyNotice("This changed elsewhere. We've loaded the latest version.");
+        refetchMission();
+      } else {
+        setConcurrencyNotice(err.message || 'Archival failed');
+      }
+      setShowArchiveConfirm(false);
+    }
+  };
+
+  const handleRestore = async () => {
+    if (!etag) return;
+    setConcurrencyNotice(null);
+    try {
+      await restoreMission.mutateAsync({
+        missionId: mission.mission_id,
+        etag,
+      });
+    } catch (err: any) {
+      if (err.name === 'PreconditionFailedError' || err.status === 412) {
+        setConcurrencyNotice("This changed elsewhere. We've loaded the latest version.");
+        refetchMission();
+      } else {
+        setConcurrencyNotice(err.message || 'Restore failed');
+      }
+    }
+  };
+
   const handleCreateCase = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!caseTitle.trim() || !caseGoal.trim() || !missionId) return;
@@ -122,8 +193,26 @@ export const MissionDetailView: React.FC = () => {
             <span>MISSION /</span>
             <span className="text-jv-ink font-semibold">{mission.mission_id.slice(0, 8)}</span>
           </div>
-          <TextureBadge status={mission.status} />
+          <TextureBadge status={mission.status} archived={mission.archived} />
         </div>
+
+        {/* Archived Notice Banner */}
+        {mission.archived && (
+          <div className="p-4 border border-jv-rule bg-jv-surface flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs font-interface text-jv-ink">
+            <div className="flex items-center gap-2.5">
+              <span className="font-machine uppercase text-jv-muted">Archived Dossier //</span>
+              <span>This mission is archived and hidden from active views. Its cases and chronicle remain intact.</span>
+            </div>
+            <TactileButton
+              variant="outline"
+              size="sm"
+              loading={restoreMission.isPending}
+              onClick={handleRestore}
+            >
+              Restore from archive
+            </TactileButton>
+          </div>
+        )}
 
         <h1 className="font-display text-4xl sm:text-5xl text-jv-ink tracking-tight leading-[1.15]">
           {mission.title}
@@ -138,47 +227,103 @@ export const MissionDetailView: React.FC = () => {
         </div>
 
         {/* Operational Transitions */}
-        <div className="flex flex-wrap items-center gap-3 pt-4">
-          {mission.status === 'draft' && (
-            <TactileButton
-              variant="primary"
-              size="sm"
-              loading={transitionMission.isPending}
-              onClick={() => handleTransition('active')}
-            >
-              Activate Mission →
-            </TactileButton>
-          )}
-          {mission.status === 'active' && (
-            <TactileButton
-              variant="outline"
-              size="sm"
-              loading={transitionMission.isPending}
-              onClick={() => handleTransition('paused')}
-            >
-              Pause Mission
-            </TactileButton>
-          )}
-          {mission.status === 'paused' && (
-            <TactileButton
-              variant="primary"
-              size="sm"
-              loading={transitionMission.isPending}
-              onClick={() => handleTransition('active')}
-            >
-              Resume Mission →
-            </TactileButton>
-          )}
-          {mission.status === 'active' && (
-            <TactileButton
-              variant="secondary"
-              size="sm"
-              loading={transitionMission.isPending}
-              onClick={() => handleTransition('completed')}
-            >
-              Mark Completed ■
-            </TactileButton>
-          )}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pt-4 border-t border-jv-rule">
+          {/* Primary Lifecycle Actions */}
+          <div className="flex flex-wrap items-center gap-3">
+            {mission.status === 'draft' && !mission.archived && (
+              <TactileButton
+                variant="primary"
+                size="sm"
+                loading={transitionMission.isPending}
+                onClick={() => handleTransition('active')}
+              >
+                Activate Mission →
+              </TactileButton>
+            )}
+            {mission.status === 'active' && (
+              <>
+                <TactileButton
+                  variant="outline"
+                  size="sm"
+                  loading={transitionMission.isPending}
+                  onClick={() => handleTransition('paused')}
+                >
+                  Pause Mission
+                </TactileButton>
+                <TactileButton
+                  variant="secondary"
+                  size="sm"
+                  loading={transitionMission.isPending}
+                  onClick={() => handleTransition('completed')}
+                >
+                  Mark Completed ■
+                </TactileButton>
+              </>
+            )}
+            {mission.status === 'paused' && !mission.archived && (
+              <TactileButton
+                variant="primary"
+                size="sm"
+                loading={transitionMission.isPending}
+                onClick={() => handleTransition('active')}
+              >
+                Resume Mission →
+              </TactileButton>
+            )}
+            {mission.status === 'paused' && mission.archived && (
+              <span className="font-machine text-xs text-jv-muted">
+                Restore mission from archive to resume activity.
+              </span>
+            )}
+            {mission.status === 'draft' && mission.archived && (
+              <span className="font-machine text-xs text-jv-muted">
+                Restore mission from archive to activate.
+              </span>
+            )}
+          </div>
+
+          {/* Quiet Secondary Organizational / Lifecycle Actions */}
+          <div className="flex items-center gap-4 pt-2 sm:pt-0">
+            {mission.archived ? (
+              <button
+                type="button"
+                onClick={handleRestore}
+                disabled={restoreMission.isPending}
+                className="font-interface text-xs text-jv-ink-soft hover:text-jv-ink hover:underline disabled:opacity-50 transition-colors"
+              >
+                Restore from archive
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={() => {
+                  if (mission.status === 'active') {
+                    setArchiveActiveNotice(true);
+                  } else {
+                    setShowArchiveConfirm(true);
+                  }
+                }}
+                disabled={archiveMission.isPending}
+                className="font-interface text-xs text-jv-muted hover:text-jv-ink hover:underline disabled:opacity-50 transition-colors"
+              >
+                Archive
+              </button>
+            )}
+
+            {!['completed', 'cancelled', 'failed'].includes(mission.status) && (
+              <>
+                <span className="text-jv-rule font-machine">/</span>
+                <button
+                  type="button"
+                  onClick={() => setShowCancelConfirm(true)}
+                  disabled={cancelMission.isPending}
+                  className="font-interface text-xs text-jv-muted hover:text-red-600 transition-colors"
+                >
+                  Cancel mission
+                </button>
+              </>
+            )}
+          </div>
         </div>
       </div>
 
@@ -346,6 +491,96 @@ export const MissionDetailView: React.FC = () => {
           </div>
         </div>
       </div>
+
+      {/* Cancel Confirmation Modal */}
+      {showCancelConfirm && (
+        <div className="fixed inset-0 bg-jv-ink/40 z-50 flex items-center justify-center p-4">
+          <div className="bg-jv-bg border border-jv-rule max-w-md w-full p-6 space-y-4 font-interface text-jv-ink shadow-2xl animate-fadeIn">
+            <h3 className="font-display text-2xl text-jv-ink tracking-tight">Cancel this mission?</h3>
+            <p className="text-sm text-jv-ink-soft leading-relaxed">
+              This marks the mission as cancelled and stops active work. Existing cases and history remain intact.
+            </p>
+            <div className="flex justify-end gap-3 pt-2">
+              <TactileButton
+                variant="outline"
+                size="sm"
+                onClick={() => setShowCancelConfirm(false)}
+              >
+                Keep mission
+              </TactileButton>
+              <TactileButton
+                variant="primary"
+                size="sm"
+                loading={cancelMission.isPending}
+                onClick={handleCancel}
+                className="bg-red-700 hover:bg-red-800 text-white border-red-700"
+              >
+                Cancel mission
+              </TactileButton>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Archive Confirmation Modal */}
+      {showArchiveConfirm && (
+        <div className="fixed inset-0 bg-jv-ink/40 z-50 flex items-center justify-center p-4">
+          <div className="bg-jv-bg border border-jv-rule max-w-md w-full p-6 space-y-4 font-interface text-jv-ink shadow-2xl animate-fadeIn">
+            <h3 className="font-display text-2xl text-jv-ink tracking-tight">Archive mission?</h3>
+            <p className="text-sm text-jv-ink-soft leading-relaxed">
+              This hides the mission from your active views. You can restore it at any time.
+            </p>
+            <div className="flex justify-end gap-3 pt-2">
+              <TactileButton
+                variant="outline"
+                size="sm"
+                onClick={() => setShowArchiveConfirm(false)}
+              >
+                Cancel
+              </TactileButton>
+              <TactileButton
+                variant="primary"
+                size="sm"
+                loading={archiveMission.isPending}
+                onClick={handleArchive}
+              >
+                Archive
+              </TactileButton>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Active Mission Archival Notice Modal */}
+      {archiveActiveNotice && (
+        <div className="fixed inset-0 bg-jv-ink/40 z-50 flex items-center justify-center p-4">
+          <div className="bg-jv-bg border border-jv-rule max-w-md w-full p-6 space-y-4 font-interface text-jv-ink shadow-2xl animate-fadeIn">
+            <h3 className="font-display text-2xl text-jv-ink tracking-tight">Active mission cannot be archived</h3>
+            <p className="text-sm text-jv-ink-soft leading-relaxed">
+              Active missions must be paused or cancelled before archiving.
+            </p>
+            <div className="flex justify-end gap-3 pt-2">
+              <TactileButton
+                variant="outline"
+                size="sm"
+                onClick={() => setArchiveActiveNotice(false)}
+              >
+                Dismiss
+              </TactileButton>
+              <TactileButton
+                variant="primary"
+                size="sm"
+                onClick={async () => {
+                  setArchiveActiveNotice(false);
+                  await handleTransition('paused');
+                }}
+              >
+                Pause mission
+              </TactileButton>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

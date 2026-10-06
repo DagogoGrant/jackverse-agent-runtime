@@ -50,5 +50,13 @@ class ApprovalValidationError(CaseworkerError):
     """Raised when an action approval cannot be granted because parameter fingerprint mismatch or status conflict."""
 
 
+class MissionArchivalConflictError(CaseworkerError):
+    """Raised when an archival or transition operation conflicts with the Mission's lifecycle or archival state."""
+
+    def __init__(self, message: str, mission_id: str | None = None) -> None:
+        super().__init__(message)
+        self.mission_id = mission_id
+
+
 class PersistenceError(CaseworkerError):
     """Raised when a storage, constraint, or database transaction operation fails."""

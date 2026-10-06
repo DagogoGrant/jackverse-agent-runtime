@@ -1186,6 +1186,22 @@
       },
       "MissionResponse": {
         "properties": {
+          "archived": {
+            "default": false,
+            "title": "Archived",
+            "type": "boolean"
+          },
+          "archived_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Archived At"
+          },
           "constraints": {
             "items": {
               "type": "string"
@@ -3894,6 +3910,16 @@
             }
           },
           {
+            "in": "query",
+            "name": "archived",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Archived",
+              "type": "boolean"
+            }
+          },
+          {
             "description": "Items per page (max 100)",
             "in": "query",
             "name": "limit",
@@ -4027,6 +4053,108 @@
           }
         },
         "summary": "Get Mission",
+        "tags": [
+          "missions"
+        ]
+      }
+    },
+    "/api/v1/missions/{mission_id}/archive": {
+      "post": {
+        "description": "Archive a non-active mission. Idempotent. Requires valid ETag if provided.",
+        "operationId": "archive_mission_api_v1_missions__mission_id__archive_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "mission_id",
+            "required": true,
+            "schema": {
+              "title": "Mission Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MissionResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Archive Mission",
+        "tags": [
+          "missions"
+        ]
+      }
+    },
+    "/api/v1/missions/{mission_id}/cancel": {
+      "post": {
+        "description": "Convenience endpoint to cancel a mission.",
+        "operationId": "cancel_mission_api_v1_missions__mission_id__cancel_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "mission_id",
+            "required": true,
+            "schema": {
+              "title": "Mission Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "reason",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Reason"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MissionResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Cancel Mission",
         "tags": [
           "missions"
         ]
@@ -4184,6 +4312,49 @@
           }
         },
         "summary": "Pause Mission",
+        "tags": [
+          "missions"
+        ]
+      }
+    },
+    "/api/v1/missions/{mission_id}/restore": {
+      "post": {
+        "description": "Restore an archived mission. Idempotent. Requires valid ETag if provided.",
+        "operationId": "restore_mission_api_v1_missions__mission_id__restore_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "mission_id",
+            "required": true,
+            "schema": {
+              "title": "Mission Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MissionResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Restore Mission",
         "tags": [
           "missions"
         ]

@@ -8,13 +8,14 @@ import { startViewTransition } from '../utils/transitions';
 
 export const MissionsView: React.FC = () => {
   const navigate = useNavigate();
-  const { data: missions, isLoading } = useMissions();
+  const [viewArchived, setViewArchived] = useState<boolean>(false);
   const [filter, setFilter] = useState<string>('all');
-
-  const filteredMissions = (missions || []).filter((m) => {
-    if (filter === 'all') return true;
-    return m.status === filter;
+  const { data: missions, isLoading } = useMissions({
+    archived: viewArchived,
+    statusFilter: filter === 'all' ? undefined : filter,
   });
+
+  const filteredMissions = missions || [];
 
   return (
     <div className="space-y-12 font-interface text-jv-ink">
@@ -25,26 +26,42 @@ export const MissionsView: React.FC = () => {
             02 / FOLIO · MISSIONS
           </div>
           <h1 className="font-display text-4xl sm:text-5xl text-jv-ink tracking-tight">
-            Missions
+            {viewArchived ? 'Archived Missions' : 'Missions'}
           </h1>
         </div>
 
-        {/* Status Filters */}
-        <div className="flex items-center gap-1.5 font-interface text-xs">
-          {(['all', 'active', 'paused', 'completed'] as const).map((s) => (
-            <button
-              key={s}
-              type="button"
-              onClick={() => setFilter(s)}
-              className={`px-3 py-1 capitalize border text-xs transition-colors duration-fast ease-editorial ${
-                filter === s
-                  ? 'border-jv-ink bg-jv-ink text-jv-bg font-semibold'
-                  : 'border-jv-rule text-jv-muted hover:text-jv-ink hover:border-jv-rule-strong bg-jv-surface'
-              }`}
-            >
-              {s}
-            </button>
-          ))}
+        {/* Status Filters & Archival Toggle */}
+        <div className="flex flex-wrap items-center gap-2 font-interface text-xs">
+          <div className="flex items-center gap-1.5">
+            {(['all', 'active', 'paused', 'completed', 'cancelled'] as const).map((s) => (
+              <button
+                key={s}
+                type="button"
+                onClick={() => setFilter(s)}
+                className={`px-3 py-1 capitalize border text-xs transition-colors duration-fast ease-editorial ${
+                  filter === s
+                    ? 'border-jv-ink bg-jv-ink text-jv-bg font-semibold'
+                    : 'border-jv-rule text-jv-muted hover:text-jv-ink hover:border-jv-rule-strong bg-jv-surface'
+                }`}
+              >
+                {s}
+              </button>
+            ))}
+          </div>
+
+          <div className="h-4 w-[1px] bg-jv-rule mx-1 hidden sm:block" />
+
+          <button
+            type="button"
+            onClick={() => setViewArchived(!viewArchived)}
+            className={`px-3 py-1 border text-xs transition-colors duration-fast ease-editorial flex items-center gap-1.5 ${
+              viewArchived
+                ? 'border-jv-ink bg-jv-ink text-jv-bg font-semibold'
+                : 'border-jv-rule text-jv-muted hover:text-jv-ink hover:border-jv-rule-strong bg-jv-surface'
+            }`}
+          >
+            <span>Archived</span>
+          </button>
         </div>
       </div>
 
@@ -55,24 +72,28 @@ export const MissionsView: React.FC = () => {
       ) : filteredMissions.length === 0 ? (
         <div className="py-24 text-center space-y-4 max-w-md mx-auto">
           <div className="font-interface font-medium text-xl text-jv-ink tracking-tight">
-            No missions yet
+            {viewArchived ? 'No archived missions' : 'No missions yet'}
           </div>
           <p className="text-sm text-jv-ink-soft leading-relaxed">
-            Tell JackVerse what you want to move forward. Your active missions will appear here.
+            {viewArchived
+              ? 'Missions you archive will appear here. Archiving hides missions from active indexes while keeping their history intact.'
+              : 'Tell JackVerse what you want to move forward. Your active missions will appear here.'}
           </p>
-          <div className="pt-2">
-            <TactileButton
-              variant="primary"
-              size="md"
-              onClick={() => {
-                startViewTransition(() => {
-                  navigate('/');
-                });
-              }}
-            >
-              Start a mission →
-            </TactileButton>
-          </div>
+          {!viewArchived && (
+            <div className="pt-2">
+              <TactileButton
+                variant="primary"
+                size="md"
+                onClick={() => {
+                  startViewTransition(() => {
+                    navigate('/');
+                  });
+                }}
+              >
+                Start a mission →
+              </TactileButton>
+            </div>
+          )}
         </div>
       ) : (
         <div className="divide-y divide-jv-rule border-b border-jv-rule">
@@ -106,7 +127,7 @@ export const MissionsView: React.FC = () => {
               </div>
 
               <div className="flex items-center gap-6 pl-14 md:pl-0 shrink-0">
-                <TextureBadge status={m.status} />
+                <TextureBadge status={m.status} archived={m.archived} />
                 <span className="font-machine text-xs text-jv-muted uppercase">
                   {m.kind.replace(/_/g, ' ')}
                 </span>

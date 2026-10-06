@@ -4,7 +4,11 @@ from datetime import datetime, timezone
 import unittest
 
 from caseworker.domain.enums import MissionKind, MissionStatus
-from caseworker.domain.errors import DomainValidationError, InvalidStateTransitionError
+from caseworker.domain.errors import (
+    DomainValidationError,
+    InvalidStateTransitionError,
+    MissionArchivalConflictError,
+)
 from caseworker.domain.mission import Mission
 from caseworker.domain.types import now_utc
 
@@ -116,6 +120,104 @@ class TestMissionAggregate(unittest.TestCase):
         self.assertEqual(reconstructed.status, MissionStatus.ACTIVE)
         self.assertEqual(reconstructed.version, 2)
         self.assertEqual(reconstructed.deadline.isoformat(), deadline.isoformat())
+        self.assertFalse(reconstructed.archived)
+        self.assertIsNone(reconstructed.archived_at)
+
+    def test_cancel_mission_is_terminal_lifecycle_transition(self) -> None:
+        m = Mission(
+            user_id="u1",
+            title="House Hunt",
+            goal="Find house",
+            kind=MissionKind.GENERAL_GOAL,
+        )
+        self.assertEqual(m.status, MissionStatus.DRAFT)
+        m.transition_to(MissionStatus.ACTIVE)
+        self.assertEqual(m.status, MissionStatus.ACTIVE)
+
+        # Cancel from ACTIVE
+        m.transition_to(MissionStatus.CANCELLED)
+        self.assertEqual(m.status, MissionStatus.CANCELLED)
+        self.assertTrue(m.status.is_terminal)
+
+        # Terminal state cannot be transitioned further
+        with self.assertRaises(InvalidStateTransitionError):
+            m.transition_to(MissionStatus.ACTIVE)
+
+    def test_archive_and_restore_behavior_and_invariants(self) -> None:
+        m = Mission(
+            user_id="u1",
+            title="Archival Test",
+            goal="Test archival separation",
+            kind=MissionKind.GENERAL_GOAL,
+        )
+        m.transition_to(MissionStatus.ACTIVE)
+        self.assertEqual(m.version, 2)
+
+        # Invariant 1: Active missions cannot be archived
+        with self.assertRaises(MissionArchivalConflictError):
+            m.archive()
+        self.assertFalse(m.archived)
+        self.assertEqual(m.version, 2)
+
+        # Pause mission
+        m.transition_to(MissionStatus.PAUSED)
+        self.assertEqual(m.version, 3)
+
+        # Now archive paused mission
+        changed = m.archive()
+        self.assertTrue(changed)
+        self.assertTrue(m.archived)
+        self.assertIsNotNone(m.archived_at)
+        self.assertEqual(m.status, MissionStatus.PAUSED)  # Lifecycle status unchanged!
+        self.assertEqual(m.version, 4)
+
+        # Idempotence: archiving already archived mission is a no-op
+        changed_again = m.archive()
+        self.assertFalse(changed_again)
+        self.assertEqual(m.version, 4)
+
+        # Invariant 2 (Bidirectional): Cannot transition archived mission to ACTIVE
+        with self.assertRaises(MissionArchivalConflictError):
+            m.transition_to(MissionStatus.ACTIVE)
+        self.assertEqual(m.status, MissionStatus.PAUSED)
+
+        # Restore from archive
+        restored = m.restore()
+        self.assertTrue(restored)
+        self.assertFalse(m.archived)
+        self.assertIsNone(m.archived_at)
+        self.assertEqual(m.status, MissionStatus.PAUSED)
+        self.assertEqual(m.version, 5)
+
+        # Idempotence: restoring already unarchived mission is a no-op
+        restored_again = m.restore()
+        self.assertFalse(restored_again)
+        self.assertEqual(m.version, 5)
+
+        # Now activating succeeds
+        m.transition_to(MissionStatus.ACTIVE)
+        self.assertEqual(m.status, MissionStatus.ACTIVE)
+        self.assertEqual(m.version, 6)
+
+    def test_archived_serialization_roundtrip(self) -> None:
+        m = Mission(
+            user_id="u1",
+            title="Archive Serialization",
+            goal="Roundtrip verification",
+            kind=MissionKind.GENERAL_GOAL,
+        )
+        m.archive()
+        self.assertTrue(m.archived)
+        self.assertIsNotNone(m.archived_at)
+
+        data = m.to_dict()
+        self.assertTrue(data["archived"])
+        self.assertIsNotNone(data["archived_at"])
+
+        reconstructed = Mission.from_dict(data)
+        self.assertTrue(reconstructed.archived)
+        self.assertIsNotNone(reconstructed.archived_at)
+        self.assertEqual(reconstructed.archived_at, m.archived_at)
 
 
 if __name__ == "__main__":

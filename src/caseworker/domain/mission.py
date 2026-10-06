@@ -8,7 +8,11 @@ from typing import Any
 import uuid
 
 from caseworker.domain.enums import MissionKind, MissionStatus
-from caseworker.domain.errors import DomainValidationError, InvalidStateTransitionError
+from caseworker.domain.errors import (
+    DomainValidationError,
+    InvalidStateTransitionError,
+    MissionArchivalConflictError,
+)
 from caseworker.domain.types import ensure_utc, from_iso_utc, now_utc, to_iso_utc
 
 
@@ -43,6 +47,8 @@ class Mission:
     updated_at: datetime = field(default_factory=now_utc)
     deadline: datetime | None = None
     version: int = 1
+    archived: bool = False
+    archived_at: datetime | None = None
 
     def __post_init__(self) -> None:
         if not self.mission_id or not self.mission_id.strip():
@@ -61,6 +67,8 @@ class Mission:
         self.updated_at = ensure_utc(self.updated_at) or now_utc()
         if self.deadline is not None:
             self.deadline = ensure_utc(self.deadline)
+        if self.archived_at is not None:
+            self.archived_at = ensure_utc(self.archived_at)
 
         # Normalize enum types
         if isinstance(self.kind, str) and not isinstance(self.kind, MissionKind):
@@ -75,6 +83,12 @@ class Mission:
 
         if new_status == self.status:
             return
+
+        if self.archived and new_status == MissionStatus.ACTIVE:
+            raise MissionArchivalConflictError(
+                "Cannot activate or resume an archived mission. Restore this mission first.",
+                mission_id=self.mission_id,
+            )
 
         if self.status.is_terminal:
             raise InvalidStateTransitionError(
@@ -97,6 +111,32 @@ class Mission:
         self.version += 1
         self.updated_at = now_utc()
 
+    def archive(self) -> bool:
+        """Mark mission as archived. Returns True if state changed, False if already archived (idempotent)."""
+        if self.archived:
+            return False
+        if self.status == MissionStatus.ACTIVE:
+            raise MissionArchivalConflictError(
+                "Active missions must be paused or cancelled before archiving.",
+                mission_id=self.mission_id,
+            )
+        now = now_utc()
+        self.archived = True
+        self.archived_at = now
+        self.updated_at = now
+        self.version += 1
+        return True
+
+    def restore(self) -> bool:
+        """Restore mission from archive. Returns True if state changed, False if already unarchived (idempotent)."""
+        if not self.archived:
+            return False
+        self.archived = False
+        self.archived_at = None
+        self.updated_at = now_utc()
+        self.version += 1
+        return True
+
     def to_dict(self) -> dict[str, Any]:
         """Serialize Mission to a JSON-compatible dictionary."""
         return {
@@ -112,6 +152,8 @@ class Mission:
             "updated_at": to_iso_utc(self.updated_at),
             "deadline": to_iso_utc(self.deadline),
             "version": self.version,
+            "archived": self.archived,
+            "archived_at": to_iso_utc(self.archived_at),
         }
 
     @classmethod
@@ -130,4 +172,6 @@ class Mission:
             updated_at=from_iso_utc(data["updated_at"]) or now_utc(),
             deadline=from_iso_utc(data.get("deadline")),
             version=int(data.get("version", 1)),
+            archived=bool(data.get("archived", False)),
+            archived_at=from_iso_utc(data.get("archived_at")),
         )

@@ -14,7 +14,7 @@ class TestSQLiteMigration(unittest.TestCase):
         cur = conn.cursor()
         cur.execute("PRAGMA user_version;")
         version = cur.fetchone()[0]
-        self.assertEqual(version, 2)
+        self.assertEqual(version, 3)
 
         # Verify all tables exist
         cur.execute("SELECT name FROM sqlite_master WHERE type='table';")
@@ -32,6 +32,12 @@ class TestSQLiteMigration(unittest.TestCase):
         }
         for table in expected_tables:
             self.assertIn(table, tables, f"Expected table '{table}' missing after migration.")
+
+        # Verify archived columns exist on missions
+        cur.execute("PRAGMA table_info(missions);")
+        columns = {row[1] for row in cur.fetchall()}
+        self.assertIn("archived", columns)
+        self.assertIn("archived_at", columns)
 
         conn.close()
 
@@ -92,17 +98,22 @@ class TestSQLiteMigration(unittest.TestCase):
         """)
         conn.commit()
 
-        # 2. Run migration to v2
+        # 2. Run migration to v3
         SQLiteMigrator.migrate(conn)
 
         cur.execute("PRAGMA user_version;")
-        self.assertEqual(cur.fetchone()[0], 2)
+        self.assertEqual(cur.fetchone()[0], 3)
 
-        # 3. Verify new columns exist in context_facts
+        # 3. Verify new columns exist in context_facts and missions
         cur.execute("PRAGMA table_info(context_facts);")
         columns = {row[1] for row in cur.fetchall()}
         self.assertIn("source_id", columns)
         self.assertIn("rejection_reason", columns)
+
+        cur.execute("PRAGMA table_info(missions);")
+        mission_columns = {row[1] for row in cur.fetchall()}
+        self.assertIn("archived", mission_columns)
+        self.assertIn("archived_at", mission_columns)
 
         # 4. Verify existing data preserved and queryable
         cur.execute("SELECT fact_id, user_id, key, source_id, rejection_reason FROM context_facts WHERE fact_id = 'fact_v1_001';")
@@ -122,6 +133,65 @@ class TestSQLiteMigration(unittest.TestCase):
 
         conn.close()
 
+    def test_migration_from_v2_schema_preserves_data(self) -> None:
+        conn = sqlite3.connect(":memory:")
+        cur = conn.cursor()
+
+        # 1. Setup exact Milestone 2 (v2) schema missions table without archived columns
+        cur.execute("""
+            CREATE TABLE missions (
+                mission_id TEXT PRIMARY KEY,
+                user_id TEXT NOT NULL,
+                title TEXT NOT NULL,
+                goal TEXT NOT NULL,
+                kind TEXT NOT NULL,
+                status TEXT NOT NULL,
+                success_criteria TEXT NOT NULL,
+                constraints TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                deadline TEXT,
+                version INTEGER NOT NULL DEFAULT 1
+            );
+        """)
+        cur.execute("PRAGMA user_version = 2;")
+
+        # Insert sample v2 mission
+        cur.execute("""
+            INSERT INTO missions (
+                mission_id, user_id, title, goal, kind, status,
+                success_criteria, constraints, created_at, updated_at, version
+            ) VALUES (
+                'm_v2_001', 'user_v2', 'Original Mission', 'Goal 1', 'general_goal',
+                'active', '[]', '[]', '2026-02-01T00:00:00Z', '2026-02-01T00:00:00Z', 1
+            );
+        """)
+        conn.commit()
+
+        # 2. Run migration to v3
+        SQLiteMigrator.migrate(conn)
+
+        cur.execute("PRAGMA user_version;")
+        self.assertEqual(cur.fetchone()[0], 3)
+
+        # 3. Verify columns added
+        cur.execute("PRAGMA table_info(missions);")
+        columns = {row[1] for row in cur.fetchall()}
+        self.assertIn("archived", columns)
+        self.assertIn("archived_at", columns)
+
+        # 4. Verify existing record preserved and defaulted
+        cur.execute("SELECT mission_id, title, status, archived, archived_at FROM missions WHERE mission_id = 'm_v2_001';")
+        row = cur.fetchone()
+        self.assertIsNotNone(row)
+        self.assertEqual(row[0], "m_v2_001")
+        self.assertEqual(row[1], "Original Mission")
+        self.assertEqual(row[2], "active")
+        self.assertEqual(row[3], 0)  # archived defaults to 0
+        self.assertIsNone(row[4])   # archived_at defaults to NULL
+
+        conn.close()
+
     def test_migration_idempotent(self) -> None:
         conn = sqlite3.connect(":memory:")
         SQLiteMigrator.migrate(conn)
@@ -130,7 +200,7 @@ class TestSQLiteMigration(unittest.TestCase):
 
         cur = conn.cursor()
         cur.execute("PRAGMA user_version;")
-        self.assertEqual(cur.fetchone()[0], 2)
+        self.assertEqual(cur.fetchone()[0], 3)
         conn.close()
 
 

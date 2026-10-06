@@ -14,6 +14,7 @@ from caseworker.api.etag import check_if_match, set_etag_header
 from caseworker.api.identity import Principal
 from caseworker.api.schemas.common import PaginatedResponse
 from caseworker.api.schemas.mission import (
+    ArchiveMissionRequest,
     CreateMissionRequest,
     MissionResponse,
     TransitionMissionRequest,
@@ -41,6 +42,8 @@ def _to_mission_response(m: Mission) -> MissionResponse:
         updated_at=to_iso_utc(m.updated_at),
         deadline=to_iso_utc(m.deadline) if m.deadline else None,
         version=m.version,
+        archived=m.archived,
+        archived_at=to_iso_utc(m.archived_at) if m.archived_at else None,
     )
 
 
@@ -72,9 +75,10 @@ async def list_missions(
     service: Annotated[MissionService, Depends(get_mission_service)],
     pagination: Annotated[PaginationParams, Depends()],
     status_filter: MissionStatus | None = None,
+    archived: bool = False,
 ) -> PaginatedResponse[MissionResponse]:
     """List missions belonging to the authenticated user with offset pagination."""
-    all_missions = service.list_user_missions(principal.user_id, status=status_filter)
+    all_missions = service.list_user_missions(principal.user_id, status=status_filter, archived=archived)
     total = len(all_missions)
     page_items = all_missions[pagination.offset : pagination.offset + pagination.limit]
     return PaginatedResponse(
@@ -174,5 +178,71 @@ async def resume_mission(
         new_status=MissionStatus.ACTIVE,
         reason=reason or "Mission resumed via API",
     )
+    set_etag_header(response, "mission", updated.mission_id, updated.version)
+    return _to_mission_response(updated)
+
+
+@router.post("/{mission_id}/cancel", response_model=MissionResponse)
+async def cancel_mission(
+    mission_id: str,
+    request: Request,
+    response: Response,
+    principal: Annotated[Principal, Depends(get_principal)],
+    service: Annotated[MissionService, Depends(get_mission_service)],
+    reason: str | None = None,
+) -> MissionResponse:
+    """Convenience endpoint to cancel a mission."""
+    existing = service.get_mission_for_user(principal.user_id, mission_id)
+    if existing is None:
+        raise EntityNotFoundError("Mission", mission_id)
+
+    check_if_match(request, "mission", existing.mission_id, existing.version)
+
+    updated = service.transition_mission_for_user(
+        user_id=principal.user_id,
+        mission_id=mission_id,
+        new_status=MissionStatus.CANCELLED,
+        reason=reason or "Mission cancelled via API",
+    )
+    set_etag_header(response, "mission", updated.mission_id, updated.version)
+    return _to_mission_response(updated)
+
+
+@router.post("/{mission_id}/archive", response_model=MissionResponse)
+async def archive_mission(
+    mission_id: str,
+    request: Request,
+    response: Response,
+    principal: Annotated[Principal, Depends(get_principal)],
+    service: Annotated[MissionService, Depends(get_mission_service)],
+) -> MissionResponse:
+    """Archive a non-active mission. Idempotent. Requires valid ETag if provided."""
+    existing = service.get_mission_for_user(principal.user_id, mission_id)
+    if existing is None:
+        raise EntityNotFoundError("Mission", mission_id)
+
+    check_if_match(request, "mission", existing.mission_id, existing.version)
+
+    updated = service.archive_mission_for_user(principal.user_id, mission_id)
+    set_etag_header(response, "mission", updated.mission_id, updated.version)
+    return _to_mission_response(updated)
+
+
+@router.post("/{mission_id}/restore", response_model=MissionResponse)
+async def restore_mission(
+    mission_id: str,
+    request: Request,
+    response: Response,
+    principal: Annotated[Principal, Depends(get_principal)],
+    service: Annotated[MissionService, Depends(get_mission_service)],
+) -> MissionResponse:
+    """Restore an archived mission. Idempotent. Requires valid ETag if provided."""
+    existing = service.get_mission_for_user(principal.user_id, mission_id)
+    if existing is None:
+        raise EntityNotFoundError("Mission", mission_id)
+
+    check_if_match(request, "mission", existing.mission_id, existing.version)
+
+    updated = service.restore_mission_for_user(principal.user_id, mission_id)
     set_etag_header(response, "mission", updated.mission_id, updated.version)
     return _to_mission_response(updated)

@@ -39,6 +39,14 @@ export function humanizeEvent(eventOrType: EventLike | string): string {
       return 'Mission status updated';
     }
 
+    case 'mission.archived':
+    case 'mission_archived':
+      return 'Mission archived';
+
+    case 'mission.restored':
+    case 'mission_restored':
+      return 'Mission restored from archive';
+
     case 'case.created':
     case 'case_created':
       return 'Case created';

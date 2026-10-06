@@ -493,4 +493,93 @@ test.describe('Caseworker Real Integration Suite (Live FastAPI + Temporary SQLit
     // Page refetches and updates to reflect new state 'Resume Mission →' (which corresponds to PAUSED)
     await expect(page.locator('button', { hasText: 'Resume Mission →' })).toBeVisible();
   });
+
+  // FLOW I: Mission Lifecycle & Archival Separation (Cancel, Archive, Restore)
+  test('Flow I: Mission Lifecycle & Archival Separation (Cancel, Archive, and Restore)', async ({ page }) => {
+    // 1. Create a fresh mission in DRAFT
+    await createMission(page, 'Independent Archival Test Mission');
+
+    // Archive from DRAFT
+    const archiveBtn = page.locator('button', { hasText: 'Archive' });
+    await expect(archiveBtn).toBeVisible();
+    await archiveBtn.click();
+
+    // Archive confirmation modal appears
+    await expect(page.locator('h3', { hasText: 'Archive mission?' })).toBeVisible();
+    await expect(page.locator('text=This hides the mission from your active views. You can restore it at any time.')).toBeVisible();
+    const confirmArchiveBtn = page.locator('div.fixed button', { hasText: 'Archive' });
+    await confirmArchiveBtn.click();
+
+    // Verify archived presentation: banner visible, badge has ARCHIVED prefix
+    await expect(page.locator('text=Archived Dossier //')).toBeVisible();
+    await expect(page.locator('text=ARCHIVED · DRAFT')).toBeVisible();
+
+    // Restore from archive
+    const restoreBtn = page.locator('button', { hasText: 'Restore from archive' }).first();
+    await expect(restoreBtn).toBeVisible();
+    await restoreBtn.click();
+
+    // Verify unarchived state restored
+    await expect(page.locator('text=Archived Dossier //')).toHaveCount(0);
+    await expect(page.locator('text=ARCHIVED · DRAFT')).toHaveCount(0);
+
+    // 2. Activate mission
+    const activateBtn = page.locator('button', { hasText: 'Activate Mission →' });
+    await activateBtn.click();
+    await expect(page.locator('button', { hasText: 'Pause Mission' })).toBeVisible();
+
+    // Invariant: Trying to archive an ACTIVE mission triggers alert
+    await archiveBtn.click();
+    await expect(page.locator('h3', { hasText: 'Active mission cannot be archived' })).toBeVisible();
+    await expect(page.locator('text=Active missions must be paused or cancelled before archiving.')).toBeVisible();
+
+    // Use modal shortcut to pause
+    const pauseInModalBtn = page.locator('div.fixed button', { hasText: 'Pause mission' });
+    await pauseInModalBtn.click();
+    await expect(page.locator('button', { hasText: 'Resume Mission →' })).toBeVisible();
+
+    // Now archive the paused mission
+    await archiveBtn.click();
+    await page.locator('div.fixed button', { hasText: 'Archive' }).click();
+
+    // Verify dual state: ARCHIVED · PAUSED
+    await expect(page.locator('text=ARCHIVED · PAUSED')).toBeVisible();
+
+    // 3. Missions Index filtering
+    await page.goto('/missions');
+    // Default index filters out archived missions
+    await expect(page.locator('h2', { hasText: 'Independent Archival Test Mission' })).toHaveCount(0);
+
+    // Toggle Archived filter
+    const archivedFilterToggle = page.locator('button', { hasText: 'Archived' });
+    await archivedFilterToggle.click();
+    await expect(page.locator('h1', { hasText: 'Archived Missions' })).toBeVisible();
+    const archivedRow = page.locator('h2', { hasText: 'Independent Archival Test Mission' });
+    await expect(archivedRow).toBeVisible();
+    await expect(page.locator('text=ARCHIVED · PAUSED')).toBeVisible();
+
+    // Click back into the mission
+    await archivedRow.click();
+    await expect(page).toHaveURL(/\/missions\/[a-zA-Z0-9_-]+/);
+
+    // Restore from archive
+    await page.locator('button', { hasText: 'Restore from archive' }).first().click();
+    await expect(page.locator('text=ARCHIVED · PAUSED')).toHaveCount(0);
+
+    // Cancel mission lifecycle action
+    const cancelBtn = page.locator('button', { hasText: 'Cancel mission' });
+    await expect(cancelBtn).toBeVisible();
+    await cancelBtn.click();
+
+    // Cancel confirmation modal
+    await expect(page.locator('h3', { hasText: 'Cancel this mission?' })).toBeVisible();
+    await expect(page.locator('text=This marks the mission as cancelled and stops active work. Existing cases and history remain intact.')).toBeVisible();
+    await page.locator('div.fixed button', { hasText: 'Cancel mission' }).click();
+
+    // Terminal CANCELLED state
+    await expect(page.locator('text=CANCELLED')).toBeVisible();
+    await expect(page.locator('button', { hasText: 'Pause Mission' })).toHaveCount(0);
+    await expect(page.locator('button', { hasText: 'Resume Mission →' })).toHaveCount(0);
+    await expect(page.locator('button', { hasText: 'Mark Completed ■' })).toHaveCount(0);
+  });
 });

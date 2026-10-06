@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import sqlite3
 
-LATEST_SCHEMA_VERSION = 2
+LATEST_SCHEMA_VERSION = 3
 
 MIGRATION_V1_DDL = """
 CREATE TABLE IF NOT EXISTS missions (
@@ -235,5 +235,20 @@ class SQLiteMigrator:
             conn.execute("CREATE INDEX IF NOT EXISTS idx_context_source ON context_facts(source_id);")
             conn.execute("PRAGMA user_version = 2;")
             current_version = 2
+
+        # Migrate 2 -> 3 (Mission Archival columns & index)
+        if current_version < 3:
+            cur = conn.cursor()
+            cur.execute("PRAGMA table_info(missions);")
+            columns = {row[1] for row in cur.fetchall()}
+
+            if "archived" not in columns:
+                conn.execute("ALTER TABLE missions ADD COLUMN archived INTEGER NOT NULL DEFAULT 0;")
+            if "archived_at" not in columns:
+                conn.execute("ALTER TABLE missions ADD COLUMN archived_at TEXT;")
+
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_missions_user_archived ON missions(user_id, archived);")
+            conn.execute("PRAGMA user_version = 3;")
+            current_version = 3
 
         return current_version

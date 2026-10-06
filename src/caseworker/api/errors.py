@@ -15,6 +15,7 @@ from caseworker.domain.errors import (
     DomainValidationError,
     EntityNotFoundError,
     InvalidStateTransitionError,
+    MissionArchivalConflictError,
     OptimisticLockError,
 )
 
@@ -116,6 +117,20 @@ async def approval_validation_handler(request: Request, exc: ApprovalValidationE
     return problem.to_response()
 
 
+async def archival_conflict_handler(request: Request, exc: MissionArchivalConflictError) -> JSONResponse:
+    problem = ProblemDetail(
+        type="urn:caseworker:error:archival-conflict",
+        title="Mission Archival Conflict",
+        status=409,
+        detail=str(exc),
+        instance=_get_request_instance(request),
+        extensions={
+            "mission_id": exc.mission_id,
+        },
+    )
+    return problem.to_response()
+
+
 async def domain_validation_handler(request: Request, exc: DomainValidationError) -> JSONResponse:
     problem = ProblemDetail(
         type="urn:caseworker:error:validation",
@@ -191,6 +206,7 @@ def register_error_handlers(app: FastAPI) -> None:
     app.add_exception_handler(InvalidStateTransitionError, invalid_transition_handler)
     app.add_exception_handler(OptimisticLockError, optimistic_lock_handler)
     app.add_exception_handler(ApprovalValidationError, approval_validation_handler)
+    app.add_exception_handler(MissionArchivalConflictError, archival_conflict_handler)
     app.add_exception_handler(DomainValidationError, domain_validation_handler)
     app.add_exception_handler(RequestValidationError, request_validation_handler)
     app.add_exception_handler(HTTPException, http_exception_handler)

@@ -86,8 +86,8 @@ class SQLiteMissionRepository(MissionRepository):
                     INSERT INTO missions (
                         mission_id, user_id, title, goal, kind, status,
                         success_criteria, constraints, created_at, updated_at,
-                        deadline, version
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        deadline, version, archived, archived_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         mission.mission_id,
@@ -102,6 +102,8 @@ class SQLiteMissionRepository(MissionRepository):
                         to_iso_utc(mission.updated_at),
                         to_iso_utc(mission.deadline),
                         mission.version,
+                        1 if mission.archived else 0,
+                        to_iso_utc(mission.archived_at),
                     ),
                 )
             except sqlite3.IntegrityError as e:
@@ -113,7 +115,7 @@ class SQLiteMissionRepository(MissionRepository):
                 UPDATE missions SET
                     user_id = ?, title = ?, goal = ?, kind = ?, status = ?,
                     success_criteria = ?, constraints = ?, updated_at = ?,
-                    deadline = ?, version = ?
+                    deadline = ?, version = ?, archived = ?, archived_at = ?
                 WHERE mission_id = ? AND version = ?
                 """,
                 (
@@ -127,6 +129,8 @@ class SQLiteMissionRepository(MissionRepository):
                     to_iso_utc(mission.updated_at),
                     to_iso_utc(mission.deadline),
                     mission.version,
+                    1 if mission.archived else 0,
+                    to_iso_utc(mission.archived_at),
                     mission.mission_id,
                     expected_version,
                 ),
@@ -140,7 +144,7 @@ class SQLiteMissionRepository(MissionRepository):
             """
             SELECT mission_id, user_id, title, goal, kind, status,
                    success_criteria, constraints, created_at, updated_at,
-                   deadline, version
+                   deadline, version, archived, archived_at
             FROM missions WHERE mission_id = ?
             """,
             (mission_id,),
@@ -161,32 +165,32 @@ class SQLiteMissionRepository(MissionRepository):
             updated_at=from_iso_utc(row[9]),
             deadline=from_iso_utc(row[10]),
             version=row[11],
+            archived=bool(row[12]),
+            archived_at=from_iso_utc(row[13]) if row[13] else None,
         )
 
-    def list_by_user(self, user_id: str, status: MissionStatus | None = None) -> list[Mission]:
+    def list_by_user(
+        self,
+        user_id: str,
+        status: MissionStatus | None = None,
+        archived: bool | None = False,
+    ) -> list[Mission]:
         cur = self.conn.cursor()
+        query = """
+            SELECT mission_id, user_id, title, goal, kind, status,
+                   success_criteria, constraints, created_at, updated_at,
+                   deadline, version, archived, archived_at
+            FROM missions WHERE user_id = ?
+        """
+        params: list[Any] = [user_id]
         if status is not None:
-            cur.execute(
-                """
-                SELECT mission_id, user_id, title, goal, kind, status,
-                       success_criteria, constraints, created_at, updated_at,
-                       deadline, version
-                FROM missions WHERE user_id = ? AND status = ?
-                ORDER BY created_at DESC
-                """,
-                (user_id, status.value),
-            )
-        else:
-            cur.execute(
-                """
-                SELECT mission_id, user_id, title, goal, kind, status,
-                       success_criteria, constraints, created_at, updated_at,
-                       deadline, version
-                FROM missions WHERE user_id = ?
-                ORDER BY created_at DESC
-                """,
-                (user_id,),
-            )
+            query += " AND status = ?"
+            params.append(status.value)
+        if archived is not None:
+            query += " AND archived = ?"
+            params.append(1 if archived else 0)
+        query += " ORDER BY created_at DESC"
+        cur.execute(query, tuple(params))
         rows = cur.fetchall()
         return [
             Mission(
@@ -202,6 +206,8 @@ class SQLiteMissionRepository(MissionRepository):
                 updated_at=from_iso_utc(r[9]),
                 deadline=from_iso_utc(r[10]),
                 version=r[11],
+                archived=bool(r[12]),
+                archived_at=from_iso_utc(r[13]) if r[13] else None,
             )
             for r in rows
         ]

@@ -12,6 +12,7 @@ import { OpportunitiesView } from '../../src/views/OpportunitiesView';
 import { NeedsYouView } from '../../src/views/NeedsYouView';
 import { NumberRoll } from '../../src/components/ui/NumberRoll';
 import { AmbientCanvas } from '../../src/components/ui/AmbientCanvas';
+import { TextureBadge } from '../../src/components/ui/TextureBadge';
 import { useTheme } from '../../src/hooks/useTheme';
 
 import * as caseworkerHooks from '../../src/hooks/useCaseworker';
@@ -55,6 +56,8 @@ describe('Design V2.0.1 Craft & Accessibility Polish', () => {
       expect(humanizeEvent('approval.requested')).toBe('Your approval was requested');
       expect(humanizeEvent('approval.approved')).toBe('You approved an action');
       expect(humanizeEvent('context.fact_superseded')).toBe('Profile information updated');
+      expect(humanizeEvent('mission.archived')).toBe('Mission archived');
+      expect(humanizeEvent('mission.restored')).toBe('Mission restored from archive');
     });
 
     it('gracefully handles unknown dot and underscore event formats', () => {
@@ -353,6 +356,23 @@ describe('Design V2.0.1 Craft & Accessibility Polish', () => {
 
       render(<AmbientCanvas />);
       expect(rafSpy).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('8. TextureBadge Dual-State Archival Representation', () => {
+    it('renders dual states with ARCHIVED prefix for archived statuses', () => {
+      const { rerender } = render(<TextureBadge status="paused" archived={true} />);
+      expect(screen.getByText(/archived · paused/i)).toBeInTheDocument();
+
+      rerender(<TextureBadge status="cancelled" archived={true} />);
+      expect(screen.getByText(/archived · cancelled/i)).toBeInTheDocument();
+
+      rerender(<TextureBadge status="completed" archived={true} />);
+      expect(screen.getByText(/archived · completed/i)).toBeInTheDocument();
+
+      rerender(<TextureBadge status="active" archived={false} />);
+      expect(screen.getByText('active')).toBeInTheDocument();
+      expect(screen.queryByText(/archived/i)).not.toBeInTheDocument();
     });
   });
 });

@@ -37,11 +37,26 @@ export function useDevUserSync() {
 // Missions
 // ----------------------------------------------------------------------------
 
-export function useMissions() {
+export interface UseMissionsParams {
+  statusFilter?: string | null;
+  archived?: boolean;
+}
+
+export function useMissions(params?: UseMissionsParams) {
+  const statusFilter = params?.statusFilter;
+  const archived = params?.archived ?? false;
+
   return useQuery({
-    queryKey: ['missions'],
+    queryKey: ['missions', { statusFilter: statusFilter || null, archived }],
     queryFn: async () => {
-      const res = await apiRequest<PaginatedResponse<Mission>>('/missions?limit=100');
+      const search = new URLSearchParams({ limit: '100' });
+      if (statusFilter) {
+        search.set('status_filter', statusFilter);
+      }
+      if (archived !== undefined) {
+        search.set('archived', String(archived));
+      }
+      const res = await apiRequest<PaginatedResponse<Mission>>(`/missions?${search.toString()}`);
       return res.data.items;
     },
   });
@@ -85,6 +100,70 @@ export function useTransitionMission() {
         {
           method: 'POST',
           body: JSON.stringify({ new_status: newStatus }),
+        },
+        etag
+      );
+      return res.data;
+    },
+    onSuccess: (_, vars) => {
+      queryClient.invalidateQueries({ queryKey: ['missions'] });
+      queryClient.invalidateQueries({ queryKey: ['missions', vars.missionId] });
+      queryClient.invalidateQueries({ queryKey: ['events'] });
+    },
+  });
+}
+
+export function useCancelMission() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ missionId, etag, reason }: { missionId: string; etag: string; reason?: string }) => {
+      const search = reason ? `?reason=${encodeURIComponent(reason)}` : '';
+      const res = await apiRequest<Mission>(
+        `/missions/${missionId}/cancel${search}`,
+        {
+          method: 'POST',
+        },
+        etag
+      );
+      return res.data;
+    },
+    onSuccess: (_, vars) => {
+      queryClient.invalidateQueries({ queryKey: ['missions'] });
+      queryClient.invalidateQueries({ queryKey: ['missions', vars.missionId] });
+      queryClient.invalidateQueries({ queryKey: ['events'] });
+    },
+  });
+}
+
+export function useArchiveMission() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ missionId, etag }: { missionId: string; etag: string }) => {
+      const res = await apiRequest<Mission>(
+        `/missions/${missionId}/archive`,
+        {
+          method: 'POST',
+        },
+        etag
+      );
+      return res.data;
+    },
+    onSuccess: (_, vars) => {
+      queryClient.invalidateQueries({ queryKey: ['missions'] });
+      queryClient.invalidateQueries({ queryKey: ['missions', vars.missionId] });
+      queryClient.invalidateQueries({ queryKey: ['events'] });
+    },
+  });
+}
+
+export function useRestoreMission() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ missionId, etag }: { missionId: string; etag: string }) => {
+      const res = await apiRequest<Mission>(
+        `/missions/${missionId}/restore`,
+        {
+          method: 'POST',
         },
         etag
       );

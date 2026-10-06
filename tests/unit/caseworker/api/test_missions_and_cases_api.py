@@ -153,6 +153,158 @@ class TestMissionsAndCasesAPI(unittest.TestCase):
         self.assertEqual(resolved_data["status"], "resolved")
         self.assertEqual(resolved_data["outcome"], "Application successfully submitted and confirmed by recruiter")
 
+    def test_mission_cancel_endpoint_and_lifecycle(self) -> None:
+        """Cancelling a mission marks it cancelled, stops active work, preserves subordinate cases."""
+        # 1. Create and activate mission
+        m_res = self.client.post(
+            "/api/v1/missions",
+            headers=self.user_a_headers,
+            json={"title": "Relocation Mission", "kind": "general_goal"},
+        )
+        self.assertEqual(m_res.status_code, 201)
+        mission_id = m_res.json()["mission_id"]
+        etag_v1 = m_res.headers.get("etag")
+
+        act_res = self.client.post(
+            f"/api/v1/missions/{mission_id}/transition",
+            headers={**self.user_a_headers, "If-Match": etag_v1},
+            json={"new_status": "active"},
+        )
+        etag_v2 = act_res.headers.get("etag")
+
+        # 2. Create subordinate case
+        c_res = self.client.post(
+            f"/api/v1/missions/{mission_id}/cases",
+            headers=self.user_a_headers,
+            json={"title": "Visa Paperwork", "goal": "Obtain visa", "case_type": "general"},
+        )
+        self.assertEqual(c_res.status_code, 201)
+        case_id = c_res.json()["case_id"]
+
+        # 3. Cancel mission via convenience endpoint
+        cancel_res = self.client.post(
+            f"/api/v1/missions/{mission_id}/cancel",
+            headers={**self.user_a_headers, "If-Match": etag_v2},
+        )
+        self.assertEqual(cancel_res.status_code, 200)
+        self.assertEqual(cancel_res.json()["status"], "cancelled")
+        etag_v3 = cancel_res.headers.get("etag")
+
+        # 4. Mission is terminal - further transition returns 409
+        invalid_res = self.client.post(
+            f"/api/v1/missions/{mission_id}/transition",
+            headers={**self.user_a_headers, "If-Match": etag_v3},
+            json={"new_status": "active"},
+        )
+        self.assertEqual(invalid_res.status_code, 409)
+
+        # 5. Subordinate case is intact and queryable
+        case_get = self.client.get(f"/api/v1/cases/{case_id}", headers=self.user_a_headers)
+        self.assertEqual(case_get.status_code, 200)
+        self.assertEqual(case_get.json()["title"], "Visa Paperwork")
+
+    def test_mission_archival_restore_and_conflict_handling(self) -> None:
+        """Active missions cannot be archived; paused/terminal can; archived missions cannot activate; filter queries work."""
+        # 1. Create and activate mission
+        m_res = self.client.post(
+            "/api/v1/missions",
+            headers=self.user_a_headers,
+            json={"title": "Job Pursuit", "kind": "opportunity_pursuit"},
+        )
+        mission_id = m_res.json()["mission_id"]
+        etag_v1 = m_res.headers.get("etag")
+
+        act_res = self.client.post(
+            f"/api/v1/missions/{mission_id}/transition",
+            headers={**self.user_a_headers, "If-Match": etag_v1},
+            json={"new_status": "active"},
+        )
+        etag_v2 = act_res.headers.get("etag")
+
+        # 2. Cannot archive an ACTIVE mission -> 409 Conflict
+        bad_archive = self.client.post(
+            f"/api/v1/missions/{mission_id}/archive",
+            headers={**self.user_a_headers, "If-Match": etag_v2},
+        )
+        self.assertEqual(bad_archive.status_code, 409)
+        self.assertEqual(bad_archive.headers.get("content-type"), "application/problem+json")
+        self.assertIn("Active missions must be paused or cancelled before archiving", bad_archive.json()["detail"])
+
+        # 3. Pause mission first
+        pause_res = self.client.post(
+            f"/api/v1/missions/{mission_id}/pause",
+            headers={**self.user_a_headers, "If-Match": etag_v2},
+        )
+        self.assertEqual(pause_res.status_code, 200)
+        etag_v3 = pause_res.headers.get("etag")
+
+        # 4. Archive paused mission -> 200 OK
+        arch_res = self.client.post(
+            f"/api/v1/missions/{mission_id}/archive",
+            headers={**self.user_a_headers, "If-Match": etag_v3},
+        )
+        self.assertEqual(arch_res.status_code, 200)
+        arch_data = arch_res.json()
+        self.assertTrue(arch_data["archived"])
+        self.assertIsNotNone(arch_data["archived_at"])
+        self.assertEqual(arch_data["status"], "paused")
+        etag_v4 = arch_res.headers.get("etag")
+
+        # 5. Archive idempotence: calling again is a no-op returning 200 with same etag/version
+        arch_again = self.client.post(
+            f"/api/v1/missions/{mission_id}/archive",
+            headers={**self.user_a_headers, "If-Match": etag_v4},
+        )
+        self.assertEqual(arch_again.status_code, 200)
+        self.assertEqual(arch_again.headers.get("etag"), etag_v4)
+
+        # 6. Bidirectional invariant: Cannot activate or resume an archived mission -> 409 Conflict
+        resume_res = self.client.post(
+            f"/api/v1/missions/{mission_id}/resume",
+            headers={**self.user_a_headers, "If-Match": etag_v4},
+        )
+        self.assertEqual(resume_res.status_code, 409)
+        self.assertIn("Cannot activate or resume an archived mission", resume_res.json()["detail"])
+
+        # 7. Default list missions filters out archived missions
+        list_active = self.client.get("/api/v1/missions", headers=self.user_a_headers)
+        self.assertEqual(list_active.status_code, 200)
+        ids = [item["mission_id"] for item in list_active.json()["items"]]
+        self.assertNotIn(mission_id, ids)
+
+        # 8. Listing with archived=true returns the archived mission
+        list_archived = self.client.get("/api/v1/missions?archived=true", headers=self.user_a_headers)
+        self.assertEqual(list_archived.status_code, 200)
+        arch_ids = [item["mission_id"] for item in list_archived.json()["items"]]
+        self.assertIn(mission_id, arch_ids)
+
+        # 9. Restore mission -> 200 OK
+        restore_res = self.client.post(
+            f"/api/v1/missions/{mission_id}/restore",
+            headers={**self.user_a_headers, "If-Match": etag_v4},
+        )
+        self.assertEqual(restore_res.status_code, 200)
+        restored_data = restore_res.json()
+        self.assertFalse(restored_data["archived"])
+        self.assertIsNone(restored_data["archived_at"])
+        etag_v5 = restore_res.headers.get("etag")
+
+        # 10. Restore idempotence
+        restore_again = self.client.post(
+            f"/api/v1/missions/{mission_id}/restore",
+            headers={**self.user_a_headers, "If-Match": etag_v5},
+        )
+        self.assertEqual(restore_again.status_code, 200)
+        self.assertEqual(restore_again.headers.get("etag"), etag_v5)
+
+        # 11. Now resuming succeeds
+        resume_ok = self.client.post(
+            f"/api/v1/missions/{mission_id}/resume",
+            headers={**self.user_a_headers, "If-Match": etag_v5},
+        )
+        self.assertEqual(resume_ok.status_code, 200)
+        self.assertEqual(resume_ok.json()["status"], "active")
+
 
 if __name__ == "__main__":
     unittest.main()

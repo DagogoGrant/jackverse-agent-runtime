@@ -30,8 +30,13 @@ class MissionRepository(Protocol):
         """Retrieve a mission by its unique ID."""
         ...
 
-    def list_by_user(self, user_id: str, status: MissionStatus | None = None) -> list[Mission]:
-        """List missions for a given user, optionally filtered by status."""
+    def list_by_user(
+        self,
+        user_id: str,
+        status: MissionStatus | None = None,
+        archived: bool | None = False,
+    ) -> list[Mission]:
+        """List missions for a given user, optionally filtered by status and archival state."""
         ...
 
 

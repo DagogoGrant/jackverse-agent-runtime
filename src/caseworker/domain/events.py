@@ -100,6 +100,37 @@ def make_mission_status_changed_event(
     )
 
 
+def make_mission_archived_event(
+    mission_id: str,
+    user_id: str,
+    aggregate_version: int,
+    archived_at: str,
+) -> DomainEvent:
+    return DomainEvent(
+        event_type="mission.archived",
+        aggregate_type="mission",
+        aggregate_id=mission_id,
+        aggregate_version=aggregate_version,
+        user_id=user_id,
+        payload={"archived_at": archived_at},
+    )
+
+
+def make_mission_restored_event(
+    mission_id: str,
+    user_id: str,
+    aggregate_version: int,
+) -> DomainEvent:
+    return DomainEvent(
+        event_type="mission.restored",
+        aggregate_type="mission",
+        aggregate_id=mission_id,
+        aggregate_version=aggregate_version,
+        user_id=user_id,
+        payload={},
+    )
+
+
 def make_case_created_event(
     case_id: str,
     user_id: str,

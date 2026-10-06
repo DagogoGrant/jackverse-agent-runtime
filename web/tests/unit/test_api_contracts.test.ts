@@ -115,4 +115,30 @@ describe("Authoritative OpenAPI Contract Invariants", () => {
     const respSchema = route.post.responses["200"].content["application/json"].schema;
     expect(respSchema.$ref).toContain("FactResponse");
   });
+
+  it("MissionStatus enum strictly omits archived, maintaining independent archival state", () => {
+    expect(schemas.MissionStatus).toBeDefined();
+    expect(schemas.MissionStatus.enum).toEqual([
+      "draft",
+      "active",
+      "paused",
+      "completed",
+      "cancelled",
+      "failed",
+    ]);
+    expect(schemas.MissionStatus.enum).not.toContain("archived");
+  });
+
+  it("MissionResponse includes archived and archived_at properties", () => {
+    const missionProps = schemas.MissionResponse.properties;
+    expect(missionProps.archived).toBeDefined();
+    expect(missionProps.archived.type).toBe("boolean");
+    expect(missionProps.archived_at).toBeDefined();
+  });
+
+  it("OpenAPI defines cancel, archive, and restore endpoints on missions", () => {
+    expect(paths["/api/v1/missions/{mission_id}/cancel"]).toBeDefined();
+    expect(paths["/api/v1/missions/{mission_id}/archive"]).toBeDefined();
+    expect(paths["/api/v1/missions/{mission_id}/restore"]).toBeDefined();
+  });
 });
