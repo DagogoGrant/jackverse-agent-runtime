@@ -228,6 +228,7 @@ class TestMissionsAndCasesAPI(unittest.TestCase):
         )
         self.assertEqual(bad_archive.status_code, 409)
         self.assertEqual(bad_archive.headers.get("content-type"), "application/problem+json")
+        self.assertEqual(bad_archive.json()["type"], "urn:caseworker:error:archival-conflict")
         self.assertIn("Active missions must be paused or cancelled before archiving", bad_archive.json()["detail"])
 
         # 3. Pause mission first
@@ -264,6 +265,7 @@ class TestMissionsAndCasesAPI(unittest.TestCase):
             headers={**self.user_a_headers, "If-Match": etag_v4},
         )
         self.assertEqual(resume_res.status_code, 409)
+        self.assertEqual(resume_res.json()["type"], "urn:caseworker:error:archival-conflict")
         self.assertIn("Cannot activate or resume an archived mission", resume_res.json()["detail"])
 
         # 7. Default list missions filters out archived missions

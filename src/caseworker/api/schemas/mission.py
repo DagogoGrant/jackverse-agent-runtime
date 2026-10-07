@@ -25,12 +25,6 @@ class TransitionMissionRequest(BaseModel):
     reason: str | None = Field(None, max_length=1000, description="Reason for the status transition.")
 
 
-class ArchiveMissionRequest(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    reason: str | None = Field(None, max_length=1000, description="Reason for archiving.")
-
-
 class MissionResponse(BaseModel):
     mission_id: str
     user_id: str

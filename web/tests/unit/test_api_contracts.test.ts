@@ -141,4 +141,20 @@ describe("Authoritative OpenAPI Contract Invariants", () => {
     expect(paths["/api/v1/missions/{mission_id}/archive"]).toBeDefined();
     expect(paths["/api/v1/missions/{mission_id}/restore"]).toBeDefined();
   });
+
+  it("authoritative CaseType enum values match specification and omit stale values", () => {
+    expect(schemas.CaseType).toBeDefined();
+    expect(schemas.CaseType.enum).toEqual([
+      "job_application",
+      "scholarship_application",
+      "grant_pursuit",
+      "housing_search",
+      "package_investigation",
+      "refund_request",
+      "service_complaint",
+      "general",
+    ]);
+    expect(schemas.CaseType.enum).not.toContain("grant_submission");
+    expect(schemas.CaseType.enum).not.toContain("dispute");
+  });
 });

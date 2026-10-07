@@ -579,7 +579,7 @@ export interface paths {
         put?: never;
         /**
          * Archive Mission
-         * @description Archive a non-active mission. Idempotent. Requires valid ETag if provided.
+         * @description Archive a non-active mission. Idempotent. Requires a valid Mission ETag.
          */
         post: operations["archive_mission_api_v1_missions__mission_id__archive_post"];
         delete?: never;
@@ -663,7 +663,7 @@ export interface paths {
         put?: never;
         /**
          * Restore Mission
-         * @description Restore an archived mission. Idempotent. Requires valid ETag if provided.
+         * @description Restore an archived mission. Idempotent. Requires a valid Mission ETag.
          */
         post: operations["restore_mission_api_v1_missions__mission_id__restore_post"];
         delete?: never;

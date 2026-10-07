@@ -1,8 +1,10 @@
 import React from 'react';
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { render, screen, fireEvent, renderHook, act } from '@testing-library/react';
-import { MemoryRouter } from 'react-router-dom';
+import { render, screen, fireEvent, renderHook, act, waitFor, within } from '@testing-library/react';
+import { MemoryRouter, Routes, Route } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import fs from 'fs';
+import path from 'path';
 
 import { humanizeEvent, formatEventTime } from '../../src/lib/eventPresentation';
 import { ActivityView } from '../../src/views/ActivityView';
@@ -10,6 +12,7 @@ import { NavRail } from '../../src/components/layout/NavRail';
 import { HomeView } from '../../src/views/HomeView';
 import { OpportunitiesView } from '../../src/views/OpportunitiesView';
 import { NeedsYouView } from '../../src/views/NeedsYouView';
+import { MissionDetailView } from '../../src/views/MissionDetailView';
 import { NumberRoll } from '../../src/components/ui/NumberRoll';
 import { AmbientCanvas } from '../../src/components/ui/AmbientCanvas';
 import { TextureBadge } from '../../src/components/ui/TextureBadge';
@@ -375,4 +378,189 @@ describe('Design V2.0.1 Craft & Accessibility Polish', () => {
       expect(screen.queryByText(/archived/i)).not.toBeInTheDocument();
     });
   });
+
+  describe('9. Authoritative CaseType Dropdown Invariants', () => {
+    it('renders all 8 authoritative OpenAPI CaseTypes and omits stale grant_submission/dispute', () => {
+      vi.spyOn(caseworkerHooks, 'useMission').mockReturnValue({
+        data: {
+          mission: {
+            mission_id: 'm-alpha-001',
+            user_id: 'alice',
+            title: 'Strategic Campaign',
+            goal: 'Fulfill campaign objectives',
+            kind: 'general_goal',
+            status: 'active',
+            success_criteria: [],
+            constraints: [],
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+            archived: false,
+            archived_at: null,
+            version: 1,
+          },
+          etag: '"w/etag-001"',
+        },
+        isLoading: false,
+        error: null,
+        refetch: vi.fn(),
+      } as any);
+
+      vi.spyOn(caseworkerHooks, 'useMissionCases').mockReturnValue({
+        data: [],
+        isLoading: false,
+      } as any);
+
+      vi.spyOn(caseworkerHooks, 'useEvents').mockReturnValue({
+        data: { items: [] },
+        isLoading: false,
+      } as any);
+
+      vi.spyOn(caseworkerHooks, 'useCreateCase').mockReturnValue({
+        mutateAsync: vi.fn(),
+        isPending: false,
+      } as any);
+
+      render(
+        <QueryClientProvider client={queryClient}>
+          <MemoryRouter initialEntries={['/missions/m-alpha-001']}>
+            <Routes>
+              <Route path="/missions/:missionId" element={<MissionDetailView />} />
+            </Routes>
+          </MemoryRouter>
+        </QueryClientProvider>
+      );
+
+      // Open new case form
+      const newCaseBtn = screen.getByRole('button', { name: /\+ new case/i });
+      fireEvent.click(newCaseBtn);
+
+      const select = screen.getByRole('combobox');
+      expect(select).toBeInTheDocument();
+
+      const options = Array.from(select.querySelectorAll('option')).map((opt) => opt.value);
+      const expectedValues = [
+        'job_application',
+        'scholarship_application',
+        'grant_pursuit',
+        'housing_search',
+        'package_investigation',
+        'refund_request',
+        'service_complaint',
+        'general',
+      ];
+
+      expect(options).toEqual(expectedValues);
+      expect(options).not.toContain('grant_submission');
+      expect(options).not.toContain('dispute');
+      expect(screen.queryByRole('option', { name: /grant submission/i })).not.toBeInTheDocument();
+      expect(screen.queryByRole('option', { name: /dispute resolution/i })).not.toBeInTheDocument();
+    });
+  });
+
+  describe('10. Active Mission Archival Warning Actions', () => {
+    it('exposes Pause mission, Cancel mission, and Dismiss options on active archive attempt', async () => {
+      const mockTransitionMutate = vi.fn().mockResolvedValue({});
+      const mockCancelMutate = vi.fn().mockResolvedValue({});
+
+      vi.spyOn(caseworkerHooks, 'useMission').mockReturnValue({
+        data: {
+          mission: {
+            mission_id: 'm-active-123',
+            user_id: 'alice',
+            title: 'Live Operational Mission',
+            goal: 'Goal',
+            kind: 'general_goal',
+            status: 'active',
+            success_criteria: [],
+            constraints: [],
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+            archived: false,
+            archived_at: null,
+            version: 2,
+          },
+          etag: '"w/etag-active-2"',
+        },
+        isLoading: false,
+        error: null,
+        refetch: vi.fn(),
+      } as any);
+
+      vi.spyOn(caseworkerHooks, 'useMissionCases').mockReturnValue({
+        data: [],
+        isLoading: false,
+      } as any);
+
+      vi.spyOn(caseworkerHooks, 'useEvents').mockReturnValue({
+        data: { items: [] },
+        isLoading: false,
+      } as any);
+
+      vi.spyOn(caseworkerHooks, 'useTransitionMission').mockReturnValue({
+        mutateAsync: mockTransitionMutate,
+        isPending: false,
+      } as any);
+
+      vi.spyOn(caseworkerHooks, 'useCancelMission').mockReturnValue({
+        mutateAsync: mockCancelMutate,
+        isPending: false,
+      } as any);
+
+      render(
+        <QueryClientProvider client={queryClient}>
+          <MemoryRouter initialEntries={['/missions/m-active-123']}>
+            <Routes>
+              <Route path="/missions/:missionId" element={<MissionDetailView />} />
+            </Routes>
+          </MemoryRouter>
+        </QueryClientProvider>
+      );
+
+      // Click Archive button for active mission
+      const archiveBtn = screen.getByRole('button', { name: /^archive$/i });
+      fireEvent.click(archiveBtn);
+
+      // Warning modal must be displayed
+      expect(screen.getByText('Active mission cannot be archived')).toBeInTheDocument();
+      expect(
+        screen.getByText('Active missions must be paused or cancelled before archiving.')
+      ).toBeInTheDocument();
+
+      const modal = screen.getByText('Active mission cannot be archived').closest('div.fixed')!;
+      expect(modal).toBeInTheDocument();
+
+      // Must expose Pause mission, Cancel mission, and Dismiss inside the modal
+      const pauseBtn = within(modal).getByRole('button', { name: /^pause mission$/i });
+      const cancelBtn = within(modal).getByRole('button', { name: /^cancel mission$/i });
+      const dismissBtn = within(modal).getByRole('button', { name: /^dismiss$/i });
+
+      expect(pauseBtn).toBeInTheDocument();
+      expect(cancelBtn).toBeInTheDocument();
+      expect(dismissBtn).toBeInTheDocument();
+
+      // Test Cancel mission execution
+      fireEvent.click(cancelBtn);
+      expect(mockCancelMutate).toHaveBeenCalledWith({
+        missionId: 'm-active-123',
+        etag: '"w/etag-active-2"',
+        reason: 'Mission cancelled by user',
+      });
+    });
+  });
+
+  describe('11. Strict Monochrome Design V2 Compliance', () => {
+    it('verifies zero red CSS classes in MissionDetailView source code', () => {
+      const sourcePath = path.resolve(__dirname, '../../src/views/MissionDetailView.tsx');
+      const sourceCode = fs.readFileSync(sourcePath, 'utf-8');
+
+      expect(sourceCode).not.toContain('bg-red-700');
+      expect(sourceCode).not.toContain('hover:bg-red-800');
+      expect(sourceCode).not.toContain('text-red-600');
+      expect(sourceCode).not.toMatch(/\bred-\d{2,3}\b/);
+      expect(sourceCode).not.toMatch(/\btext-red\b/);
+      expect(sourceCode).not.toMatch(/\bbg-red\b/);
+      expect(sourceCode).not.toMatch(/\bborder-red\b/);
+    });
+  });
 });
+

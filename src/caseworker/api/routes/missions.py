@@ -14,7 +14,6 @@ from caseworker.api.etag import check_if_match, set_etag_header
 from caseworker.api.identity import Principal
 from caseworker.api.schemas.common import PaginatedResponse
 from caseworker.api.schemas.mission import (
-    ArchiveMissionRequest,
     CreateMissionRequest,
     MissionResponse,
     TransitionMissionRequest,
@@ -216,7 +215,7 @@ async def archive_mission(
     principal: Annotated[Principal, Depends(get_principal)],
     service: Annotated[MissionService, Depends(get_mission_service)],
 ) -> MissionResponse:
-    """Archive a non-active mission. Idempotent. Requires valid ETag if provided."""
+    """Archive a non-active mission. Idempotent. Requires a valid Mission ETag."""
     existing = service.get_mission_for_user(principal.user_id, mission_id)
     if existing is None:
         raise EntityNotFoundError("Mission", mission_id)
@@ -236,7 +235,7 @@ async def restore_mission(
     principal: Annotated[Principal, Depends(get_principal)],
     service: Annotated[MissionService, Depends(get_mission_service)],
 ) -> MissionResponse:
-    """Restore an archived mission. Idempotent. Requires valid ETag if provided."""
+    """Restore an archived mission. Idempotent. Requires a valid Mission ETag."""
     existing = service.get_mission_for_user(principal.user_id, mission_id)
     if existing is None:
         raise EntityNotFoundError("Mission", mission_id)

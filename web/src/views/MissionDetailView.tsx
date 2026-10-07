@@ -317,7 +317,7 @@ export const MissionDetailView: React.FC = () => {
                   type="button"
                   onClick={() => setShowCancelConfirm(true)}
                   disabled={cancelMission.isPending}
-                  className="font-interface text-xs text-jv-muted hover:text-red-600 transition-colors"
+                  className="font-interface text-xs text-jv-muted hover:text-jv-ink hover:underline transition-colors"
                 >
                   Cancel mission
                 </button>
@@ -383,10 +383,13 @@ export const MissionDetailView: React.FC = () => {
                   className="w-full bg-jv-bg border border-jv-rule px-3 py-2 text-sm text-jv-ink outline-none font-interface focus:border-jv-ink"
                 >
                   <option value="job_application">Job Application</option>
+                  <option value="scholarship_application">Scholarship Application</option>
+                  <option value="grant_pursuit">Grant Pursuit</option>
                   <option value="housing_search">Housing Search</option>
-                  <option value="grant_submission">Grant Submission</option>
-                  <option value="dispute">Dispute Resolution</option>
-                  <option value="general">General Objective</option>
+                  <option value="package_investigation">Package Investigation</option>
+                  <option value="refund_request">Refund Request</option>
+                  <option value="service_complaint">Service Complaint</option>
+                  <option value="general">General</option>
                 </select>
               </div>
 
@@ -513,7 +516,7 @@ export const MissionDetailView: React.FC = () => {
                 size="sm"
                 loading={cancelMission.isPending}
                 onClick={handleCancel}
-                className="bg-red-700 hover:bg-red-800 text-white border-red-700"
+                className="border-2 border-jv-ink bg-jv-ink text-jv-bg hover:bg-transparent hover:text-jv-ink uppercase tracking-wider font-semibold"
               >
                 Cancel mission
               </TactileButton>
@@ -559,7 +562,7 @@ export const MissionDetailView: React.FC = () => {
             <p className="text-sm text-jv-ink-soft leading-relaxed">
               Active missions must be paused or cancelled before archiving.
             </p>
-            <div className="flex justify-end gap-3 pt-2">
+            <div className="flex flex-wrap justify-end gap-3 pt-2">
               <TactileButton
                 variant="outline"
                 size="sm"
@@ -568,8 +571,21 @@ export const MissionDetailView: React.FC = () => {
                 Dismiss
               </TactileButton>
               <TactileButton
+                variant="outline"
+                size="sm"
+                loading={cancelMission.isPending}
+                onClick={async () => {
+                  setArchiveActiveNotice(false);
+                  await handleCancel();
+                }}
+                className="border-jv-ink text-jv-ink hover:bg-jv-surface"
+              >
+                Cancel mission
+              </TactileButton>
+              <TactileButton
                 variant="primary"
                 size="sm"
+                loading={transitionMission.isPending}
                 onClick={async () => {
                   setArchiveActiveNotice(false);
                   await handleTransition('paused');
