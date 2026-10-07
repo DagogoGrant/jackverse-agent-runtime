@@ -573,10 +573,9 @@ export const MissionDetailView: React.FC = () => {
               <TactileButton
                 variant="outline"
                 size="sm"
-                loading={cancelMission.isPending}
-                onClick={async () => {
+                onClick={() => {
                   setArchiveActiveNotice(false);
-                  await handleCancel();
+                  setShowCancelConfirm(true);
                 }}
                 className="border-jv-ink text-jv-ink hover:bg-jv-surface"
               >

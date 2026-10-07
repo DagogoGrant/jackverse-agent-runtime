@@ -538,8 +538,19 @@ describe('Design V2.0.1 Craft & Accessibility Polish', () => {
       expect(cancelBtn).toBeInTheDocument();
       expect(dismissBtn).toBeInTheDocument();
 
-      // Test Cancel mission execution
+      // Test Cancel mission routes to dedicated 'Cancel this mission?' confirmation modal
       fireEvent.click(cancelBtn);
+      expect(screen.queryByText('Active mission cannot be archived')).not.toBeInTheDocument();
+
+      const cancelConfirmModal = screen.getByText('Cancel this mission?').closest('div.fixed')!;
+      expect(cancelConfirmModal).toBeInTheDocument();
+      expect(
+        within(cancelConfirmModal).getByRole('button', { name: /^keep mission$/i })
+      ).toBeInTheDocument();
+
+      const confirmCancelBtn = within(cancelConfirmModal).getByRole('button', { name: /^cancel mission$/i });
+      fireEvent.click(confirmCancelBtn);
+
       expect(mockCancelMutate).toHaveBeenCalledWith({
         missionId: 'm-active-123',
         etag: '"w/etag-active-2"',
