@@ -55,7 +55,7 @@ test.describe('JackVerse Caseworker Design V2 - Four-Surface Prototype Gate (16 
       data: {
         title: 'Research Fellowship Grant Proposal',
         goal: 'Secure exploratory research funding for formal verification of LLM sandboxes',
-        case_type: 'grant_submission',
+        case_type: 'grant_pursuit',
       },
     });
 
@@ -161,23 +161,23 @@ test.describe('JackVerse Caseworker Design V2 - Four-Surface Prototype Gate (16 
 
     // 1440x900 Paper
     await setThemeAndNavigate(page, url, 'paper', 1440, 900);
-    await expect(page.locator('text=Active Cases Dossier')).toBeVisible();
-    await expect(page.locator('text=Principal Infrastructure Engineer Dossier')).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Cases' })).toBeVisible();
+    await expect(page.locator('a', { hasText: 'Principal Infrastructure Engineer Dossier' })).toBeVisible();
     await page.screenshot({ path: path.join(outDir, 'mission_paper_1440.png'), fullPage: false });
 
     // 1440x900 Ink
     await setThemeAndNavigate(page, url, 'ink', 1440, 900);
-    await expect(page.locator('text=Active Cases Dossier')).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Cases' })).toBeVisible();
     await page.screenshot({ path: path.join(outDir, 'mission_ink_1440.png'), fullPage: false });
 
     // 375x812 Paper
     await setThemeAndNavigate(page, url, 'paper', 375, 812);
-    await expect(page.locator('text=Active Cases Dossier')).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Cases' })).toBeVisible();
     await page.screenshot({ path: path.join(outDir, 'mission_paper_375.png'), fullPage: false });
 
     // 375x812 Ink
     await setThemeAndNavigate(page, url, 'ink', 375, 812);
-    await expect(page.locator('text=Active Cases Dossier')).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Cases' })).toBeVisible();
     await page.screenshot({ path: path.join(outDir, 'mission_ink_375.png'), fullPage: false });
   });
 

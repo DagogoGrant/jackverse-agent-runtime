@@ -14,7 +14,17 @@ import {
 import { TextureBadge } from '../components/ui/TextureBadge';
 import { TactileButton } from '../components/ui/TactileButton';
 import { startViewTransition } from '../utils/transitions';
-import { humanizeEvent, formatEventTime } from '../lib/eventPresentation';
+import {
+  humanizeEvent,
+  formatEventTime,
+  getEventSubtitle,
+  formatEditorialDate,
+  formatMissionKind,
+} from '../lib/eventPresentation';
+
+function normalizeText(text?: string | null): string {
+  return (text || '').trim().replace(/\s+/g, ' ').toLowerCase();
+}
 
 export const MissionDetailView: React.FC = () => {
   const { missionId } = useParams<{ missionId: string }>();
@@ -72,6 +82,10 @@ export const MissionDetailView: React.FC = () => {
   }
 
   const { mission, etag } = missionData;
+  const isGoalDistinct = normalizeText(mission.title) !== normalizeText(mission.goal);
+  const sortedCases = [...(cases || [])].sort(
+    (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+  );
 
   const handleTransition = async (newStatus: string) => {
     if (!etag) return;
@@ -218,12 +232,24 @@ export const MissionDetailView: React.FC = () => {
           {mission.title}
         </h1>
 
-        <div className="flex flex-wrap items-center gap-4 sm:gap-6 font-machine text-xs text-jv-ink-soft pt-2">
-          <span>KIND: {mission.kind.toUpperCase()}</span>
-          <span className="text-jv-rule-strong">·</span>
-          <span>STARTED: {new Date(mission.created_at).toLocaleDateString()}</span>
-          <span className="text-jv-rule-strong">·</span>
-          <span>VERSION: v{mission.version}</span>
+        {isGoalDistinct && (
+          <p className="font-interface text-base sm:text-lg text-jv-ink-soft leading-relaxed max-w-2xl pt-1">
+            {mission.goal}
+          </p>
+        )}
+
+        <div className="flex flex-wrap items-center gap-3 sm:gap-4 text-xs pt-2">
+          <span className="font-interface font-medium text-jv-ink">
+            {formatMissionKind(mission.kind)}
+          </span>
+          <span className="text-jv-rule-strong font-machine">·</span>
+          <span className="font-machine text-jv-muted">
+            {formatEditorialDate(mission.created_at)}
+          </span>
+          <span className="text-jv-rule-strong font-machine">·</span>
+          <span className="font-machine text-jv-muted">
+            v{mission.version}
+          </span>
         </div>
 
         {/* Operational Transitions */}
@@ -332,9 +358,14 @@ export const MissionDetailView: React.FC = () => {
         {/* Left Column: Active Cases (8 cols) */}
         <div className="lg:col-span-8 space-y-8">
           <div className="flex items-baseline justify-between border-b border-jv-rule pb-2">
-            <h2 className="font-interface font-medium text-xl text-jv-ink tracking-tight">
-              Active Cases Dossier
-            </h2>
+            <div className="flex items-baseline gap-3">
+              <h2 className="font-interface font-medium text-xl text-jv-ink tracking-tight">
+                Cases
+              </h2>
+              <span className="font-machine text-xs text-jv-muted">
+                {sortedCases.length} {sortedCases.length === 1 ? 'case' : 'cases'}
+              </span>
+            </div>
             <TactileButton
               variant="outline"
               size="sm"
@@ -417,7 +448,7 @@ export const MissionDetailView: React.FC = () => {
           {/* Cases List */}
           {casesLoading ? (
             <div className="py-8 font-interface text-sm text-jv-muted">Loading cases…</div>
-          ) : !cases || cases.length === 0 ? (
+          ) : !sortedCases || sortedCases.length === 0 ? (
             <div className="py-12 text-center space-y-2 border-b border-jv-rule">
               <p className="font-interface font-medium text-base text-jv-ink">No cases created yet.</p>
               <p className="text-xs text-jv-ink-soft">
@@ -426,48 +457,46 @@ export const MissionDetailView: React.FC = () => {
             </div>
           ) : (
             <div className="divide-y divide-jv-rule border-b border-jv-rule">
-              {cases.map((c) => (
-                <Link
-                  key={c.case_id}
-                  to={`/cases/${c.case_id}`}
-                  onClick={(e) => {
-                    e.preventDefault();
-                    startViewTransition(() => {
-                      navigate(`/cases/${c.case_id}`);
-                    });
-                  }}
-                  className="py-5 group flex items-baseline justify-between gap-4 px-3 -mx-3 hover:bg-jv-surface transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-jv-ink focus-visible:bg-jv-surface"
-                >
-                  <div className="space-y-1.5">
-                    <div className="flex items-center gap-3">
-                      <span className="font-machine text-xs text-jv-muted">
-                        {c.case_id.slice(0, 8)}
-                      </span>
-                      <span className="font-interface font-medium text-base text-jv-ink group-hover:translate-x-1 transition-transform duration-fast ease-editorial">
-                        {c.title}
-                      </span>
+              {sortedCases.map((c, index) => {
+                const folio = String(index + 1).padStart(2, '0');
+                return (
+                  <Link
+                    key={c.case_id}
+                    to={`/cases/${c.case_id}`}
+                    onClick={(e) => {
+                      e.preventDefault();
+                      startViewTransition(() => {
+                        navigate(`/cases/${c.case_id}`);
+                      });
+                    }}
+                    className="py-5 group flex items-baseline justify-between gap-4 px-3 -mx-3 hover:bg-jv-surface transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-jv-ink focus-visible:bg-jv-surface"
+                  >
+                    <div className="space-y-1.5">
+                      <div className="flex items-center gap-3">
+                        <span
+                          className="font-machine text-xs text-jv-muted"
+                          title={c.case_id}
+                        >
+                          {folio}
+                        </span>
+                        <span className="font-interface font-medium text-base text-jv-ink group-hover:translate-x-1 transition-transform duration-fast ease-editorial">
+                          {c.title}
+                        </span>
+                      </div>
+                      <div className="font-interface text-xs text-jv-muted pl-8 sm:pl-9">
+                        {c.case_type.replace(/_/g, ' ')} · Goal: {c.goal}
+                      </div>
                     </div>
-                    <div className="font-interface text-xs text-jv-muted pl-11">
-                      {c.case_type.replace(/_/g, ' ')} · Goal: {c.goal}
-                    </div>
-                  </div>
 
-                  <div className="flex items-center gap-4 shrink-0">
-                    <TextureBadge status={c.status} />
-                    <ArrowUpRight className="w-4 h-4 text-jv-muted group-hover:text-jv-ink transition-colors" />
-                  </div>
-                </Link>
-              ))}
+                    <div className="flex items-center gap-4 shrink-0">
+                      <TextureBadge status={c.status} />
+                      <ArrowUpRight className="w-4 h-4 text-jv-muted group-hover:text-jv-ink transition-colors" />
+                    </div>
+                  </Link>
+                );
+              })}
             </div>
           )}
-
-          {/* Mission Scope & Goal Description */}
-          <div className="border border-jv-rule p-6 space-y-3 bg-jv-surface">
-            <div className="font-interface text-xs font-semibold tracking-wider uppercase text-jv-muted">
-              Operational goal & scope
-            </div>
-            <p className="font-interface text-sm text-jv-ink-soft leading-relaxed">{mission.goal}</p>
-          </div>
         </div>
 
         {/* Right Column: Mission Chronicle (4 cols) */}
@@ -482,14 +511,24 @@ export const MissionDetailView: React.FC = () => {
             {missionEvents.length === 0 ? (
               <div className="text-jv-muted font-interface text-sm">No activity recorded yet.</div>
             ) : (
-              missionEvents.slice(0, 8).map((ev) => (
-                <div key={ev.event_id} className="pb-3 border-b border-jv-rule space-y-1">
-                  <div className="font-machine text-xs text-jv-muted">
-                    {formatEventTime(ev.occurred_at)}
+              missionEvents.slice(0, 8).map((ev) => {
+                const subtitle = getEventSubtitle(ev);
+                return (
+                  <div key={ev.event_id} className="pb-3 border-b border-jv-rule space-y-1">
+                    <div className="font-machine text-xs text-jv-muted">
+                      {formatEventTime(ev.occurred_at)}
+                    </div>
+                    <div className="font-interface text-sm text-jv-ink font-medium">
+                      {humanizeEvent(ev)}
+                    </div>
+                    {subtitle && (
+                      <div className="font-interface text-xs text-jv-ink-soft leading-relaxed break-words">
+                        {subtitle}
+                      </div>
+                    )}
                   </div>
-                  <div className="font-interface text-sm text-jv-ink font-medium">{humanizeEvent(ev)}</div>
-                </div>
-              ))
+                );
+              })
             )}
           </div>
         </div>

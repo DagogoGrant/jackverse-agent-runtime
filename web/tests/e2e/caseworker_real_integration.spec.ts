@@ -68,11 +68,11 @@ test.describe('Caseworker Real Integration Suite (Live FastAPI + Temporary SQLit
       { kind: 'general_goal', label: 'General Goal' },
     ] as const;
 
-    for (const { kind } of kinds) {
+    for (const { kind, label } of kinds) {
       await createMission(page, `Testing kind ${kind}`, kind);
 
       // Verify authoritative classification kind is rendered
-      await expect(page.locator(`text=KIND: ${kind.toUpperCase()}`)).toBeVisible();
+      await expect(page.locator(`text=${label}`)).toBeVisible();
 
       // Mission starts in DRAFT -> Activate
       const activateBtn = page.locator('button', { hasText: 'Activate Mission →' });
@@ -117,7 +117,7 @@ test.describe('Caseworker Real Integration Suite (Live FastAPI + Temporary SQLit
     await page.locator('form button[type="submit"]:has-text("Create Case")').click();
 
     // Verify Case card appears in list
-    const caseCard = page.locator('text=Software Engineer Case');
+    const caseCard = page.locator('a', { hasText: 'Software Engineer Case' });
     await expect(caseCard).toBeVisible();
 
     // 3. Navigate into Case dossier
@@ -346,7 +346,7 @@ test.describe('Caseworker Real Integration Suite (Live FastAPI + Temporary SQLit
     await page.locator('form textarea').fill('Test deterministic claim validation');
     await page.locator('form button[type="submit"]:has-text("Create Case")').click();
 
-    await page.locator('text=Claim Evaluation Case').click();
+    await page.locator('a', { hasText: 'Claim Evaluation Case' }).click();
     await expect(page).toHaveURL(/\/cases\/[a-zA-Z0-9_-]+/);
 
     // 3. Propose claim bound to verified fact

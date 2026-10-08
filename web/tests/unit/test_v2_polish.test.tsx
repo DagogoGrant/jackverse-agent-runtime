@@ -6,7 +6,13 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import fs from 'fs';
 import path from 'path';
 
-import { humanizeEvent, formatEventTime } from '../../src/lib/eventPresentation';
+import {
+  humanizeEvent,
+  formatEventTime,
+  getEventSubtitle,
+  formatEditorialDate,
+  formatMissionKind,
+} from '../../src/lib/eventPresentation';
 import { ActivityView } from '../../src/views/ActivityView';
 import { NavRail } from '../../src/components/layout/NavRail';
 import { HomeView } from '../../src/views/HomeView';
@@ -571,6 +577,347 @@ describe('Design V2.0.1 Craft & Accessibility Polish', () => {
       expect(sourceCode).not.toMatch(/\btext-red\b/);
       expect(sourceCode).not.toMatch(/\bbg-red\b/);
       expect(sourceCode).not.toMatch(/\bborder-red\b/);
+    });
+  });
+
+  describe('12. Mission Dossier V2.0.3 Targeted Editorial Polish', () => {
+    describe('Editorial presentation helpers', () => {
+      it('formats editorial date deterministically in UTC', () => {
+        expect(formatEditorialDate('2026-10-08T04:49:00Z')).toBe('08 Oct 2026');
+        expect(formatEditorialDate('2026-01-01T00:00:00Z')).toBe('01 Jan 2026');
+        expect(formatEditorialDate(undefined)).toBe('-- --- ----');
+        expect(formatEditorialDate('invalid-date')).toBe('-- --- ----');
+      });
+
+      it('humanizes mission kind taxonomy into product-facing strings', () => {
+        expect(formatMissionKind('opportunity_pursuit')).toBe('Opportunity Pursuit');
+        expect(formatMissionKind('problem_resolution')).toBe('Problem Resolution');
+        expect(formatMissionKind('general_goal')).toBe('General Goal');
+        expect(formatMissionKind(null)).toBe('General Goal');
+        expect(formatMissionKind('custom_kind_slug')).toBe('Custom Kind Slug');
+      });
+
+      it('extracts event subtitle strictly for case.created and avoids assuming titles on other events', () => {
+        expect(
+          getEventSubtitle({
+            event_type: 'case.created',
+            payload: { title: 'Find suitable Agentic AI roles' },
+          })
+        ).toBe('Find suitable Agentic AI roles');
+
+        expect(
+          getEventSubtitle({
+            event_type: 'case_created',
+            payload: { title: 'Proposal submission' },
+          })
+        ).toBe('Proposal submission');
+
+        // Strictly returns null for events like case.status_changed that lack title in event schema
+        expect(
+          getEventSubtitle({
+            event_type: 'case.status_changed',
+            payload: { old_status: 'new', new_status: 'investigation', reason: 'Triage' },
+          })
+        ).toBeNull();
+
+        expect(getEventSubtitle('case.created')).toBeNull();
+        expect(getEventSubtitle(null)).toBeNull();
+      });
+    });
+
+    describe('Mission Dossier Title/Goal Hierarchy & Redundant Box Elimination', () => {
+      it('omits deck when title and goal are normalized-identical and does not render Operational goal box', () => {
+        vi.spyOn(caseworkerHooks, 'useMission').mockReturnValue({
+          data: {
+            mission: {
+              mission_id: 'm-dedup-1',
+              user_id: 'alice',
+              title: 'Land Principal AI Engineer Role',
+              goal: '  land   principal ai engineer role  ',
+              kind: 'opportunity_pursuit',
+              status: 'active',
+              version: 3,
+              created_at: '2026-10-08T04:49:00Z',
+            },
+            etag: '"etag-1"',
+          },
+          isLoading: false,
+        } as any);
+
+        vi.spyOn(caseworkerHooks, 'useMissionCases').mockReturnValue({
+          data: [],
+          isLoading: false,
+        } as any);
+
+        vi.spyOn(caseworkerHooks, 'useEvents').mockReturnValue({
+          data: { items: [] },
+          isLoading: false,
+        } as any);
+
+        render(
+          <QueryClientProvider client={queryClient}>
+            <MemoryRouter initialEntries={['/missions/m-dedup-1']}>
+              <Routes>
+                <Route path="/missions/:missionId" element={<MissionDetailView />} />
+              </Routes>
+            </MemoryRouter>
+          </QueryClientProvider>
+        );
+
+        // Title is rendered once as h1
+        const h1 = screen.getByRole('heading', { level: 1 });
+        expect(h1).toHaveTextContent('Land Principal AI Engineer Role');
+
+        // Deck is NOT rendered because title matches normalized goal
+        expect(screen.queryByText('land principal ai engineer role')).not.toBeInTheDocument();
+
+        // Old "Operational goal & scope" box is deleted
+        expect(screen.queryByText(/operational goal & scope/i)).not.toBeInTheDocument();
+      });
+
+      it('renders goal deck below h1 when title and goal are distinct', () => {
+        vi.spyOn(caseworkerHooks, 'useMission').mockReturnValue({
+          data: {
+            mission: {
+              mission_id: 'm-distinct-1',
+              user_id: 'alice',
+              title: 'German AI Market Campaign',
+              goal: 'Secure high-impact agentic engineering roles across Munich and Berlin tech hubs',
+              kind: 'opportunity_pursuit',
+              status: 'active',
+              version: 2,
+              created_at: '2026-10-08T04:49:00Z',
+            },
+            etag: '"etag-2"',
+          },
+          isLoading: false,
+        } as any);
+
+        vi.spyOn(caseworkerHooks, 'useMissionCases').mockReturnValue({
+          data: [],
+          isLoading: false,
+        } as any);
+
+        vi.spyOn(caseworkerHooks, 'useEvents').mockReturnValue({
+          data: { items: [] },
+          isLoading: false,
+        } as any);
+
+        render(
+          <QueryClientProvider client={queryClient}>
+            <MemoryRouter initialEntries={['/missions/m-distinct-1']}>
+              <Routes>
+                <Route path="/missions/:missionId" element={<MissionDetailView />} />
+              </Routes>
+            </MemoryRouter>
+          </QueryClientProvider>
+        );
+
+        expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('German AI Market Campaign');
+        expect(
+          screen.getByText('Secure high-impact agentic engineering roles across Munich and Berlin tech hubs')
+        ).toBeInTheDocument();
+
+        // Operational goal & scope card is NOT rendered
+        expect(screen.queryByText(/operational goal & scope/i)).not.toBeInTheDocument();
+      });
+    });
+
+    describe('Taxonomy and Metadata Presentation', () => {
+      it('renders humanized kind and editorial date without KIND: or STARTED:', () => {
+        vi.spyOn(caseworkerHooks, 'useMission').mockReturnValue({
+          data: {
+            mission: {
+              mission_id: 'm-tax-1',
+              user_id: 'alice',
+              title: 'Incident Mitigation',
+              goal: 'Resolve production latency',
+              kind: 'problem_resolution',
+              status: 'active',
+              version: 4,
+              created_at: '2026-10-08T12:00:00Z',
+            },
+            etag: '"etag-3"',
+          },
+          isLoading: false,
+        } as any);
+
+        vi.spyOn(caseworkerHooks, 'useMissionCases').mockReturnValue({
+          data: [],
+          isLoading: false,
+        } as any);
+
+        vi.spyOn(caseworkerHooks, 'useEvents').mockReturnValue({
+          data: { items: [] },
+          isLoading: false,
+        } as any);
+
+        render(
+          <QueryClientProvider client={queryClient}>
+            <MemoryRouter initialEntries={['/missions/m-tax-1']}>
+              <Routes>
+                <Route path="/missions/:missionId" element={<MissionDetailView />} />
+              </Routes>
+            </MemoryRouter>
+          </QueryClientProvider>
+        );
+
+        expect(screen.getByText('Problem Resolution')).toBeInTheDocument();
+        expect(screen.getByText('08 Oct 2026')).toBeInTheDocument();
+        expect(screen.getByText('v4')).toBeInTheDocument();
+
+        expect(screen.queryByText(/KIND:/i)).not.toBeInTheDocument();
+        expect(screen.queryByText(/STARTED:/i)).not.toBeInTheDocument();
+      });
+    });
+
+    describe('Cases Section & Oldest-First Folios', () => {
+      it('renders Cases heading with quiet count and 01, 02 folios sorted oldest first', () => {
+        vi.spyOn(caseworkerHooks, 'useMission').mockReturnValue({
+          data: {
+            mission: {
+              mission_id: 'm-cases-1',
+              user_id: 'alice',
+              title: 'Talent Dispatch',
+              goal: 'Goal',
+              kind: 'general_goal',
+              status: 'active',
+              version: 1,
+              created_at: '2026-10-08T00:00:00Z',
+            },
+            etag: '"etag-cases"',
+          },
+          isLoading: false,
+        } as any);
+
+        // Case 2 was created earlier than Case 1 to verify oldest-first sort
+        vi.spyOn(caseworkerHooks, 'useMissionCases').mockReturnValue({
+          data: [
+            {
+              case_id: 'case-bbb-later-2222',
+              mission_id: 'm-cases-1',
+              title: 'Later Created Case',
+              goal: 'Goal 2',
+              case_type: 'grant_pursuit',
+              status: 'investigating',
+              created_at: '2026-10-08T06:00:00Z',
+            },
+            {
+              case_id: 'case-aaa-earlier-1111',
+              mission_id: 'm-cases-1',
+              title: 'Earlier Created Case',
+              goal: 'Goal 1',
+              case_type: 'job_application',
+              status: 'open',
+              created_at: '2026-10-08T02:00:00Z',
+            },
+          ],
+          isLoading: false,
+        } as any);
+
+        vi.spyOn(caseworkerHooks, 'useEvents').mockReturnValue({
+          data: { items: [] },
+          isLoading: false,
+        } as any);
+
+        render(
+          <QueryClientProvider client={queryClient}>
+            <MemoryRouter initialEntries={['/missions/m-cases-1']}>
+              <Routes>
+                <Route path="/missions/:missionId" element={<MissionDetailView />} />
+              </Routes>
+            </MemoryRouter>
+          </QueryClientProvider>
+        );
+
+        // Heading is "Cases", count is "2 cases"
+        expect(screen.getByRole('heading', { level: 2, name: 'Cases' })).toBeInTheDocument();
+        expect(screen.getByText('2 cases')).toBeInTheDocument();
+        expect(screen.queryByText('Active Cases Dossier')).not.toBeInTheDocument();
+
+        // Folios 01 and 02
+        const folio1 = screen.getByTitle('case-aaa-earlier-1111');
+        const folio2 = screen.getByTitle('case-bbb-later-2222');
+
+        expect(folio1).toHaveTextContent('01');
+        expect(folio2).toHaveTextContent('02');
+
+        // Raw UUID slices should not appear as visible text
+        expect(screen.queryByText('case-aaa')).not.toBeInTheDocument();
+        expect(screen.queryByText('case-bbb')).not.toBeInTheDocument();
+      });
+    });
+
+    describe('Mission Chronicle Two-Line Treatment', () => {
+      it('renders Case opened with payload title subtitle and Case moved to {Status}', () => {
+        vi.spyOn(caseworkerHooks, 'useMission').mockReturnValue({
+          data: {
+            mission: {
+              mission_id: 'm-chron-1',
+              user_id: 'alice',
+              title: 'Chronicle Test',
+              goal: 'Goal',
+              kind: 'general_goal',
+              status: 'active',
+              version: 1,
+              created_at: '2026-10-08T00:00:00Z',
+            },
+            etag: '"etag-chron"',
+          },
+          isLoading: false,
+        } as any);
+
+        vi.spyOn(caseworkerHooks, 'useMissionCases').mockReturnValue({
+          data: [],
+          isLoading: false,
+        } as any);
+
+        vi.spyOn(caseworkerHooks, 'useEvents').mockReturnValue({
+          data: {
+            items: [
+              {
+                event_id: 'ev-1',
+                event_type: 'case.created',
+                payload: {
+                  title: 'Find suitable Agentic AI roles',
+                  case_id: 'c-1',
+                  mission_id: 'm-chron-1',
+                },
+                occurred_at: '2026-10-08T04:49:00Z',
+              },
+              {
+                event_id: 'ev-2',
+                event_type: 'case.status_changed',
+                payload: {
+                  old_status: 'open',
+                  new_status: 'investigating',
+                  reason: 'Initial triage',
+                  mission_id: 'm-chron-1',
+                },
+                occurred_at: '2026-10-08T05:00:00Z',
+              },
+            ],
+          },
+          isLoading: false,
+        } as any);
+
+        render(
+          <QueryClientProvider client={queryClient}>
+            <MemoryRouter initialEntries={['/missions/m-chron-1']}>
+              <Routes>
+                <Route path="/missions/:missionId" element={<MissionDetailView />} />
+              </Routes>
+            </MemoryRouter>
+          </QueryClientProvider>
+        );
+
+        // Case opened event with subtitle
+        expect(screen.getByText('Case opened')).toBeInTheDocument();
+        expect(screen.getByText('Find suitable Agentic AI roles')).toBeInTheDocument();
+
+        // Case moved event
+        expect(screen.getByText('Case moved to Investigating')).toBeInTheDocument();
+      });
     });
   });
 });

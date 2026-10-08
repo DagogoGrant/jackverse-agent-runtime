@@ -49,7 +49,7 @@ export function humanizeEvent(eventOrType: EventLike | string): string {
 
     case 'case.created':
     case 'case_created':
-      return 'Case created';
+      return 'Case opened';
 
     case 'case.status_changed':
     case 'case_transitioned': {
@@ -176,3 +176,61 @@ export function formatEventTime(isoStr?: string): string {
     return '--:--';
   }
 }
+
+/**
+ * Extracts optional secondary editorial context (such as case title for case.created).
+ * Strictly avoids assuming titles for events (like case.status_changed) that lack them.
+ */
+export function getEventSubtitle(eventOrType?: EventLike | string | null): string | null {
+  if (!eventOrType || typeof eventOrType === 'string') return null;
+  const type = eventOrType.event_type || '';
+  const payload = (eventOrType.payload || {}) as Record<string, unknown>;
+
+  switch (type) {
+    case 'case.created':
+    case 'case_created': {
+      const title = typeof payload.title === 'string' ? payload.title.trim() : '';
+      return title || null;
+    }
+    default:
+      return null;
+  }
+}
+
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+/**
+ * Formats an ISO UTC timestamp into deterministic editorial date representation:
+ * e.g. "08 Oct 2026"
+ * Completely independent of browser locale.
+ */
+export function formatEditorialDate(dateStr?: string | null): string {
+  if (!dateStr) return '-- --- ----';
+  const d = new Date(dateStr);
+  if (isNaN(d.getTime())) return '-- --- ----';
+  const day = String(d.getUTCDate()).padStart(2, '0');
+  const month = MONTHS[d.getUTCMonth()];
+  const year = d.getUTCFullYear();
+  return `${day} ${month} ${year}`;
+}
+
+/**
+ * Formats backend mission kind slugs into humanized product taxonomy:
+ * e.g. "opportunity_pursuit" -> "Opportunity Pursuit"
+ */
+export function formatMissionKind(kind?: string | null): string {
+  if (!kind) return 'General Goal';
+  switch (kind) {
+    case 'opportunity_pursuit':
+      return 'Opportunity Pursuit';
+    case 'problem_resolution':
+      return 'Problem Resolution';
+    case 'general_goal':
+      return 'General Goal';
+    default:
+      return kind
+        .replace(/[._]/g, ' ')
+        .replace(/\b\w/g, (c) => c.toUpperCase());
+  }
+}
+
