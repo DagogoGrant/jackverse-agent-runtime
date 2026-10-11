@@ -34,6 +34,16 @@ export type OpportunityStatus = Schemas['OpportunityStatus'];
 export type Opportunity = Schemas['OpportunityResponse'];
 export type CreateOpportunityRequest = Schemas['CreateOpportunityRequest'];
 export type TransitionOpportunityRequest = Schemas['TransitionOpportunityRequest'];
+export type ShortlistOpportunityRequest = Schemas['ShortlistOpportunityRequest'];
+export type ConvertToCaseRequest = Schemas['ConvertToCaseRequest'];
+export type ConvertToCaseResponse = Schemas['ConvertToCaseResponse'];
+export type EvaluationSummary = Schemas['EvaluationSummary'];
+export type EvaluationSnapshotResponse = Schemas['EvaluationSnapshotResponse'];
+export type EligibilityResultResponse = Schemas['EligibilityResultResponse'];
+export type FitScoreComponentsResponse = Schemas['FitScoreComponentsResponse'];
+export type RequirementEvidenceResponse = Schemas['RequirementEvidenceResponse'];
+export type NormalizeOpportunityResponse = Schemas['NormalizeOpportunityResponse'];
+export type NormalizedRequirementResponse = Schemas['NormalizedRequirementResponse'];
 
 // ----------------------------------------------------------------------------
 // Action

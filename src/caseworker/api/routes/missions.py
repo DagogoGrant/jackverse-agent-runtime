@@ -8,6 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from caseworker.api.dependencies import (
     PaginationParams,
     get_mission_service,
+    get_opportunity_service,
     get_principal,
 )
 from caseworker.api.etag import check_if_match, set_etag_header
@@ -18,11 +19,13 @@ from caseworker.api.schemas.mission import (
     MissionResponse,
     TransitionMissionRequest,
 )
+from caseworker.api.schemas.opportunity import OpportunityResponse, make_opportunity_response
 from caseworker.domain.enums import MissionStatus
 from caseworker.domain.errors import EntityNotFoundError
 from caseworker.domain.mission import Mission
 from caseworker.domain.types import to_iso_utc
 from caseworker.services.mission_service import MissionService
+from caseworker.services.opportunity_service import OpportunityService
 
 router = APIRouter(prefix="/api/v1/missions", tags=["missions"])
 
@@ -245,3 +248,19 @@ async def restore_mission(
     updated = service.restore_mission_for_user(principal.user_id, mission_id)
     set_etag_header(response, "mission", updated.mission_id, updated.version)
     return _to_mission_response(updated)
+
+
+@router.get("/{mission_id}/opportunities", response_model=list[OpportunityResponse])
+async def list_mission_opportunities(
+    mission_id: str,
+    principal: Annotated[Principal, Depends(get_principal)],
+    mission_service: Annotated[MissionService, Depends(get_mission_service)],
+    opp_service: Annotated[OpportunityService, Depends(get_opportunity_service)],
+) -> list[OpportunityResponse]:
+    """List all opportunities discovered for a mission."""
+    mission = mission_service.get_mission_for_user(principal.user_id, mission_id)
+    if mission is None:
+        raise EntityNotFoundError("Mission", mission_id)
+
+    opps = opp_service.list_mission_opportunities_for_user(principal.user_id, mission_id)
+    return [make_opportunity_response(o) for o in opps]

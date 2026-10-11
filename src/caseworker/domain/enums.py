@@ -210,3 +210,35 @@ class SensitivityLevel(StrEnum):
     PUBLIC = "public"
     PERSONAL = "personal"
     SENSITIVE = "sensitive"
+
+
+class EligibilityStatus(StrEnum):
+    """Tri-state eligibility status for an opportunity against user context."""
+
+    ELIGIBLE = "eligible"
+    INELIGIBLE = "ineligible"
+    UNKNOWN = "unknown"
+
+
+class RequirementCategory(StrEnum):
+    """Classification of requirement importance."""
+
+    MANDATORY = "mandatory"
+    PREFERRED = "preferred"
+
+
+class RequirementMatchResult(StrEnum):
+    """Result of evaluating a single requirement against user evidence."""
+
+    MET = "met"
+    NOT_MET = "not_met"
+    UNKNOWN = "unknown"
+
+
+class FitTier(StrEnum):
+    """Qualitative tier for explainable fit score."""
+
+    STRONG = "strong"
+    MODERATE = "moderate"
+    LOW = "low"
+

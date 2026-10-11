@@ -79,8 +79,8 @@ export const OpportunitiesView: React.FC = () => {
 
         <div className="flex flex-wrap items-center gap-4">
           {/* Status Filters */}
-          <div className="flex items-center gap-1.5 font-interface text-xs">
-            {(['all', 'discovered', 'evaluating', 'shortlisted', 'archived'] as const).map((s) => (
+          <div className="flex items-center gap-1.5 font-interface text-xs flex-wrap">
+            {(['all', 'discovered', 'normalized', 'evaluating', 'shortlisted', 'converted_to_case', 'archived'] as const).map((s) => (
               <button
                 key={s}
                 onClick={() => setFilter(s)}
@@ -90,7 +90,7 @@ export const OpportunitiesView: React.FC = () => {
                     : 'border-jv-rule text-jv-muted hover:text-jv-ink hover:border-jv-rule-strong bg-jv-surface'
                 }`}
               >
-                {s}
+                {s.replace(/_/g, ' ')}
               </button>
             ))}
           </div>
@@ -277,7 +277,15 @@ export const OpportunitiesView: React.FC = () => {
                 </div>
               </div>
 
-              <div className="flex items-center gap-6 pl-10 md:pl-0">
+              <div className="flex items-center gap-4 sm:gap-6 pl-10 md:pl-0 shrink-0">
+                {opp.evaluation_summary && (
+                  <div className="hidden sm:flex items-center gap-1.5 font-machine text-xs">
+                    <span className="font-medium text-jv-ink">{Math.round(opp.evaluation_summary.fit_score)}/100</span>
+                    <span className="text-[10px] uppercase text-jv-muted px-1.5 py-0.5 border border-jv-rule">
+                      {opp.evaluation_summary.eligibility_status}
+                    </span>
+                  </div>
+                )}
                 <TextureBadge status={opp.status} />
                 <span className="font-machine text-xs text-jv-muted uppercase">
                   {opp.opportunity_type}

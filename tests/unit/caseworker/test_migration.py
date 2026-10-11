@@ -14,7 +14,7 @@ class TestSQLiteMigration(unittest.TestCase):
         cur = conn.cursor()
         cur.execute("PRAGMA user_version;")
         version = cur.fetchone()[0]
-        self.assertEqual(version, 3)
+        self.assertEqual(version, 4)
 
         # Verify all tables exist
         cur.execute("SELECT name FROM sqlite_master WHERE type='table';")
@@ -38,6 +38,12 @@ class TestSQLiteMigration(unittest.TestCase):
         columns = {row[1] for row in cur.fetchall()}
         self.assertIn("archived", columns)
         self.assertIn("archived_at", columns)
+
+        # Verify v4 columns exist on opportunities
+        cur.execute("PRAGMA table_info(opportunities);")
+        opp_columns = {row[1] for row in cur.fetchall()}
+        self.assertIn("converted_case_id", opp_columns)
+        self.assertIn("fingerprint_v2", opp_columns)
 
         conn.close()
 
@@ -98,11 +104,11 @@ class TestSQLiteMigration(unittest.TestCase):
         """)
         conn.commit()
 
-        # 2. Run migration to v3
+        # 2. Run migration to v4
         SQLiteMigrator.migrate(conn)
 
         cur.execute("PRAGMA user_version;")
-        self.assertEqual(cur.fetchone()[0], 3)
+        self.assertEqual(cur.fetchone()[0], 4)
 
         # 3. Verify new columns exist in context_facts and missions
         cur.execute("PRAGMA table_info(context_facts);")
@@ -168,11 +174,11 @@ class TestSQLiteMigration(unittest.TestCase):
         """)
         conn.commit()
 
-        # 2. Run migration to v3
+        # 2. Run migration to v4
         SQLiteMigrator.migrate(conn)
 
         cur.execute("PRAGMA user_version;")
-        self.assertEqual(cur.fetchone()[0], 3)
+        self.assertEqual(cur.fetchone()[0], 4)
 
         # 3. Verify columns added
         cur.execute("PRAGMA table_info(missions);")
@@ -192,6 +198,73 @@ class TestSQLiteMigration(unittest.TestCase):
 
         conn.close()
 
+    def test_migration_from_v3_schema_preserves_data(self) -> None:
+        conn = sqlite3.connect(":memory:")
+        cur = conn.cursor()
+
+        # 1. Setup exact v3 schema opportunities table without converted_case_id and fingerprint_v2
+        cur.execute("""
+            CREATE TABLE opportunities (
+                opportunity_id TEXT PRIMARY KEY,
+                mission_id TEXT,
+                user_id TEXT NOT NULL,
+                opportunity_type TEXT NOT NULL,
+                title TEXT NOT NULL,
+                organization TEXT NOT NULL,
+                source_url TEXT NOT NULL,
+                source_name TEXT NOT NULL,
+                location TEXT NOT NULL,
+                status TEXT NOT NULL,
+                requirements TEXT NOT NULL,
+                metadata TEXT NOT NULL,
+                fingerprint TEXT NOT NULL,
+                discovered_at TEXT NOT NULL,
+                deadline TEXT,
+                version INTEGER NOT NULL DEFAULT 1
+            );
+        """)
+        cur.execute("PRAGMA user_version = 3;")
+
+        # Insert sample v3 opportunity
+        cur.execute("""
+            INSERT INTO opportunities (
+                opportunity_id, user_id, opportunity_type, title, organization,
+                source_url, source_name, location, status, requirements, metadata,
+                fingerprint, discovered_at, version
+            ) VALUES (
+                'opp_v3_001', 'user_v3', 'job', 'AI Engineer', 'DeepMind',
+                'https://example.com/job', 'Manual', 'Berlin', 'discovered',
+                '[]', '{}', 'fp_legacy', '2026-03-01T00:00:00Z', 1
+            );
+        """)
+        conn.commit()
+
+        # 2. Run migration to v4
+        SQLiteMigrator.migrate(conn)
+
+        cur.execute("PRAGMA user_version;")
+        self.assertEqual(cur.fetchone()[0], 4)
+
+        # 3. Verify columns added
+        cur.execute("PRAGMA table_info(opportunities);")
+        columns = {row[1] for row in cur.fetchall()}
+        self.assertIn("converted_case_id", columns)
+        self.assertIn("fingerprint_v2", columns)
+
+        # 4. Verify existing record preserved and defaulted
+        cur.execute(
+            "SELECT opportunity_id, title, status, converted_case_id, fingerprint_v2 FROM opportunities WHERE opportunity_id = 'opp_v3_001';"
+        )
+        row = cur.fetchone()
+        self.assertIsNotNone(row)
+        self.assertEqual(row[0], "opp_v3_001")
+        self.assertEqual(row[1], "AI Engineer")
+        self.assertEqual(row[2], "discovered")
+        self.assertIsNone(row[3])  # converted_case_id defaults to NULL
+        self.assertIsNone(row[4])  # fingerprint_v2 defaults to NULL
+
+        conn.close()
+
     def test_migration_idempotent(self) -> None:
         conn = sqlite3.connect(":memory:")
         SQLiteMigrator.migrate(conn)
@@ -200,7 +273,7 @@ class TestSQLiteMigration(unittest.TestCase):
 
         cur = conn.cursor()
         cur.execute("PRAGMA user_version;")
-        self.assertEqual(cur.fetchone()[0], 3)
+        self.assertEqual(cur.fetchone()[0], 4)
         conn.close()
 
 

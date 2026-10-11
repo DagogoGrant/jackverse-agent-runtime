@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import sqlite3
 
-LATEST_SCHEMA_VERSION = 3
+LATEST_SCHEMA_VERSION = 4
 
 MIGRATION_V1_DDL = """
 CREATE TABLE IF NOT EXISTS missions (
@@ -250,5 +250,29 @@ class SQLiteMigrator:
             conn.execute("CREATE INDEX IF NOT EXISTS idx_missions_user_archived ON missions(user_id, archived);")
             conn.execute("PRAGMA user_version = 3;")
             current_version = 3
+
+        # Migrate 3 -> 4 (Phase 5.1: Opportunity Engine - converted_case_id & fingerprint_v2)
+        if current_version < 4:
+            cur = conn.cursor()
+            cur.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='opportunities';")
+            if cur.fetchone():
+                cur.execute("PRAGMA table_info(opportunities);")
+                columns = {row[1] for row in cur.fetchall()}
+
+                if "converted_case_id" not in columns:
+                    conn.execute(
+                        "ALTER TABLE opportunities ADD COLUMN converted_case_id TEXT REFERENCES cases(case_id) ON DELETE SET NULL;"
+                    )
+                if "fingerprint_v2" not in columns:
+                    conn.execute("ALTER TABLE opportunities ADD COLUMN fingerprint_v2 TEXT;")
+
+                conn.execute(
+                    "CREATE INDEX IF NOT EXISTS idx_opportunities_converted_case ON opportunities(converted_case_id);"
+                )
+                conn.execute(
+                    "CREATE INDEX IF NOT EXISTS idx_opportunities_user_fp_v2 ON opportunities(user_id, fingerprint_v2);"
+                )
+            conn.execute("PRAGMA user_version = 4;")
+            current_version = 4
 
         return current_version

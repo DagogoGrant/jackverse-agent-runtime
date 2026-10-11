@@ -143,6 +143,18 @@ export function humanizeEvent(eventOrType: EventLike | string): string {
     case 'opportunity_discovered':
       return 'Prospect discovered and catalogued';
 
+    case 'opportunity.normalized':
+      return 'Opportunity requirements structured';
+
+    case 'opportunity.evaluated':
+      return 'Opportunity evaluated for eligibility & fit';
+
+    case 'opportunity.shortlisted':
+      return 'Opportunity shortlisted for application';
+
+    case 'opportunity.converted_to_case':
+      return 'Case opened from opportunity';
+
     case 'opportunity.status_changed':
     case 'opportunity_transitioned': {
       const newStatus = payload.new_status;

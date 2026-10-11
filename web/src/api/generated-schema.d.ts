@@ -632,6 +632,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/missions/{mission_id}/opportunities": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Mission Opportunities
+         * @description List all opportunities discovered for a mission.
+         */
+        get: operations["list_mission_opportunities_api_v1_missions__mission_id__opportunities_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/missions/{mission_id}/pause": {
         parameters: {
             query?: never;
@@ -756,6 +776,110 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/opportunities/{opportunity_id}/convert-to-case": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Convert Opportunity To Case
+         * @description Convert a shortlisted opportunity to a Case atomically and idempotently.
+         *
+         *     Idempotent replay precedes ETag check.
+         *     First conversion returns 201 Created with Location header.
+         *     Replay returns 200 OK.
+         */
+        post: operations["convert_opportunity_to_case_api_v1_opportunities__opportunity_id__convert_to_case_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/opportunities/{opportunity_id}/evaluate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Evaluate Opportunity
+         * @description Evaluate tri-state eligibility and explainable fit against purpose-gated context facts.
+         */
+        post: operations["evaluate_opportunity_api_v1_opportunities__opportunity_id__evaluate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/opportunities/{opportunity_id}/evaluation": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Opportunity Evaluation
+         * @description Retrieve latest evaluation snapshot for an opportunity.
+         */
+        get: operations["get_opportunity_evaluation_api_v1_opportunities__opportunity_id__evaluation_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/opportunities/{opportunity_id}/normalize": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Normalize Opportunity
+         * @description Normalize opportunity requirements into opp_req_v1 structured criteria.
+         */
+        post: operations["normalize_opportunity_api_v1_opportunities__opportunity_id__normalize_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/opportunities/{opportunity_id}/shortlist": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Shortlist Opportunity
+         * @description Shortlist an opportunity enforcing non-stale evaluation and eligibility policy.
+         */
+        post: operations["shortlist_opportunity_api_v1_opportunities__opportunity_id__shortlist_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/opportunities/{opportunity_id}/transition": {
         parameters: {
             query?: never;
@@ -768,6 +892,8 @@ export interface paths {
         /**
          * Transition Opportunity
          * @description Transition opportunity status with strict ETag precondition verification.
+         *
+         *     Protected transitions (shortlisted, converted_to_case) are blocked.
          */
         post: operations["transition_opportunity_api_v1_opportunities__opportunity_id__transition_post"];
         delete?: never;
@@ -1002,6 +1128,38 @@ export interface components {
             /** User Id */
             user_id: string;
         };
+        /** ConvertToCaseRequest */
+        ConvertToCaseRequest: {
+            /**
+             * Case Type
+             * @description Optional override for CaseType.
+             */
+            case_type?: string | null;
+            /**
+             * Goal
+             * @description Optional custom goal for the Case.
+             */
+            goal?: string | null;
+            /**
+             * Title
+             * @description Optional custom title for the Case.
+             */
+            title?: string | null;
+        };
+        /** ConvertToCaseResponse */
+        ConvertToCaseResponse: {
+            /** Case */
+            case: {
+                [key: string]: unknown;
+            };
+            /** Case Id */
+            case_id: string;
+            /** Created */
+            created: boolean;
+            opportunity: components["schemas"]["OpportunityResponse"];
+            /** Opportunity Id */
+            opportunity_id: string;
+        };
         /** CreateCaseRequest */
         CreateCaseRequest: {
             /**
@@ -1213,8 +1371,58 @@ export interface components {
             /** User Id */
             user_id: string;
         };
+        /** EligibilityResultResponse */
+        EligibilityResultResponse: {
+            /** Contradicted Requirements */
+            contradicted_requirements?: string[];
+            /** Coverage */
+            coverage: number;
+            /** Mandatory Met */
+            mandatory_met: number;
+            /** Mandatory Total */
+            mandatory_total: number;
+            /** Missing Or Unknown Requirements */
+            missing_or_unknown_requirements?: string[];
+            /** Status */
+            status: string;
+        };
         /** EvaluateClaimRequest */
         EvaluateClaimRequest: Record<string, never>;
+        /** EvaluationSnapshotResponse */
+        EvaluationSnapshotResponse: {
+            /** Context Snapshot Hash */
+            context_snapshot_hash: string;
+            eligibility: components["schemas"]["EligibilityResultResponse"];
+            /** Evaluated At */
+            evaluated_at: string;
+            /** Evaluation Id */
+            evaluation_id: string;
+            /** Evaluation Input Hash */
+            evaluation_input_hash: string;
+            /** Evaluation Policy */
+            evaluation_policy: string;
+            /** Evidence */
+            evidence?: components["schemas"]["RequirementEvidenceResponse"][];
+            fit: components["schemas"]["FitScoreComponentsResponse"];
+        };
+        /** EvaluationSummary */
+        EvaluationSummary: {
+            /** Coverage */
+            coverage: number;
+            /** Eligibility Status */
+            eligibility_status: string;
+            /** Evaluated At */
+            evaluated_at: string;
+            /** Fit Score */
+            fit_score: number;
+            /** Fit Tier */
+            fit_tier: string;
+            /**
+             * Is Stale
+             * @default false
+             */
+            is_stale: boolean;
+        };
         /** FactResponse */
         FactResponse: {
             /** Allowed Purposes */
@@ -1294,6 +1502,23 @@ export interface components {
             /** Version */
             version: number;
         };
+        /** FitScoreComponentsResponse */
+        FitScoreComponentsResponse: {
+            /** Explanations */
+            explanations?: string[];
+            /** Fit Tier */
+            fit_tier: string;
+            /** Location Score */
+            location_score: number;
+            /** Preferred Reqs Score */
+            preferred_reqs_score: number;
+            /** Seniority Score */
+            seniority_score: number;
+            /** Skills Score */
+            skills_score: number;
+            /** Total Score */
+            total_score: number;
+        };
         /** HTTPValidationError */
         HTTPValidationError: {
             /** Detail */
@@ -1345,14 +1570,45 @@ export interface components {
          * @enum {string}
          */
         MissionStatus: "draft" | "active" | "paused" | "completed" | "cancelled" | "failed";
+        /** NormalizeOpportunityResponse */
+        NormalizeOpportunityResponse: {
+            /** Opportunity Id */
+            opportunity_id: string;
+            /** Requirements */
+            requirements: components["schemas"]["NormalizedRequirementResponse"][];
+            /** Status */
+            status: string;
+            /** Version */
+            version: number;
+        };
+        /** NormalizedRequirementResponse */
+        NormalizedRequirementResponse: {
+            /** Category */
+            category: string;
+            /** Criterion */
+            criterion: string;
+            /** Normalization Status */
+            normalization_status: string;
+            /** Raw Text */
+            raw_text: string;
+            /** Requirement Id */
+            requirement_id: string;
+            /** Value */
+            value?: unknown;
+        };
         /** OpportunityResponse */
         OpportunityResponse: {
+            /** Converted Case Id */
+            converted_case_id?: string | null;
             /** Deadline */
             deadline?: string | null;
             /** Discovered At */
             discovered_at: string;
+            evaluation_summary?: components["schemas"]["EvaluationSummary"] | null;
             /** Fingerprint */
             fingerprint: string;
+            /** Fingerprint V2 */
+            fingerprint_v2?: string | null;
             /**
              * Location
              * @default
@@ -1717,6 +1973,24 @@ export interface components {
              */
             reason?: string | null;
         };
+        /** RequirementEvidenceResponse */
+        RequirementEvidenceResponse: {
+            /** Fact Id */
+            fact_id?: string | null;
+            /** Fact Version */
+            fact_version?: number | null;
+            /** Match Result */
+            match_result: string;
+            /**
+             * Notes
+             * @default
+             */
+            notes: string;
+            /** Requirement Id */
+            requirement_id: string;
+            /** Verification Status */
+            verification_status?: string | null;
+        };
         /** RequirementItem */
         RequirementItem: {
             /** Is Mandatory */
@@ -1774,6 +2048,20 @@ export interface components {
          * @enum {string}
          */
         SensitivityLevel: "public" | "personal" | "sensitive";
+        /** ShortlistOpportunityRequest */
+        ShortlistOpportunityRequest: {
+            /**
+             * Override Ineligible
+             * @description Explicit override if evaluated as INELIGIBLE.
+             * @default false
+             */
+            override_ineligible: boolean;
+            /**
+             * Reason
+             * @description Shortlisting rationale.
+             */
+            reason?: string | null;
+        };
         /**
          * SourceType
          * @description Provenance origin of personal context facts and sources.
@@ -3093,6 +3381,37 @@ export interface operations {
             };
         };
     };
+    list_mission_opportunities_api_v1_missions__mission_id__opportunities_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                mission_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OpportunityResponse"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     pause_mission_api_v1_missions__mission_id__pause_post: {
         parameters: {
             query?: {
@@ -3303,6 +3622,169 @@ export interface operations {
             cookie?: never;
         };
         requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OpportunityResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    convert_opportunity_to_case_api_v1_opportunities__opportunity_id__convert_to_case_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                opportunity_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ConvertToCaseRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConvertToCaseResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    evaluate_opportunity_api_v1_opportunities__opportunity_id__evaluate_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                opportunity_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EvaluationSnapshotResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_opportunity_evaluation_api_v1_opportunities__opportunity_id__evaluation_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                opportunity_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EvaluationSnapshotResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    normalize_opportunity_api_v1_opportunities__opportunity_id__normalize_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                opportunity_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NormalizeOpportunityResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    shortlist_opportunity_api_v1_opportunities__opportunity_id__shortlist_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                opportunity_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ShortlistOpportunityRequest"];
+            };
+        };
         responses: {
             /** @description Successful Response */
             200: {

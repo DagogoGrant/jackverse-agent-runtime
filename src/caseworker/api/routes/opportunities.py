@@ -14,37 +14,64 @@ from caseworker.api.etag import check_if_match, set_etag_header
 from caseworker.api.identity import Principal
 from caseworker.api.schemas.common import PaginatedResponse
 from caseworker.api.schemas.opportunity import (
+    ConvertToCaseRequest,
+    ConvertToCaseResponse,
     CreateOpportunityRequest,
+    EligibilityResultResponse,
+    EvaluationSnapshotResponse,
+    FitScoreComponentsResponse,
+    NormalizeOpportunityResponse,
+    NormalizedRequirementResponse,
     OpportunityResponse,
+    RequirementEvidenceResponse,
+    ShortlistOpportunityRequest,
     TransitionOpportunityRequest,
+    make_opportunity_response,
 )
 from caseworker.domain.enums import OpportunityStatus
-from caseworker.domain.errors import EntityNotFoundError
-from caseworker.domain.opportunity import Opportunity
+from caseworker.domain.errors import EntityNotFoundError, InvalidStateTransitionError
+from caseworker.domain.opportunity_evaluator import OpportunityEvaluationSnapshot
 from caseworker.domain.types import to_iso_utc
 from caseworker.services.opportunity_service import OpportunityService
 
 router = APIRouter(prefix="/api/v1/opportunities", tags=["opportunities"])
 
 
-def _to_opportunity_response(o: Opportunity) -> OpportunityResponse:
-    return OpportunityResponse(
-        opportunity_id=o.opportunity_id,
-        user_id=o.user_id,
-        mission_id=o.mission_id,
-        opportunity_type=o.opportunity_type_str,
-        title=o.title,
-        organization=o.organization,
-        source_url=o.source_url,
-        source_name=o.source_name,
-        location=o.location,
-        status=o.status.value if hasattr(o.status, "value") else str(o.status),
-        requirements=list(o.requirements),
-        metadata=dict(o.metadata),
-        fingerprint=o.fingerprint,
-        discovered_at=to_iso_utc(o.discovered_at),
-        deadline=to_iso_utc(o.deadline) if o.deadline else None,
-        version=o.version,
+def _snapshot_to_response(s: OpportunityEvaluationSnapshot) -> EvaluationSnapshotResponse:
+    return EvaluationSnapshotResponse(
+        evaluation_id=s.evaluation_id,
+        evaluated_at=to_iso_utc(s.evaluated_at),
+        evaluation_policy=s.evaluation_policy,
+        eligibility=EligibilityResultResponse(
+            status=s.eligibility.status.value,
+            coverage=s.eligibility.coverage,
+            mandatory_met=s.eligibility.mandatory_met,
+            mandatory_total=s.eligibility.mandatory_total,
+            contradicted_requirements=list(s.eligibility.contradicted_requirements),
+            missing_or_unknown_requirements=list(s.eligibility.missing_or_unknown_requirements),
+        ),
+        fit=FitScoreComponentsResponse(
+            skills_score=s.fit.components.skills_score,
+            preferred_reqs_score=s.fit.components.preferred_reqs_score,
+            location_score=s.fit.components.location_score,
+            seniority_score=s.fit.components.seniority_score,
+            total_score=s.fit.components.total_score,
+            fit_tier=s.fit.components.fit_tier.value,
+            explanations=list(s.fit.components.explanations),
+        ),
+        evidence=[
+            RequirementEvidenceResponse(
+                requirement_id=e.requirement_id,
+                fact_id=e.fact_id,
+                fact_version=e.fact_version,
+                verification_status=e.verification_status.value if hasattr(e.verification_status, "value") else str(e.verification_status) if e.verification_status else None,
+                match_result=e.match_result.value,
+                notes=e.notes,
+            )
+            for e in s.evidence
+        ],
+        evaluation_input_hash=s.evaluation_input_hash,
+        context_snapshot_hash=s.context_snapshot_hash,
     )
 
 
@@ -76,7 +103,7 @@ async def create_or_deduplicate_opportunity(
         response.status_code = status.HTTP_200_OK
 
     set_etag_header(response, "opportunity", opp.opportunity_id, opp.version)
-    return _to_opportunity_response(opp)
+    return make_opportunity_response(opp)
 
 
 @router.get("", response_model=PaginatedResponse[OpportunityResponse])
@@ -91,7 +118,7 @@ async def list_opportunities(
     total = len(all_opps)
     page_items = all_opps[pagination.offset : pagination.offset + pagination.limit]
     return PaginatedResponse(
-        items=[_to_opportunity_response(o) for o in page_items],
+        items=[make_opportunity_response(o) for o in page_items],
         total=total,
         limit=pagination.limit,
         offset=pagination.offset,
@@ -110,7 +137,169 @@ async def get_opportunity(
     if opp is None:
         raise EntityNotFoundError("Opportunity", opportunity_id)
     set_etag_header(response, "opportunity", opp.opportunity_id, opp.version)
-    return _to_opportunity_response(opp)
+    return make_opportunity_response(opp)
+
+
+@router.post("/{opportunity_id}/normalize", response_model=NormalizeOpportunityResponse)
+async def normalize_opportunity(
+    opportunity_id: str,
+    request: Request,
+    response: Response,
+    principal: Annotated[Principal, Depends(get_principal)],
+    service: Annotated[OpportunityService, Depends(get_opportunity_service)],
+) -> NormalizeOpportunityResponse:
+    """Normalize opportunity requirements into opp_req_v1 structured criteria."""
+    existing = service.get_opportunity_for_user(principal.user_id, opportunity_id)
+    if existing is None:
+        raise EntityNotFoundError("Opportunity", opportunity_id)
+
+    check_if_match(request, "opportunity", existing.opportunity_id, existing.version)
+
+    opp, normalized = service.normalize_opportunity_for_user(principal.user_id, opportunity_id)
+    set_etag_header(response, "opportunity", opp.opportunity_id, opp.version)
+    return NormalizeOpportunityResponse(
+        opportunity_id=opp.opportunity_id,
+        requirements=[
+            NormalizedRequirementResponse(
+                requirement_id=r.requirement_id,
+                raw_text=r.raw_text,
+                criterion=r.criterion,
+                category=r.category.value,
+                value=r.value,
+                normalization_status=r.normalization_status,
+            )
+            for r in normalized
+        ],
+        status=opp.status.value,
+        version=opp.version,
+    )
+
+
+@router.post("/{opportunity_id}/evaluate", response_model=EvaluationSnapshotResponse)
+async def evaluate_opportunity(
+    opportunity_id: str,
+    request: Request,
+    response: Response,
+    principal: Annotated[Principal, Depends(get_principal)],
+    service: Annotated[OpportunityService, Depends(get_opportunity_service)],
+) -> EvaluationSnapshotResponse:
+    """Evaluate tri-state eligibility and explainable fit against purpose-gated context facts."""
+    existing = service.get_opportunity_for_user(principal.user_id, opportunity_id)
+    if existing is None:
+        raise EntityNotFoundError("Opportunity", opportunity_id)
+
+    check_if_match(request, "opportunity", existing.opportunity_id, existing.version)
+
+    opp, snapshot = service.evaluate_opportunity_for_user(principal.user_id, opportunity_id)
+    set_etag_header(response, "opportunity", opp.opportunity_id, opp.version)
+    return _snapshot_to_response(snapshot)
+
+
+@router.get("/{opportunity_id}/evaluation", response_model=EvaluationSnapshotResponse)
+async def get_opportunity_evaluation(
+    opportunity_id: str,
+    principal: Annotated[Principal, Depends(get_principal)],
+    service: Annotated[OpportunityService, Depends(get_opportunity_service)],
+) -> EvaluationSnapshotResponse:
+    """Retrieve latest evaluation snapshot for an opportunity."""
+    opp = service.get_opportunity_for_user(principal.user_id, opportunity_id)
+    if opp is None:
+        raise EntityNotFoundError("Opportunity", opportunity_id)
+
+    eval_dict = opp.metadata.get("evaluation")
+    if not eval_dict or not isinstance(eval_dict, dict):
+        raise EntityNotFoundError("OpportunityEvaluation", opportunity_id)
+
+    snapshot = OpportunityEvaluationSnapshot.from_dict(eval_dict)
+    return _snapshot_to_response(snapshot)
+
+
+@router.post("/{opportunity_id}/shortlist", response_model=OpportunityResponse)
+async def shortlist_opportunity(
+    opportunity_id: str,
+    req: ShortlistOpportunityRequest,
+    request: Request,
+    response: Response,
+    principal: Annotated[Principal, Depends(get_principal)],
+    service: Annotated[OpportunityService, Depends(get_opportunity_service)],
+) -> OpportunityResponse:
+    """Shortlist an opportunity enforcing non-stale evaluation and eligibility policy."""
+    existing = service.get_opportunity_for_user(principal.user_id, opportunity_id)
+    if existing is None:
+        raise EntityNotFoundError("Opportunity", opportunity_id)
+
+    check_if_match(request, "opportunity", existing.opportunity_id, existing.version)
+
+    updated = service.shortlist_opportunity_for_user(
+        user_id=principal.user_id,
+        opportunity_id=opportunity_id,
+        reason=req.reason,
+        override_ineligible=req.override_ineligible,
+    )
+    set_etag_header(response, "opportunity", updated.opportunity_id, updated.version)
+    return make_opportunity_response(updated)
+
+
+@router.post("/{opportunity_id}/convert-to-case", response_model=ConvertToCaseResponse)
+async def convert_opportunity_to_case(
+    opportunity_id: str,
+    req: ConvertToCaseRequest,
+    request: Request,
+    response: Response,
+    principal: Annotated[Principal, Depends(get_principal)],
+    service: Annotated[OpportunityService, Depends(get_opportunity_service)],
+) -> ConvertToCaseResponse:
+    """Convert a shortlisted opportunity to a Case atomically and idempotently.
+
+    Idempotent replay precedes ETag check.
+    First conversion returns 201 Created with Location header.
+    Replay returns 200 OK.
+    """
+    existing = service.get_opportunity_for_user(principal.user_id, opportunity_id)
+    if existing is None:
+        raise EntityNotFoundError("Opportunity", opportunity_id)
+
+    # 1. Idempotent check BEFORE ETag evaluation
+    if existing.status == OpportunityStatus.CONVERTED_TO_CASE and existing.converted_case_id:
+        case, opp, created = service.convert_opportunity_to_case(
+            user_id=principal.user_id,
+            opportunity_id=opportunity_id,
+            case_type=req.case_type,
+            title=req.title,
+            goal=req.goal,
+        )
+        response.status_code = status.HTTP_200_OK
+        set_etag_header(response, "opportunity", opp.opportunity_id, opp.version)
+        return ConvertToCaseResponse(
+            case_id=case.case_id,
+            opportunity_id=opp.opportunity_id,
+            case=case.to_dict(),
+            opportunity=make_opportunity_response(opp),
+            created=False,
+        )
+
+    # 2. First conversion requires valid ETag
+    check_if_match(request, "opportunity", existing.opportunity_id, existing.version)
+
+    case, opp, created = service.convert_opportunity_to_case(
+        user_id=principal.user_id,
+        opportunity_id=opportunity_id,
+        case_type=req.case_type,
+        title=req.title,
+        goal=req.goal,
+    )
+
+    response.status_code = status.HTTP_201_CREATED
+    response.headers["Location"] = f"/api/v1/cases/{case.case_id}"
+    set_etag_header(response, "opportunity", opp.opportunity_id, opp.version)
+
+    return ConvertToCaseResponse(
+        case_id=case.case_id,
+        opportunity_id=opp.opportunity_id,
+        case=case.to_dict(),
+        opportunity=make_opportunity_response(opp),
+        created=created,
+    )
 
 
 @router.post("/{opportunity_id}/transition", response_model=OpportunityResponse)
@@ -122,7 +311,18 @@ async def transition_opportunity(
     principal: Annotated[Principal, Depends(get_principal)],
     service: Annotated[OpportunityService, Depends(get_opportunity_service)],
 ) -> OpportunityResponse:
-    """Transition opportunity status with strict ETag precondition verification."""
+    """Transition opportunity status with strict ETag precondition verification.
+
+    Protected transitions (shortlisted, converted_to_case) are blocked.
+    """
+    if req.new_status in (OpportunityStatus.SHORTLISTED, OpportunityStatus.CONVERTED_TO_CASE):
+        raise InvalidStateTransitionError(
+            "Opportunity",
+            "current",
+            req.new_status.value,
+            f"Cannot transition to '{req.new_status.value}' via generic transition. Use dedicated workflow endpoint.",
+        )
+
     existing = service.get_opportunity_for_user(principal.user_id, opportunity_id)
     if existing is None:
         raise EntityNotFoundError("Opportunity", opportunity_id)
@@ -136,4 +336,4 @@ async def transition_opportunity(
         reason=req.reason,
     )
     set_etag_header(response, "opportunity", updated.opportunity_id, updated.version)
-    return _to_opportunity_response(updated)
+    return make_opportunity_response(updated)

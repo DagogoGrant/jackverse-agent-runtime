@@ -171,8 +171,13 @@ test.describe('Caseworker Real Integration Suite (Live FastAPI + Temporary SQLit
     await expect(page.locator('text=STATUS: DISCOVERED')).toBeVisible();
     await expect(page.locator('text=Distributed Systems')).toBeVisible();
 
-    // 3. Autoritative domain transitions: DISCOVERED -> EVALUATING -> SHORTLISTED
-    const evalBtn = page.locator('button', { hasText: 'Mark Evaluating →' });
+    // 3. Authoritative Phase 5.1 domain pipeline: DISCOVERED -> NORMALIZED -> EVALUATING -> SHORTLISTED -> CONVERTED_TO_CASE
+    const normBtn = page.locator('button', { hasText: 'Structure Requirements →' });
+    await expect(normBtn).toBeVisible();
+    await normBtn.click();
+    await expect(page.locator('text=STATUS: NORMALIZED')).toBeVisible();
+
+    const evalBtn = page.locator('button', { hasText: 'Evaluate Eligibility & Fit ✦' });
     await expect(evalBtn).toBeVisible();
     await evalBtn.click();
     await expect(page.locator('text=STATUS: EVALUATING')).toBeVisible();
@@ -180,7 +185,21 @@ test.describe('Caseworker Real Integration Suite (Live FastAPI + Temporary SQLit
     const shortlistBtn = page.locator('button', { hasText: 'Shortlist Opportunity ★' });
     await expect(shortlistBtn).toBeVisible();
     await shortlistBtn.click();
+
+    const confirmShortlistBtn = page.locator('button', { hasText: 'Confirm Shortlist' });
+    await expect(confirmShortlistBtn).toBeVisible();
+    await confirmShortlistBtn.click();
     await expect(page.locator('text=STATUS: SHORTLISTED')).toBeVisible();
+
+    // 4. Convert to Case
+    const convertBtn = page.locator('button', { hasText: 'Open Application Case →' });
+    await expect(convertBtn).toBeVisible();
+    await convertBtn.click();
+
+    const confirmConvertBtn = page.locator('button', { hasText: 'Open Case Dossier →' });
+    await expect(confirmConvertBtn).toBeVisible();
+    await confirmConvertBtn.click();
+    await expect(page).toHaveURL(/\/cases\/[a-zA-Z0-9_-]+/);
   });
 
   // FLOW E: Context Flow (Sensitive Masking, Personal Detail On-Demand, Supersede Update, and Concurrency)

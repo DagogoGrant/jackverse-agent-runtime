@@ -77,6 +77,10 @@ class OpportunityRepository(Protocol):
         """Retrieve an opportunity by user ID and deduplication fingerprint."""
         ...
 
+    def get_by_fingerprint_v2(self, user_id: str, fingerprint_v2: str) -> Opportunity | None:
+        """Retrieve an opportunity by user ID and V2 deduplication fingerprint."""
+        ...
+
     def list_by_mission(self, mission_id: str) -> list[Opportunity]:
         """List opportunities discovered for a mission."""
         ...

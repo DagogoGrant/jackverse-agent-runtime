@@ -16,6 +16,9 @@ import type {
   CursorPaginatedEvents,
   CreateOpportunityRequest,
   SupersedeFactRequest,
+  ConvertToCaseResponse,
+  EvaluationSnapshotResponse,
+  NormalizeOpportunityResponse,
 } from '../api/types';
 
 // Invalidate on dev user switch
@@ -496,6 +499,140 @@ export function useTransitionOpportunity() {
       queryClient.invalidateQueries({ queryKey: ['opportunities', vars.id] });
       queryClient.invalidateQueries({ queryKey: ['events'] });
     },
+  });
+}
+
+export function useOpportunityEvaluation(opportunityId?: string) {
+  return useQuery({
+    queryKey: ['opportunities', opportunityId, 'evaluation'],
+    queryFn: async () => {
+      if (!opportunityId) return null;
+      try {
+        const res = await apiRequest<EvaluationSnapshotResponse>(`/opportunities/${opportunityId}/evaluation`);
+        return res.data;
+      } catch {
+        return null;
+      }
+    },
+    enabled: Boolean(opportunityId),
+  });
+}
+
+export function useNormalizeOpportunity() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, etag }: { id: string; etag: string }) => {
+      const res = await apiRequest<NormalizeOpportunityResponse>(
+        `/opportunities/${id}/normalize`,
+        { method: 'POST' },
+        etag
+      );
+      return { data: res.data, etag: res.etag };
+    },
+    onSuccess: (_, vars) => {
+      queryClient.invalidateQueries({ queryKey: ['opportunities'] });
+      queryClient.invalidateQueries({ queryKey: ['opportunities', vars.id] });
+      queryClient.invalidateQueries({ queryKey: ['events'] });
+    },
+  });
+}
+
+export function useEvaluateOpportunity() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, etag }: { id: string; etag: string }) => {
+      const res = await apiRequest<EvaluationSnapshotResponse>(
+        `/opportunities/${id}/evaluate`,
+        { method: 'POST' },
+        etag
+      );
+      return { data: res.data, etag: res.etag };
+    },
+    onSuccess: (_, vars) => {
+      queryClient.invalidateQueries({ queryKey: ['opportunities'] });
+      queryClient.invalidateQueries({ queryKey: ['opportunities', vars.id] });
+      queryClient.invalidateQueries({ queryKey: ['opportunities', vars.id, 'evaluation'] });
+      queryClient.invalidateQueries({ queryKey: ['events'] });
+    },
+  });
+}
+
+export function useShortlistOpportunity() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({
+      id,
+      etag,
+      reason,
+      override_ineligible,
+    }: {
+      id: string;
+      etag: string;
+      reason?: string;
+      override_ineligible?: boolean;
+    }) => {
+      const res = await apiRequest<Opportunity>(
+        `/opportunities/${id}/shortlist`,
+        {
+          method: 'POST',
+          body: JSON.stringify({ reason, override_ineligible }),
+        },
+        etag
+      );
+      return { data: res.data, etag: res.etag };
+    },
+    onSuccess: (_, vars) => {
+      queryClient.invalidateQueries({ queryKey: ['opportunities'] });
+      queryClient.invalidateQueries({ queryKey: ['opportunities', vars.id] });
+      queryClient.invalidateQueries({ queryKey: ['events'] });
+    },
+  });
+}
+
+export function useConvertOpportunityToCase() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({
+      id,
+      etag,
+      case_type,
+      title,
+      goal,
+    }: {
+      id: string;
+      etag?: string;
+      case_type?: string;
+      title?: string;
+      goal?: string;
+    }) => {
+      const res = await apiRequest<ConvertToCaseResponse>(
+        `/opportunities/${id}/convert-to-case`,
+        {
+          method: 'POST',
+          body: JSON.stringify({ case_type, title, goal }),
+        },
+        etag
+      );
+      return res.data;
+    },
+    onSuccess: (_, vars) => {
+      queryClient.invalidateQueries({ queryKey: ['opportunities'] });
+      queryClient.invalidateQueries({ queryKey: ['opportunities', vars.id] });
+      queryClient.invalidateQueries({ queryKey: ['cases'] });
+      queryClient.invalidateQueries({ queryKey: ['events'] });
+    },
+  });
+}
+
+export function useMissionOpportunities(missionId?: string) {
+  return useQuery({
+    queryKey: ['missions', missionId, 'opportunities'],
+    queryFn: async () => {
+      if (!missionId) return [];
+      const res = await apiRequest<Opportunity[]>(`/missions/${missionId}/opportunities`);
+      return res.data;
+    },
+    enabled: Boolean(missionId),
   });
 }
 

@@ -372,8 +372,8 @@ class SQLiteOpportunityRepository(OpportunityRepository):
                         opportunity_id, mission_id, user_id, opportunity_type,
                         title, organization, source_url, source_name, location,
                         status, requirements, metadata, fingerprint,
-                        discovered_at, deadline, version
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        discovered_at, deadline, version, converted_case_id, fingerprint_v2
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         opportunity.opportunity_id,
@@ -392,6 +392,8 @@ class SQLiteOpportunityRepository(OpportunityRepository):
                         to_iso_utc(opportunity.discovered_at),
                         to_iso_utc(opportunity.deadline),
                         opportunity.version,
+                        opportunity.converted_case_id,
+                        opportunity.fingerprint_v2,
                     ),
                 )
             except sqlite3.IntegrityError as e:
@@ -406,7 +408,7 @@ class SQLiteOpportunityRepository(OpportunityRepository):
                     mission_id = ?, user_id = ?, opportunity_type = ?, title = ?,
                     organization = ?, source_url = ?, source_name = ?, location = ?,
                     status = ?, requirements = ?, metadata = ?, fingerprint = ?,
-                    deadline = ?, version = ?
+                    deadline = ?, version = ?, converted_case_id = ?, fingerprint_v2 = ?
                 WHERE opportunity_id = ? AND version = ?
                 """,
                 (
@@ -424,6 +426,8 @@ class SQLiteOpportunityRepository(OpportunityRepository):
                     opportunity.fingerprint,
                     to_iso_utc(opportunity.deadline),
                     opportunity.version,
+                    opportunity.converted_case_id,
+                    opportunity.fingerprint_v2,
                     opportunity.opportunity_id,
                     expected_version,
                 ),
@@ -449,6 +453,8 @@ class SQLiteOpportunityRepository(OpportunityRepository):
             discovered_at=from_iso_utc(row[13]),
             deadline=from_iso_utc(row[14]),
             version=row[15],
+            converted_case_id=row[16] if len(row) > 16 else None,
+            fingerprint_v2=row[17] if len(row) > 17 else "",
         )
 
     def get_by_id(self, opportunity_id: str) -> Opportunity | None:
@@ -458,7 +464,7 @@ class SQLiteOpportunityRepository(OpportunityRepository):
             SELECT opportunity_id, mission_id, user_id, opportunity_type,
                    title, organization, source_url, source_name, location,
                    status, requirements, metadata, fingerprint,
-                   discovered_at, deadline, version
+                   discovered_at, deadline, version, converted_case_id, fingerprint_v2
             FROM opportunities WHERE opportunity_id = ?
             """,
             (opportunity_id,),
@@ -471,12 +477,29 @@ class SQLiteOpportunityRepository(OpportunityRepository):
         cur.execute(
             """
             SELECT opportunity_id, mission_id, user_id, opportunity_type,
-                   title, organization, source_url, source_name, location,
-                   status, requirements, metadata, fingerprint,
-                   discovered_at, deadline, version
+               title, organization, source_url, source_name, location,
+               status, requirements, metadata, fingerprint,
+               discovered_at, deadline, version, converted_case_id, fingerprint_v2
             FROM opportunities WHERE user_id = ? AND fingerprint = ?
             """,
             (user_id, fingerprint),
+        )
+        row = cur.fetchone()
+        return self._row_to_opportunity(row) if row else None
+
+    def get_by_fingerprint_v2(self, user_id: str, fingerprint_v2: str) -> Opportunity | None:
+        cur = self.conn.cursor()
+        cur.execute(
+            """
+            SELECT opportunity_id, mission_id, user_id, opportunity_type,
+                   title, organization, source_url, source_name, location,
+                   status, requirements, metadata, fingerprint,
+                   discovered_at, deadline, version, converted_case_id, fingerprint_v2
+            FROM opportunities WHERE user_id = ? AND fingerprint_v2 = ?
+            ORDER BY discovered_at DESC
+            LIMIT 1
+            """,
+            (user_id, fingerprint_v2),
         )
         row = cur.fetchone()
         return self._row_to_opportunity(row) if row else None
@@ -488,7 +511,7 @@ class SQLiteOpportunityRepository(OpportunityRepository):
             SELECT opportunity_id, mission_id, user_id, opportunity_type,
                    title, organization, source_url, source_name, location,
                    status, requirements, metadata, fingerprint,
-                   discovered_at, deadline, version
+                   discovered_at, deadline, version, converted_case_id, fingerprint_v2
             FROM opportunities WHERE mission_id = ?
             ORDER BY discovered_at DESC
             """,
@@ -504,7 +527,7 @@ class SQLiteOpportunityRepository(OpportunityRepository):
                 SELECT opportunity_id, mission_id, user_id, opportunity_type,
                        title, organization, source_url, source_name, location,
                        status, requirements, metadata, fingerprint,
-                       discovered_at, deadline, version
+                       discovered_at, deadline, version, converted_case_id, fingerprint_v2
                 FROM opportunities WHERE user_id = ? AND status = ?
                 ORDER BY discovered_at DESC
                 """,
@@ -516,7 +539,7 @@ class SQLiteOpportunityRepository(OpportunityRepository):
                 SELECT opportunity_id, mission_id, user_id, opportunity_type,
                        title, organization, source_url, source_name, location,
                        status, requirements, metadata, fingerprint,
-                       discovered_at, deadline, version
+                       discovered_at, deadline, version, converted_case_id, fingerprint_v2
                 FROM opportunities WHERE user_id = ?
                 ORDER BY discovered_at DESC
                 """,

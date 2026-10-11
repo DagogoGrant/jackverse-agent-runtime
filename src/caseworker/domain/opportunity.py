@@ -19,23 +19,22 @@ from caseworker.domain.types import (
 )
 
 FINGERPRINT_SCHEMA_V1 = "opp_v1"
+FINGERPRINT_SCHEMA_V2 = "opp_v2"
 
 _VALID_OPPORTUNITY_TRANSITIONS: dict[OpportunityStatus, set[OpportunityStatus]] = {
     OpportunityStatus.DISCOVERED: {
         OpportunityStatus.NORMALIZED,
-        OpportunityStatus.EVALUATING,
         OpportunityStatus.ARCHIVED,
         OpportunityStatus.REJECTED,
     },
     OpportunityStatus.NORMALIZED: {
         OpportunityStatus.EVALUATING,
-        OpportunityStatus.SHORTLISTED,
         OpportunityStatus.ARCHIVED,
         OpportunityStatus.REJECTED,
     },
     OpportunityStatus.EVALUATING: {
         OpportunityStatus.SHORTLISTED,
-        OpportunityStatus.CONVERTED_TO_CASE,
+        OpportunityStatus.EVALUATING,
         OpportunityStatus.ARCHIVED,
         OpportunityStatus.REJECTED,
     },
@@ -55,10 +54,12 @@ class Opportunity:
     """An external prospect discovered for a user (e.g. job posting, grant, rental unit).
 
     Deduplication Scope:
-        The deduplication fingerprint is deterministically computed from:
-        (schema_version, opportunity_type, organization.lower(), title.lower(), source_url.lower()).
-        Notice that `mission_id` and `discovered_at` are intentionally EXCLUDED so the same
-        real-world opportunity can be recognized across multiple missions and discovery runs.
+        - V1 fingerprint (legacy / backwards compatibility):
+          (schema_version, opportunity_type, organization.lower(), title.lower(), source_url.lower()).
+        - V2 fingerprint (cross-source deduplication):
+          (schema_version, opportunity_type, organization.lower(), title.lower(), location.lower()).
+          Notice that `source_url` is intentionally EXCLUDED in V2 so cross-source duplicates
+          (e.g. same job on LinkedIn vs Indeed) are detected.
     """
 
     user_id: str
@@ -77,6 +78,8 @@ class Opportunity:
     discovered_at: datetime = field(default_factory=now_utc)
     deadline: datetime | None = None
     version: int = 1
+    converted_case_id: str | None = None
+    fingerprint_v2: str = ""
 
     def __post_init__(self) -> None:
         if not self.opportunity_id or not self.opportunity_id.strip():
@@ -102,9 +105,11 @@ class Opportunity:
         if isinstance(self.status, str) and not isinstance(self.status, OpportunityStatus):
             self.status = OpportunityStatus(self.status)
 
-        # Ensure deterministic deduplication fingerprint
+        # Ensure deterministic deduplication fingerprints
         if not self.fingerprint:
             self.fingerprint = self.compute_fingerprint()
+        if not self.fingerprint_v2:
+            self.fingerprint_v2 = self.compute_fingerprint_v2()
 
     @property
     def opportunity_type_str(self) -> str:
@@ -115,7 +120,7 @@ class Opportunity:
         )
 
     def compute_fingerprint(self) -> str:
-        """Compute stable SHA-256 fingerprint for identity and deduplication."""
+        """Compute stable SHA-256 fingerprint for identity and deduplication (V1)."""
         components = [
             FINGERPRINT_SCHEMA_V1,
             self.opportunity_type_str,
@@ -125,6 +130,50 @@ class Opportunity:
         ]
         canonical = canonical_json_dumps(components)
         return compute_sha256(canonical)
+
+    def compute_fingerprint_v2(self) -> str:
+        """Compute stable SHA-256 fingerprint for cross-source deduplication (V2)."""
+        components = [
+            FINGERPRINT_SCHEMA_V2,
+            self.opportunity_type_str,
+            (self.organization or "").strip().lower(),
+            self.title.strip().lower(),
+            (self.location or "").strip().lower(),
+        ]
+        canonical = canonical_json_dumps(components)
+        return compute_sha256(canonical)
+
+    def compute_input_hash(self, mission_goal: str = "", mission_constraints: list[str] | None = None) -> str:
+        """Compute deterministic hash of evaluation inputs (opportunity fields and mission context)."""
+        raw_reqs = sorted(self.requirements)
+        norm_reqs = self.metadata.get("normalized_requirements", [])
+        constraints = sorted(mission_constraints or [])
+        components = [
+            self.title.strip(),
+            (self.organization or "").strip(),
+            self.opportunity_type_str,
+            (self.location or "").strip(),
+            raw_reqs,
+            norm_reqs,
+            mission_goal.strip(),
+            constraints,
+        ]
+        return compute_sha256(canonical_json_dumps(components))
+
+    def record_evaluation(self, snapshot_dict: dict[str, Any]) -> None:
+        """Record versioned evaluation snapshot in metadata."""
+        self.metadata["evaluation"] = snapshot_dict
+
+    def is_evaluation_stale(self, current_input_hash: str, current_context_hash: str) -> bool:
+        """Check if recorded evaluation is stale compared to current hashes."""
+        eval_meta = self.metadata.get("evaluation")
+        if not eval_meta or not isinstance(eval_meta, dict):
+            return True
+        stored_input_hash = eval_meta.get("evaluation_input_hash")
+        stored_context_hash = eval_meta.get("context_snapshot_hash")
+        if not stored_input_hash or not stored_context_hash:
+            return True
+        return stored_input_hash != current_input_hash or stored_context_hash != current_context_hash
 
     def transition_to(self, new_status: OpportunityStatus, reason: str | None = None) -> None:
         """Execute state machine transition with invariant check."""
@@ -173,6 +222,8 @@ class Opportunity:
             "discovered_at": to_iso_utc(self.discovered_at),
             "deadline": to_iso_utc(self.deadline),
             "version": self.version,
+            "converted_case_id": self.converted_case_id,
+            "fingerprint_v2": self.fingerprint_v2,
         }
 
     @classmethod
@@ -195,4 +246,6 @@ class Opportunity:
             discovered_at=from_iso_utc(data["discovered_at"]) or now_utc(),
             deadline=from_iso_utc(data.get("deadline")),
             version=int(data.get("version", 1)),
+            converted_case_id=data.get("converted_case_id"),
+            fingerprint_v2=data.get("fingerprint_v2", ""),
         )

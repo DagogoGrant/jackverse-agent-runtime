@@ -4,6 +4,7 @@ import { ArrowUpRight, AlertTriangle } from 'lucide-react';
 import {
   useMission,
   useMissionCases,
+  useMissionOpportunities,
   useCreateCase,
   useTransitionMission,
   useCancelMission,
@@ -32,6 +33,7 @@ export const MissionDetailView: React.FC = () => {
 
   const { data: missionData, isLoading: missionLoading, error: missionError, refetch: refetchMission } = useMission(missionId);
   const { data: cases, isLoading: casesLoading } = useMissionCases(missionId);
+  const { data: missionOppsData, isLoading: missionOppsLoading } = useMissionOpportunities(missionId);
   const { data: eventsData } = useEvents();
 
   const createCase = useCreateCase();
@@ -86,6 +88,8 @@ export const MissionDetailView: React.FC = () => {
   const sortedCases = [...(cases || [])].sort(
     (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
   );
+  const missionOpps = missionOppsData || [];
+  const shortlistedCount = missionOpps.filter((o) => o.status === 'shortlisted').length;
 
   const handleTransition = async (newStatus: string) => {
     if (!etag) return;
@@ -497,6 +501,85 @@ export const MissionDetailView: React.FC = () => {
               })}
             </div>
           )}
+
+          {/* Editorial Opportunities Section */}
+          <div className="space-y-6 pt-4">
+            <div className="flex items-baseline justify-between border-b border-jv-rule pb-2">
+              <div className="flex items-baseline gap-3">
+                <h2 className="font-interface font-medium text-xl text-jv-ink tracking-tight">
+                  Opportunities
+                </h2>
+                <span className="font-machine text-xs text-jv-muted">
+                  {missionOpps.length} {shortlistedCount > 0 ? `(${shortlistedCount} shortlisted)` : ''}
+                </span>
+              </div>
+              <Link
+                to="/opportunities"
+                className="font-interface text-xs text-jv-muted hover:text-jv-ink transition-colors"
+              >
+                View all pipeline →
+              </Link>
+            </div>
+
+            {missionOppsLoading ? (
+              <div className="py-8 font-interface text-sm text-jv-muted">Loading opportunities…</div>
+            ) : missionOpps.length === 0 ? (
+              <div className="py-8 text-center space-y-1 border-b border-jv-rule">
+                <p className="font-interface text-sm text-jv-ink">No opportunities linked to this mission yet.</p>
+                <p className="text-xs text-jv-muted">
+                  Ingested or discovered leads associated with this mission will appear here.
+                </p>
+              </div>
+            ) : (
+              <div className="divide-y divide-jv-rule border-b border-jv-rule">
+                {missionOpps.map((opp, index) => {
+                  const folio = String(index + 1).padStart(2, '0');
+                  return (
+                    <Link
+                      key={opp.opportunity_id}
+                      to={`/opportunities/${opp.opportunity_id}`}
+                      onClick={(e) => {
+                        e.preventDefault();
+                        startViewTransition(() => {
+                          navigate(`/opportunities/${opp.opportunity_id}`);
+                        });
+                      }}
+                      className="py-4 group flex items-baseline justify-between gap-4 px-3 -mx-3 hover:bg-jv-surface transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-jv-ink focus-visible:bg-jv-surface"
+                    >
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-3">
+                          <span className="font-machine text-xs text-jv-muted" title={opp.opportunity_id}>
+                            {folio}
+                          </span>
+                          <span className="font-interface font-medium text-base text-jv-ink group-hover:translate-x-1 transition-transform duration-fast ease-editorial">
+                            {opp.title}
+                          </span>
+                        </div>
+                        <div className="font-interface text-xs text-jv-muted pl-8 sm:pl-9">
+                          {opp.organization ? `${opp.organization} · ` : ''}
+                          {opp.opportunity_type.replace(/_/g, ' ')}
+                          {opp.location ? ` · ${opp.location}` : ''}
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-4 shrink-0">
+                        {opp.evaluation_summary && (
+                          <div className="hidden sm:flex items-center gap-1.5 font-machine text-xs">
+                            <span className="font-medium text-jv-ink">{Math.round(opp.evaluation_summary.fit_score)}/100</span>
+                            <span className="text-[10px] uppercase text-jv-muted px-1.5 py-0.5 border border-jv-rule">
+                              {opp.evaluation_summary.eligibility_status}
+                            </span>
+                          </div>
+                        )}
+                        <TextureBadge status={opp.status} />
+                        <ArrowUpRight className="w-4 h-4 text-jv-muted group-hover:text-jv-ink transition-colors" />
+                      </div>
+                    </Link>
+                  );
+                })}
+              </div>
+            )}
+          </div>
         </div>
 
         {/* Right Column: Mission Chronicle (4 cols) */}

@@ -215,6 +215,87 @@ def make_opportunity_status_changed_event(
     )
 
 
+def make_opportunity_normalized_event(
+    opportunity_id: str,
+    user_id: str,
+    aggregate_version: int,
+    requirements_count: int,
+) -> DomainEvent:
+    return DomainEvent(
+        event_type="opportunity.normalized",
+        aggregate_type="opportunity",
+        aggregate_id=opportunity_id,
+        aggregate_version=aggregate_version,
+        user_id=user_id,
+        payload={"requirements_count": requirements_count},
+    )
+
+
+def make_opportunity_evaluated_event(
+    opportunity_id: str,
+    user_id: str,
+    aggregate_version: int,
+    eligibility_status: str,
+    fit_score: float,
+    fit_tier: str,
+    coverage: float,
+) -> DomainEvent:
+    return DomainEvent(
+        event_type="opportunity.evaluated",
+        aggregate_type="opportunity",
+        aggregate_id=opportunity_id,
+        aggregate_version=aggregate_version,
+        user_id=user_id,
+        payload={
+            "eligibility_status": eligibility_status,
+            "fit_score": fit_score,
+            "fit_tier": fit_tier,
+            "coverage": coverage,
+        },
+    )
+
+
+def make_opportunity_shortlisted_event(
+    opportunity_id: str,
+    user_id: str,
+    aggregate_version: int,
+    reason: str | None = None,
+    overridden: bool = False,
+) -> DomainEvent:
+    return DomainEvent(
+        event_type="opportunity.shortlisted",
+        aggregate_type="opportunity",
+        aggregate_id=opportunity_id,
+        aggregate_version=aggregate_version,
+        user_id=user_id,
+        payload={"reason": reason, "overridden": overridden},
+    )
+
+
+def make_opportunity_converted_to_case_event(
+    opportunity_id: str,
+    user_id: str,
+    aggregate_version: int,
+    case_id: str,
+    mission_id: str | None,
+    old_status: str,
+    new_status: str,
+) -> DomainEvent:
+    return DomainEvent(
+        event_type="opportunity.converted_to_case",
+        aggregate_type="opportunity",
+        aggregate_id=opportunity_id,
+        aggregate_version=aggregate_version,
+        user_id=user_id,
+        payload={
+            "case_id": case_id,
+            "mission_id": mission_id,
+            "old_status": old_status,
+            "new_status": new_status,
+        },
+    )
+
+
 def make_action_proposed_event(
     action_id: str,
     case_id: str,

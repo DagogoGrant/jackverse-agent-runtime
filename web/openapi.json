@@ -549,6 +549,84 @@
         "title": "ContextPackageResponse",
         "type": "object"
       },
+      "ConvertToCaseRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "case_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Optional override for CaseType.",
+            "title": "Case Type"
+          },
+          "goal": {
+            "anyOf": [
+              {
+                "maxLength": 1000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Optional custom goal for the Case.",
+            "title": "Goal"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "maxLength": 255,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Optional custom title for the Case.",
+            "title": "Title"
+          }
+        },
+        "title": "ConvertToCaseRequest",
+        "type": "object"
+      },
+      "ConvertToCaseResponse": {
+        "properties": {
+          "case": {
+            "additionalProperties": true,
+            "title": "Case",
+            "type": "object"
+          },
+          "case_id": {
+            "title": "Case Id",
+            "type": "string"
+          },
+          "created": {
+            "title": "Created",
+            "type": "boolean"
+          },
+          "opportunity": {
+            "$ref": "#/components/schemas/OpportunityResponse"
+          },
+          "opportunity_id": {
+            "title": "Opportunity Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "case_id",
+          "opportunity_id",
+          "case",
+          "opportunity",
+          "created"
+        ],
+        "title": "ConvertToCaseResponse",
+        "type": "object"
+      },
       "CreateCaseRequest": {
         "additionalProperties": false,
         "properties": {
@@ -935,10 +1013,138 @@
         "title": "DomainEventResponse",
         "type": "object"
       },
+      "EligibilityResultResponse": {
+        "properties": {
+          "contradicted_requirements": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Contradicted Requirements",
+            "type": "array"
+          },
+          "coverage": {
+            "title": "Coverage",
+            "type": "number"
+          },
+          "mandatory_met": {
+            "title": "Mandatory Met",
+            "type": "integer"
+          },
+          "mandatory_total": {
+            "title": "Mandatory Total",
+            "type": "integer"
+          },
+          "missing_or_unknown_requirements": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Missing Or Unknown Requirements",
+            "type": "array"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "coverage",
+          "mandatory_met",
+          "mandatory_total"
+        ],
+        "title": "EligibilityResultResponse",
+        "type": "object"
+      },
       "EvaluateClaimRequest": {
         "additionalProperties": false,
         "properties": {},
         "title": "EvaluateClaimRequest",
+        "type": "object"
+      },
+      "EvaluationSnapshotResponse": {
+        "properties": {
+          "context_snapshot_hash": {
+            "title": "Context Snapshot Hash",
+            "type": "string"
+          },
+          "eligibility": {
+            "$ref": "#/components/schemas/EligibilityResultResponse"
+          },
+          "evaluated_at": {
+            "title": "Evaluated At",
+            "type": "string"
+          },
+          "evaluation_id": {
+            "title": "Evaluation Id",
+            "type": "string"
+          },
+          "evaluation_input_hash": {
+            "title": "Evaluation Input Hash",
+            "type": "string"
+          },
+          "evaluation_policy": {
+            "title": "Evaluation Policy",
+            "type": "string"
+          },
+          "evidence": {
+            "items": {
+              "$ref": "#/components/schemas/RequirementEvidenceResponse"
+            },
+            "title": "Evidence",
+            "type": "array"
+          },
+          "fit": {
+            "$ref": "#/components/schemas/FitScoreComponentsResponse"
+          }
+        },
+        "required": [
+          "evaluation_id",
+          "evaluated_at",
+          "evaluation_policy",
+          "eligibility",
+          "fit",
+          "evaluation_input_hash",
+          "context_snapshot_hash"
+        ],
+        "title": "EvaluationSnapshotResponse",
+        "type": "object"
+      },
+      "EvaluationSummary": {
+        "properties": {
+          "coverage": {
+            "title": "Coverage",
+            "type": "number"
+          },
+          "eligibility_status": {
+            "title": "Eligibility Status",
+            "type": "string"
+          },
+          "evaluated_at": {
+            "title": "Evaluated At",
+            "type": "string"
+          },
+          "fit_score": {
+            "title": "Fit Score",
+            "type": "number"
+          },
+          "fit_tier": {
+            "title": "Fit Tier",
+            "type": "string"
+          },
+          "is_stale": {
+            "default": false,
+            "title": "Is Stale",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "eligibility_status",
+          "fit_score",
+          "fit_tier",
+          "coverage",
+          "evaluated_at"
+        ],
+        "title": "EvaluationSummary",
         "type": "object"
       },
       "FactResponse": {
@@ -1161,6 +1367,51 @@
         "title": "FactSummaryResponse",
         "type": "object"
       },
+      "FitScoreComponentsResponse": {
+        "properties": {
+          "explanations": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Explanations",
+            "type": "array"
+          },
+          "fit_tier": {
+            "title": "Fit Tier",
+            "type": "string"
+          },
+          "location_score": {
+            "title": "Location Score",
+            "type": "number"
+          },
+          "preferred_reqs_score": {
+            "title": "Preferred Reqs Score",
+            "type": "number"
+          },
+          "seniority_score": {
+            "title": "Seniority Score",
+            "type": "number"
+          },
+          "skills_score": {
+            "title": "Skills Score",
+            "type": "number"
+          },
+          "total_score": {
+            "title": "Total Score",
+            "type": "number"
+          }
+        },
+        "required": [
+          "skills_score",
+          "preferred_reqs_score",
+          "location_score",
+          "seniority_score",
+          "total_score",
+          "fit_tier"
+        ],
+        "title": "FitScoreComponentsResponse",
+        "type": "object"
+      },
       "HTTPValidationError": {
         "properties": {
           "detail": {
@@ -1291,8 +1542,86 @@
         "title": "MissionStatus",
         "type": "string"
       },
+      "NormalizeOpportunityResponse": {
+        "properties": {
+          "opportunity_id": {
+            "title": "Opportunity Id",
+            "type": "string"
+          },
+          "requirements": {
+            "items": {
+              "$ref": "#/components/schemas/NormalizedRequirementResponse"
+            },
+            "title": "Requirements",
+            "type": "array"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "opportunity_id",
+          "requirements",
+          "status",
+          "version"
+        ],
+        "title": "NormalizeOpportunityResponse",
+        "type": "object"
+      },
+      "NormalizedRequirementResponse": {
+        "properties": {
+          "category": {
+            "title": "Category",
+            "type": "string"
+          },
+          "criterion": {
+            "title": "Criterion",
+            "type": "string"
+          },
+          "normalization_status": {
+            "title": "Normalization Status",
+            "type": "string"
+          },
+          "raw_text": {
+            "title": "Raw Text",
+            "type": "string"
+          },
+          "requirement_id": {
+            "title": "Requirement Id",
+            "type": "string"
+          },
+          "value": {
+            "title": "Value"
+          }
+        },
+        "required": [
+          "requirement_id",
+          "raw_text",
+          "criterion",
+          "category",
+          "normalization_status"
+        ],
+        "title": "NormalizedRequirementResponse",
+        "type": "object"
+      },
       "OpportunityResponse": {
         "properties": {
+          "converted_case_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Converted Case Id"
+          },
           "deadline": {
             "anyOf": [
               {
@@ -1308,9 +1637,30 @@
             "title": "Discovered At",
             "type": "string"
           },
+          "evaluation_summary": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/EvaluationSummary"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "fingerprint": {
             "title": "Fingerprint",
             "type": "string"
+          },
+          "fingerprint_v2": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fingerprint V2"
           },
           "location": {
             "default": "",
@@ -1971,6 +2321,62 @@
         "title": "RejectFactRequest",
         "type": "object"
       },
+      "RequirementEvidenceResponse": {
+        "properties": {
+          "fact_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fact Id"
+          },
+          "fact_version": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fact Version"
+          },
+          "match_result": {
+            "title": "Match Result",
+            "type": "string"
+          },
+          "notes": {
+            "default": "",
+            "title": "Notes",
+            "type": "string"
+          },
+          "requirement_id": {
+            "title": "Requirement Id",
+            "type": "string"
+          },
+          "verification_status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Verification Status"
+          }
+        },
+        "required": [
+          "requirement_id",
+          "match_result"
+        ],
+        "title": "RequirementEvidenceResponse",
+        "type": "object"
+      },
       "RequirementItem": {
         "properties": {
           "is_mandatory": {
@@ -2095,6 +2501,32 @@
         ],
         "title": "SensitivityLevel",
         "type": "string"
+      },
+      "ShortlistOpportunityRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "override_ineligible": {
+            "default": false,
+            "description": "Explicit override if evaluated as INELIGIBLE.",
+            "title": "Override Ineligible",
+            "type": "boolean"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "maxLength": 1000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Shortlisting rationale.",
+            "title": "Reason"
+          }
+        },
+        "title": "ShortlistOpportunityRequest",
+        "type": "object"
       },
       "SourceType": {
         "description": "Provenance origin of personal context facts and sources.",
@@ -4258,6 +4690,53 @@
         ]
       }
     },
+    "/api/v1/missions/{mission_id}/opportunities": {
+      "get": {
+        "description": "List all opportunities discovered for a mission.",
+        "operationId": "list_mission_opportunities_api_v1_missions__mission_id__opportunities_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "mission_id",
+            "required": true,
+            "schema": {
+              "title": "Mission Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/OpportunityResponse"
+                  },
+                  "title": "Response List Mission Opportunities Api V1 Missions  Mission Id  Opportunities Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Mission Opportunities",
+        "tags": [
+          "missions"
+        ]
+      }
+    },
     "/api/v1/missions/{mission_id}/pause": {
       "post": {
         "description": "Convenience endpoint to pause an active mission.",
@@ -4632,9 +5111,244 @@
         ]
       }
     },
+    "/api/v1/opportunities/{opportunity_id}/convert-to-case": {
+      "post": {
+        "description": "Convert a shortlisted opportunity to a Case atomically and idempotently.\n\nIdempotent replay precedes ETag check.\nFirst conversion returns 201 Created with Location header.\nReplay returns 200 OK.",
+        "operationId": "convert_opportunity_to_case_api_v1_opportunities__opportunity_id__convert_to_case_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "opportunity_id",
+            "required": true,
+            "schema": {
+              "title": "Opportunity Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConvertToCaseRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConvertToCaseResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Convert Opportunity To Case",
+        "tags": [
+          "opportunities"
+        ]
+      }
+    },
+    "/api/v1/opportunities/{opportunity_id}/evaluate": {
+      "post": {
+        "description": "Evaluate tri-state eligibility and explainable fit against purpose-gated context facts.",
+        "operationId": "evaluate_opportunity_api_v1_opportunities__opportunity_id__evaluate_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "opportunity_id",
+            "required": true,
+            "schema": {
+              "title": "Opportunity Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvaluationSnapshotResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Evaluate Opportunity",
+        "tags": [
+          "opportunities"
+        ]
+      }
+    },
+    "/api/v1/opportunities/{opportunity_id}/evaluation": {
+      "get": {
+        "description": "Retrieve latest evaluation snapshot for an opportunity.",
+        "operationId": "get_opportunity_evaluation_api_v1_opportunities__opportunity_id__evaluation_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "opportunity_id",
+            "required": true,
+            "schema": {
+              "title": "Opportunity Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvaluationSnapshotResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Opportunity Evaluation",
+        "tags": [
+          "opportunities"
+        ]
+      }
+    },
+    "/api/v1/opportunities/{opportunity_id}/normalize": {
+      "post": {
+        "description": "Normalize opportunity requirements into opp_req_v1 structured criteria.",
+        "operationId": "normalize_opportunity_api_v1_opportunities__opportunity_id__normalize_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "opportunity_id",
+            "required": true,
+            "schema": {
+              "title": "Opportunity Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NormalizeOpportunityResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Normalize Opportunity",
+        "tags": [
+          "opportunities"
+        ]
+      }
+    },
+    "/api/v1/opportunities/{opportunity_id}/shortlist": {
+      "post": {
+        "description": "Shortlist an opportunity enforcing non-stale evaluation and eligibility policy.",
+        "operationId": "shortlist_opportunity_api_v1_opportunities__opportunity_id__shortlist_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "opportunity_id",
+            "required": true,
+            "schema": {
+              "title": "Opportunity Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ShortlistOpportunityRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OpportunityResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Shortlist Opportunity",
+        "tags": [
+          "opportunities"
+        ]
+      }
+    },
     "/api/v1/opportunities/{opportunity_id}/transition": {
       "post": {
-        "description": "Transition opportunity status with strict ETag precondition verification.",
+        "description": "Transition opportunity status with strict ETag precondition verification.\n\nProtected transitions (shortlisted, converted_to_case) are blocked.",
         "operationId": "transition_opportunity_api_v1_opportunities__opportunity_id__transition_post",
         "parameters": [
           {
