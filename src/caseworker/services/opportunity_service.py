@@ -137,18 +137,56 @@ class OpportunityService:
                 external_posting_id=external_posting_id,
             )
 
-            # Check cross-source V2 deduplication fingerprint first
+            # A. Canonical external_posting_id deduplication (strongest identity signal)
+            inc_ext = (opp.external_posting_id or "").strip()
+            if inc_ext:
+                ext_matches = uow.opportunities.list_by_external_posting_id(user_id, inc_ext)
+                compatible_ext = [
+                    c for c in ext_matches
+                    if c.opportunity_type_str == opp.opportunity_type_str
+                    and (
+                        not opp.organization.strip()
+                        or not c.organization.strip()
+                        or c.organization.strip().lower() == opp.organization.strip().lower()
+                    )
+                ]
+                if len(compatible_ext) == 1:
+                    return compatible_ext[0], False
+                elif len(compatible_ext) > 1:
+                    # Ambiguous collision on canonical ID: do NOT auto-merge; create new record
+                    uow.opportunities.save(opp)
+                    event = make_opportunity_discovered_event(
+                        opportunity_id=opp.opportunity_id,
+                        user_id=opp.user_id,
+                        aggregate_version=opp.version,
+                        payload=opp.to_dict(),
+                    )
+                    uow.events.append(event)
+                    return opp, True
+
+            # B. Fallback cross-source fingerprint_v2 deduplication
             matches_v2 = uow.opportunities.list_by_fingerprint_v2(user_id, opp.fingerprint_v2)
-            if len(matches_v2) == 1:
-                return matches_v2[0], False
-            elif len(matches_v2) > 1:
+            compatible_v2: list[Opportunity] = []
+            for candidate in matches_v2:
+                cand_ext = (candidate.external_posting_id or "").strip()
+                # If incoming and candidate BOTH have non-empty external_posting_id and IDs differ:
+                # candidate is NOT a duplicate (different job requisitions at same company/location).
+                if cand_ext and inc_ext and cand_ext != inc_ext:
+                    continue
+                compatible_v2.append(candidate)
+
+            if len(compatible_v2) == 1:
+                return compatible_v2[0], False
+            elif len(compatible_v2) > 1:
                 # Ambiguous collision: do NOT merge; create new record
                 pass
             else:
-                # Check legacy V1 fingerprint
+                # Check legacy V1 fingerprint if not conflicting on external_posting_id
                 existing = uow.opportunities.get_by_fingerprint(user_id, opp.fingerprint)
                 if existing is not None:
-                    return existing, False
+                    cand_ext = (existing.external_posting_id or "").strip()
+                    if not (cand_ext and inc_ext and cand_ext != inc_ext):
+                        return existing, False
 
             uow.opportunities.save(opp)
             event = make_opportunity_discovered_event(

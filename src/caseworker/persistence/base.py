@@ -85,6 +85,10 @@ class OpportunityRepository(Protocol):
         """List opportunities matching user ID and V2 fingerprint (for ambiguous collision detection)."""
         ...
 
+    def list_by_external_posting_id(self, user_id: str, external_posting_id: str) -> list[Opportunity]:
+        """List opportunities matching user ID and external posting ID."""
+        ...
+
     def list_by_mission(self, mission_id: str) -> list[Opportunity]:
         """List opportunities discovered for a mission."""
         ...

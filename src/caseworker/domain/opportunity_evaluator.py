@@ -245,6 +245,19 @@ def _extract_cefr_level(text: str) -> int | None:
     return None
 
 
+def _is_fact_verified(verification_status: VerificationStatus | str | None) -> bool:
+    if verification_status is None:
+        return False
+    if isinstance(verification_status, VerificationStatus):
+        return verification_status in (VerificationStatus.USER_VERIFIED, VerificationStatus.SOURCE_VERIFIED)
+    return str(verification_status).lower() in (
+        VerificationStatus.USER_VERIFIED.value,
+        VerificationStatus.SOURCE_VERIFIED.value,
+        "user_verified",
+        "source_verified",
+    )
+
+
 class OpportunityEvaluator:
     """Evaluates an Opportunity against purpose-gated user ContextFacts."""
 
@@ -534,12 +547,19 @@ class OpportunityEvaluator:
                     if lang in req_text and (lang in key_str or lang in val_str):
                         matched_lf = lf
                         fact_level = _extract_cefr_level(val_str) or _extract_cefr_level(key_str)
-                        if req_level is not None and fact_level is not None:
-                            if fact_level < req_level:
+                        if req_level is not None:
+                            if fact_level is None:
+                                match_res = RequirementMatchResult.UNKNOWN
+                                notes = "Required CEFR level specified, but context fact proficiency level is unstated/unknown"
+                            elif fact_level < req_level:
                                 return RequirementMatchResult.NOT_MET, lf, f"Language level ({fact_level}) is below required level ({req_level})"
                             else:
-                                match_res = RequirementMatchResult.MET
-                                notes = f"Language level ({fact_level}) meets or exceeds requirement ({req_level})"
+                                if lf.verification_status in (VerificationStatus.USER_VERIFIED, VerificationStatus.SOURCE_VERIFIED):
+                                    match_res = RequirementMatchResult.MET
+                                    notes = f"Language level ({fact_level}) meets or exceeds requirement ({req_level})"
+                                else:
+                                    match_res = RequirementMatchResult.UNKNOWN
+                                    notes = f"Language level ({fact_level}) meets requirement ({req_level}) but context evidence is unverified"
                         else:
                             match_res = RequirementMatchResult.MET
                             notes = "Language documented in context vault"
@@ -613,13 +633,20 @@ class OpportunityEvaluator:
         skill_reqs = [r for r in normalized_requirements if r.criterion == "skill"]
         if skill_reqs:
             applicable_weight += 50.0
-            skills_met = sum(
-                1 for r in skill_reqs
-                if evidence_by_req_id.get(r.requirement_id) is not None
-                and evidence_by_req_id[r.requirement_id].match_result == RequirementMatchResult.MET
-            )
+            skills_met = 0
+            skills_unverified = 0
+            for r in skill_reqs:
+                ev = evidence_by_req_id.get(r.requirement_id)
+                if ev is not None and ev.match_result == RequirementMatchResult.MET:
+                    if _is_fact_verified(ev.verification_status):
+                        skills_met += 1
+                    else:
+                        skills_unverified += 1
             skills_score = round(50.0 * (skills_met / len(skill_reqs)), 2)
-            explanations.append(f"Skills: {skills_met}/{len(skill_reqs)} matched ({skills_score}/50 pts)")
+            if skills_unverified > 0:
+                explanations.append(f"Skills: {skills_met}/{len(skill_reqs)} verified matched ({skills_score}/50 pts; {skills_unverified} unverified potential match)")
+            else:
+                explanations.append(f"Skills: {skills_met}/{len(skill_reqs)} matched ({skills_score}/50 pts)")
         else:
             skills_score = 0.0
             explanations.append("Skills: No explicit skill requirements parsed (0/0 weight)")
@@ -628,13 +655,20 @@ class OpportunityEvaluator:
         preferred_reqs = [r for r in normalized_requirements if r.category == RequirementCategory.PREFERRED]
         if preferred_reqs:
             applicable_weight += 20.0
-            pref_met = sum(
-                1 for r in preferred_reqs
-                if evidence_by_req_id.get(r.requirement_id) is not None
-                and evidence_by_req_id[r.requirement_id].match_result == RequirementMatchResult.MET
-            )
+            pref_met = 0
+            pref_unverified = 0
+            for r in preferred_reqs:
+                ev = evidence_by_req_id.get(r.requirement_id)
+                if ev is not None and ev.match_result == RequirementMatchResult.MET:
+                    if _is_fact_verified(ev.verification_status):
+                        pref_met += 1
+                    else:
+                        pref_unverified += 1
             pref_score = round(20.0 * (pref_met / len(preferred_reqs)), 2)
-            explanations.append(f"Preferred: {pref_met}/{len(preferred_reqs)} met ({pref_score}/20 pts)")
+            if pref_unverified > 0:
+                explanations.append(f"Preferred: {pref_met}/{len(preferred_reqs)} verified met ({pref_score}/20 pts; {pref_unverified} unverified potential)")
+            else:
+                explanations.append(f"Preferred: {pref_met}/{len(preferred_reqs)} met ({pref_score}/20 pts)")
         else:
             pref_score = 0.0
             explanations.append("Preferred: No preferred requirements listed (0/0 weight)")
@@ -650,13 +684,20 @@ class OpportunityEvaluator:
             else:
                 loc_facts = facts_by_ns.get("preferences", []) + facts_by_ns.get("location", [])
                 matched_loc = False
+                unverified_loc = False
                 for lf in loc_facts:
                     if any(place in str(lf.value).lower() for place in loc_str.split() if len(place) > 3):
-                        matched_loc = True
-                        break
+                        if _is_fact_verified(lf.verification_status):
+                            matched_loc = True
+                            break
+                        else:
+                            unverified_loc = True
                 if matched_loc:
                     location_score = 15.0
                     explanations.append(f"Location: Local match for '{opportunity.location}' (15/15 pts)")
+                elif unverified_loc:
+                    location_score = 0.0
+                    explanations.append(f"Location: Potential match for '{opportunity.location}' pending verification (0/15 pts, unverified alignment)")
                 else:
                     location_score = 0.0
                     explanations.append(f"Location: Location '{opportunity.location}' compatibility pending (0/15 pts)")
@@ -668,13 +709,20 @@ class OpportunityEvaluator:
         sen_reqs = [r for r in normalized_requirements if r.criterion in ("seniority", "years_experience")]
         if sen_reqs:
             applicable_weight += 15.0
-            sen_met = sum(
-                1 for r in sen_reqs
-                if evidence_by_req_id.get(r.requirement_id) is not None
-                and evidence_by_req_id[r.requirement_id].match_result == RequirementMatchResult.MET
-            )
+            sen_met = 0
+            sen_unverified = 0
+            for r in sen_reqs:
+                ev = evidence_by_req_id.get(r.requirement_id)
+                if ev is not None and ev.match_result == RequirementMatchResult.MET:
+                    if _is_fact_verified(ev.verification_status):
+                        sen_met += 1
+                    else:
+                        sen_unverified += 1
             sen_score = round(15.0 * (sen_met / len(sen_reqs)), 2)
-            explanations.append(f"Seniority: Experience aligned ({sen_score}/15 pts)")
+            if sen_unverified > 0:
+                explanations.append(f"Seniority: Experience aligned ({sen_score}/15 pts; {sen_unverified} unverified potential)")
+            else:
+                explanations.append(f"Seniority: Experience aligned ({sen_score}/15 pts)")
         else:
             sen_score = 0.0
             explanations.append("Seniority: No seniority requirements listed (0/0 weight)")

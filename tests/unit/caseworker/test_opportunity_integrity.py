@@ -523,6 +523,215 @@ class TestOpportunityIntegrityHardening(unittest.TestCase):
             )
         self.assertIn("Replay conflict", str(ctx.exception))
 
+    # -------------------------------------------------------------------------
+    # 11. Phase 5.1.2 Identity & Evidence Hardening Tests
+    # -------------------------------------------------------------------------
+    def test_identity_same_requisition_id_across_sources_deduplicates(self) -> None:
+        """Postings from different sources sharing canonical external_posting_id deduplicate."""
+        opp1, created1 = self.service.create_opportunity(
+            user_id=self.user_id,
+            title="Senior Backend Engineer",
+            organization="Stripe",
+            external_posting_id="STRIPE-REQ-402",
+            source_name="linkedin",
+            opportunity_type=OpportunityType.JOB,
+        )
+        self.assertTrue(created1)
+
+        opp2, created2 = self.service.create_opportunity(
+            user_id=self.user_id,
+            title="Senior Backend Engineer - Payments",
+            organization="Stripe",
+            external_posting_id="STRIPE-REQ-402",
+            source_name="greenhouse",
+            opportunity_type=OpportunityType.JOB,
+        )
+        self.assertFalse(created2)
+        self.assertEqual(opp2.opportunity_id, opp1.opportunity_id)
+
+    def test_identity_canonical_id_on_one_and_absent_on_another_deduplicates_via_fingerprint_v2(self) -> None:
+        """When canonical ID is known on one source and absent on another, fallback fingerprint_v2 deduplicates."""
+        opp1, created1 = self.service.create_opportunity(
+            user_id=self.user_id,
+            title="Staff Systems Engineer",
+            organization="Datadog",
+            location="Berlin, Germany",
+            external_posting_id="DD-9812",
+            opportunity_type=OpportunityType.JOB,
+        )
+        self.assertTrue(created1)
+
+        # Scraped from aggregator without external_posting_id but identical type, org, title, location
+        opp2, created2 = self.service.create_opportunity(
+            user_id=self.user_id,
+            title="Staff Systems Engineer",
+            organization="Datadog",
+            location="Berlin, Germany",
+            external_posting_id=None,
+            opportunity_type=OpportunityType.JOB,
+        )
+        self.assertFalse(created2)
+        self.assertEqual(opp2.opportunity_id, opp1.opportunity_id)
+
+    def test_identity_differing_requisition_ids_at_same_company_remain_separate(self) -> None:
+        """Distinct requisition IDs at same company/title/location do not merge."""
+        opp1, created1 = self.service.create_opportunity(
+            user_id=self.user_id,
+            title="Software Engineer",
+            organization="Google",
+            location="Zurich",
+            external_posting_id="REQ-1001",
+            opportunity_type=OpportunityType.JOB,
+        )
+        self.assertTrue(created1)
+
+        opp2, created2 = self.service.create_opportunity(
+            user_id=self.user_id,
+            title="Software Engineer",
+            organization="Google",
+            location="Zurich",
+            external_posting_id="REQ-1002",
+            opportunity_type=OpportunityType.JOB,
+        )
+        self.assertTrue(created2)
+        self.assertNotEqual(opp1.opportunity_id, opp2.opportunity_id)
+
+    def test_fit_evidence_verification_zero_credit_for_unverified(self) -> None:
+        """Unverified context facts earn ZERO points for skills, preferred, location, and seniority."""
+        # Unverified skill, location, seniority context facts
+        with self.storage.unit_of_work() as uow:
+            uow.context.save(
+                ContextFact(
+                    user_id=self.user_id,
+                    namespace="skills",
+                    key="rust",
+                    value="Rust Developer",
+                    verification_status=VerificationStatus.UNVERIFIED,
+                    allowed_purposes=["opportunity_evaluation"],
+                )
+            )
+            uow.context.save(
+                ContextFact(
+                    user_id=self.user_id,
+                    namespace="location",
+                    key="city",
+                    value="Munich",
+                    verification_status=VerificationStatus.UNVERIFIED,
+                    allowed_purposes=["opportunity_evaluation"],
+                )
+            )
+            uow.context.save(
+                ContextFact(
+                    user_id=self.user_id,
+                    namespace="career",
+                    key="seniority",
+                    value="Senior",
+                    verification_status=VerificationStatus.UNVERIFIED,
+                    allowed_purposes=["opportunity_evaluation"],
+                )
+            )
+
+        opp, _ = self.service.create_opportunity(
+            user_id=self.user_id,
+            title="Senior Rust Engineer",
+            location="Munich",
+            opportunity_type=OpportunityType.JOB,
+            requirements=[
+                "Rust programming language",
+                "Senior level experience",
+                "Familiarity with Kubernetes preferred",
+            ],
+        )
+        self.service.normalize_opportunity_for_user(self.user_id, opp.opportunity_id)
+        _, snap = self.service.evaluate_opportunity_for_user(self.user_id, opp.opportunity_id)
+
+        # All categories have applicable weight, but earn 0 points due to unverified evidence
+        self.assertEqual(snap.fit.components.skills_score, 0.0)
+        self.assertEqual(snap.fit.components.seniority_score, 0.0)
+        self.assertEqual(snap.fit.components.location_score, 0.0)
+        self.assertEqual(snap.fit.components.preferred_reqs_score, 0.0)
+        self.assertEqual(snap.fit.components.total_score, 0.0)
+
+        # Now verify the facts in context and re-evaluate
+        with self.storage.unit_of_work() as uow:
+            facts = uow.context.list_active(self.user_id)
+            for f in facts:
+                f.verification_status = VerificationStatus.USER_VERIFIED
+                f.version += 1
+                uow.context.save(f)
+
+        _, snap_verified = self.service.evaluate_opportunity_for_user(self.user_id, opp.opportunity_id)
+        # Skills and location and seniority now earn their verified points!
+        self.assertGreater(snap_verified.fit.components.skills_score, 0.0)
+        self.assertEqual(snap_verified.fit.components.location_score, 15.0)
+        self.assertGreater(snap_verified.fit.components.seniority_score, 0.0)
+
+    def test_cefr_unknown_level_handling(self) -> None:
+        """When requirement specifies CEFR level but context fact has unstated proficiency level, result is UNKNOWN."""
+        # User has German fact with NO CEFR level
+        with self.storage.unit_of_work() as uow:
+            uow.context.save(
+                ContextFact(
+                    user_id=self.user_id,
+                    namespace="languages",
+                    key="german",
+                    value="German Speaker",
+                    verification_status=VerificationStatus.USER_VERIFIED,
+                    allowed_purposes=["opportunity_evaluation"],
+                )
+            )
+
+        # Requirement specifies B2 German
+        opp, _ = self.service.create_opportunity(
+            user_id=self.user_id,
+            title="Account Executive",
+            opportunity_type=OpportunityType.JOB,
+            requirements=["German B2 proficiency required"],
+        )
+        self.service.normalize_opportunity_for_user(self.user_id, opp.opportunity_id)
+        _, snap = self.service.evaluate_opportunity_for_user(self.user_id, opp.opportunity_id)
+
+        # Since required level is B2 and fact level is unknown, must be UNKNOWN
+        self.assertEqual(snap.evidence[0].match_result, RequirementMatchResult.UNKNOWN)
+        self.assertIn("unstated/unknown", snap.evidence[0].notes)
+        self.assertEqual(snap.eligibility.status, EligibilityStatus.UNKNOWN)
+
+        # Now update fact with B2 and UNVERIFIED -> UNKNOWN
+        with self.storage.unit_of_work() as uow:
+            fact = uow.context.list_active(self.user_id)[0]
+            fact.value = "German B2"
+            fact.verification_status = VerificationStatus.UNVERIFIED
+            fact.version += 1
+            uow.context.save(fact)
+
+        _, snap_unverified = self.service.evaluate_opportunity_for_user(self.user_id, opp.opportunity_id)
+        self.assertEqual(snap_unverified.evidence[0].match_result, RequirementMatchResult.UNKNOWN)
+        self.assertIn("unverified", snap_unverified.evidence[0].notes)
+
+        # Update fact with B2 and USER_VERIFIED -> MET
+        with self.storage.unit_of_work() as uow:
+            fact = uow.context.list_active(self.user_id)[0]
+            fact.verification_status = VerificationStatus.USER_VERIFIED
+            fact.version += 1
+            uow.context.save(fact)
+
+        _, snap_met = self.service.evaluate_opportunity_for_user(self.user_id, opp.opportunity_id)
+        self.assertEqual(snap_met.evidence[0].match_result, RequirementMatchResult.MET)
+        self.assertEqual(snap_met.eligibility.status, EligibilityStatus.ELIGIBLE)
+
+        # Update fact with A2 (below B2) -> NOT_MET
+        with self.storage.unit_of_work() as uow:
+            fact = uow.context.list_active(self.user_id)[0]
+            fact.value = "German A2"
+            fact.verification_status = VerificationStatus.USER_VERIFIED
+            fact.version += 1
+            uow.context.save(fact)
+
+        _, snap_not_met = self.service.evaluate_opportunity_for_user(self.user_id, opp.opportunity_id)
+        self.assertEqual(snap_not_met.evidence[0].match_result, RequirementMatchResult.NOT_MET)
+        self.assertEqual(snap_not_met.eligibility.status, EligibilityStatus.INELIGIBLE)
+
 
 if __name__ == "__main__":
     unittest.main()
+

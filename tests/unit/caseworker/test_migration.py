@@ -335,6 +335,66 @@ class TestSQLiteMigration(unittest.TestCase):
 
         conn.close()
 
+    def test_migration_v5_backfill_always_uses_fallback_fingerprint(self) -> None:
+        """Verify Migration 4->5 backfill computes fallback fingerprint_v2 even if external_posting_id is present."""
+        conn = sqlite3.connect(":memory:")
+        cur = conn.cursor()
+
+        # Setup v4 schema
+        cur.execute("""
+            CREATE TABLE opportunities (
+                opportunity_id TEXT PRIMARY KEY,
+                mission_id TEXT,
+                user_id TEXT NOT NULL,
+                opportunity_type TEXT NOT NULL,
+                title TEXT NOT NULL,
+                organization TEXT NOT NULL,
+                source_url TEXT NOT NULL,
+                source_name TEXT NOT NULL,
+                location TEXT NOT NULL,
+                status TEXT NOT NULL,
+                requirements TEXT NOT NULL,
+                metadata TEXT NOT NULL,
+                fingerprint TEXT NOT NULL,
+                discovered_at TEXT NOT NULL,
+                deadline TEXT,
+                version INTEGER NOT NULL DEFAULT 1,
+                converted_case_id TEXT,
+                fingerprint_v2 TEXT
+            );
+        """)
+        cur.execute("PRAGMA user_version = 4;")
+
+        # Insert opportunity without fingerprint_v2
+        cur.execute("""
+            INSERT INTO opportunities (
+                opportunity_id, user_id, opportunity_type, title, organization,
+                source_url, source_name, location, status, requirements, metadata,
+                fingerprint, discovered_at, version, converted_case_id, fingerprint_v2
+            ) VALUES (
+                'opp_backfill_001', 'user_test', 'job', 'Platform Engineer', 'JackVerse',
+                'https://jackverse.com/jobs/1', 'Direct', 'Berlin', 'discovered',
+                '[]', '{}', 'legacy_fp', '2026-04-01T00:00:00Z', 1, NULL, ''
+            );
+        """)
+        conn.commit()
+
+        SQLiteMigrator.migrate(conn)
+
+        from caseworker.domain.opportunity import Opportunity, OpportunityType
+        expected_opp = Opportunity(
+            opportunity_id="opp_backfill_001",
+            user_id="user_test",
+            opportunity_type=OpportunityType.JOB,
+            title="Platform Engineer",
+            organization="JackVerse",
+            location="Berlin",
+        )
+        cur.execute("SELECT fingerprint_v2 FROM opportunities WHERE opportunity_id = 'opp_backfill_001';")
+        backfilled_fp = cur.fetchone()[0]
+        self.assertEqual(backfilled_fp, expected_opp.fingerprint_v2)
+        conn.close()
+
     def test_migration_idempotent(self) -> None:
         conn = sqlite3.connect(":memory:")
         SQLiteMigrator.migrate(conn)
@@ -349,3 +409,4 @@ class TestSQLiteMigration(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+

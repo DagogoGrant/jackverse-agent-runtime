@@ -297,23 +297,14 @@ class SQLiteMigrator:
                     "SELECT opportunity_id, opportunity_type, organization, title, location, external_posting_id FROM opportunities WHERE fingerprint_v2 IS NULL OR fingerprint_v2 = '';"
                 )
                 rows = cur.fetchall()
-                for opp_id, opp_type, org, title, loc, ext_id in rows:
-                    if ext_id and str(ext_id).strip():
-                        components = [
-                            "opp_fp_v2",
-                            opp_type or "",
-                            (org or "").strip().lower(),
-                            "ext_id",
-                            str(ext_id).strip().lower(),
-                        ]
-                    else:
-                        components = [
-                            "opp_fp_v2",
-                            opp_type or "",
-                            (org or "").strip().lower(),
-                            (title or "").strip().lower(),
-                            (loc or "").strip().lower(),
-                        ]
+                for opp_id, opp_type, org, title, loc, _ in rows:
+                    components = [
+                        "opp_v2",
+                        opp_type or "",
+                        (org or "").strip().lower(),
+                        (title or "").strip().lower(),
+                        (loc or "").strip().lower(),
+                    ]
                     canonical = json.dumps(components, separators=(",", ":"), ensure_ascii=True)
                     fp_v2 = hashlib.sha256(canonical.encode("utf-8")).hexdigest()
                     conn.execute(

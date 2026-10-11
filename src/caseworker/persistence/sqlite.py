@@ -528,6 +528,22 @@ class SQLiteOpportunityRepository(OpportunityRepository):
         )
         return [self._row_to_opportunity(r) for r in cur.fetchall()]
 
+    def list_by_external_posting_id(self, user_id: str, external_posting_id: str) -> list[Opportunity]:
+        cur = self.conn.cursor()
+        cur.execute(
+            """
+            SELECT opportunity_id, mission_id, user_id, opportunity_type,
+                   title, organization, source_url, source_name, location,
+                   status, requirements, metadata, fingerprint,
+                   discovered_at, deadline, version, converted_case_id, fingerprint_v2,
+                   external_posting_id
+            FROM opportunities WHERE user_id = ? AND external_posting_id = ?
+            ORDER BY discovered_at DESC
+            """,
+            (user_id, external_posting_id.strip()),
+        )
+        return [self._row_to_opportunity(r) for r in cur.fetchall()]
+
     def list_by_mission(self, mission_id: str) -> list[Opportunity]:
         cur = self.conn.cursor()
         cur.execute(

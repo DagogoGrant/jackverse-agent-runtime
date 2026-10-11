@@ -130,32 +130,26 @@ class Opportunity:
             self.title.strip().lower(),
             (self.source_url or "").strip().lower(),
         ]
+        if self.external_posting_id and self.external_posting_id.strip():
+            components.append(self.external_posting_id.strip().lower())
         canonical = canonical_json_dumps(components)
         return compute_sha256(canonical)
 
     def compute_fingerprint_v2(self) -> str:
-        """Compute stable SHA-256 fingerprint for cross-source deduplication (V2).
+        """Compute stable SHA-256 fallback fingerprint for cross-source deduplication (V2).
 
-        When an external_posting_id is provided by the originating organization
-        (e.g. REQ-18473), it is prioritized to distinguish separate requisitions
-        at the same company/location. Otherwise, falls back to type + org + title + location.
+        Always represents:
+            opp_fp_v2 + opportunity_type + organization + title + location.
+        Notice that external_posting_id is a separate stronger identity attribute
+        and does NOT replace this fallback fingerprint.
         """
-        if self.external_posting_id and self.external_posting_id.strip():
-            components = [
-                FINGERPRINT_SCHEMA_V2,
-                self.opportunity_type_str,
-                (self.organization or "").strip().lower(),
-                "ext_id",
-                self.external_posting_id.strip().lower(),
-            ]
-        else:
-            components = [
-                FINGERPRINT_SCHEMA_V2,
-                self.opportunity_type_str,
-                (self.organization or "").strip().lower(),
-                self.title.strip().lower(),
-                (self.location or "").strip().lower(),
-            ]
+        components = [
+            FINGERPRINT_SCHEMA_V2,
+            self.opportunity_type_str,
+            (self.organization or "").strip().lower(),
+            self.title.strip().lower(),
+            (self.location or "").strip().lower(),
+        ]
         canonical = canonical_json_dumps(components)
         return compute_sha256(canonical)
 
