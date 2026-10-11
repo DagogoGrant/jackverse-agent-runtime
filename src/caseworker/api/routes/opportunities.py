@@ -12,6 +12,7 @@ from caseworker.api.dependencies import (
 )
 from caseworker.api.etag import check_if_match, set_etag_header
 from caseworker.api.identity import Principal
+from caseworker.api.schemas.case import CaseResponse
 from caseworker.api.schemas.common import PaginatedResponse
 from caseworker.api.schemas.opportunity import (
     ConvertToCaseRequest,
@@ -28,6 +29,7 @@ from caseworker.api.schemas.opportunity import (
     TransitionOpportunityRequest,
     make_opportunity_response,
 )
+from caseworker.domain.case import Case
 from caseworker.domain.enums import OpportunityStatus
 from caseworker.domain.errors import EntityNotFoundError, InvalidStateTransitionError
 from caseworker.domain.opportunity_evaluator import OpportunityEvaluationSnapshot
@@ -37,7 +39,30 @@ from caseworker.services.opportunity_service import OpportunityService
 router = APIRouter(prefix="/api/v1/opportunities", tags=["opportunities"])
 
 
-def _snapshot_to_response(s: OpportunityEvaluationSnapshot) -> EvaluationSnapshotResponse:
+def _to_case_response(c: Case) -> CaseResponse:
+    return CaseResponse(
+        case_id=c.case_id,
+        mission_id=c.mission_id,
+        user_id=c.user_id,
+        case_type=c.case_type_str,
+        title=c.title,
+        goal=c.goal,
+        status=c.status.value if hasattr(c.status, "value") else str(c.status),
+        success_criteria=list(c.success_criteria),
+        constraints=list(c.constraints),
+        created_at=to_iso_utc(c.created_at),
+        updated_at=to_iso_utc(c.updated_at),
+        deadline=to_iso_utc(c.deadline) if c.deadline else None,
+        resolved_at=to_iso_utc(c.resolved_at) if c.resolved_at else None,
+        outcome=c.outcome,
+        version=c.version,
+    )
+
+
+def _snapshot_to_response(
+    s: OpportunityEvaluationSnapshot,
+    is_stale: bool = False,
+) -> EvaluationSnapshotResponse:
     return EvaluationSnapshotResponse(
         evaluation_id=s.evaluation_id,
         evaluated_at=to_iso_utc(s.evaluated_at),
@@ -72,6 +97,7 @@ def _snapshot_to_response(s: OpportunityEvaluationSnapshot) -> EvaluationSnapsho
         ],
         evaluation_input_hash=s.evaluation_input_hash,
         context_snapshot_hash=s.context_snapshot_hash,
+        is_stale=is_stale,
     )
 
 
@@ -91,11 +117,11 @@ async def create_or_deduplicate_opportunity(
         source_url=req.source_url,
         source_name=req.source_name,
         location=req.location,
-        status=req.status,
         requirements=req.requirements,
         metadata=req.metadata,
         deadline=req.deadline,
         mission_id=req.mission_id,
+        external_posting_id=req.external_posting_id,
     )
     if created:
         response.status_code = status.HTTP_201_CREATED
@@ -117,8 +143,12 @@ async def list_opportunities(
     all_opps = service.list_user_opportunities(principal.user_id, status=status_filter)
     total = len(all_opps)
     page_items = all_opps[pagination.offset : pagination.offset + pagination.limit]
+    items = []
+    for o in page_items:
+        is_stale = service.compute_evaluation_staleness(principal.user_id, o)
+        items.append(make_opportunity_response(o, evaluation_is_stale=is_stale))
     return PaginatedResponse(
-        items=[make_opportunity_response(o) for o in page_items],
+        items=items,
         total=total,
         limit=pagination.limit,
         offset=pagination.offset,
@@ -136,8 +166,9 @@ async def get_opportunity(
     opp = service.get_opportunity_for_user(principal.user_id, opportunity_id)
     if opp is None:
         raise EntityNotFoundError("Opportunity", opportunity_id)
+    is_stale = service.compute_evaluation_staleness(principal.user_id, opp)
     set_etag_header(response, "opportunity", opp.opportunity_id, opp.version)
-    return make_opportunity_response(opp)
+    return make_opportunity_response(opp, evaluation_is_stale=is_stale)
 
 
 @router.post("/{opportunity_id}/normalize", response_model=NormalizeOpportunityResponse)
@@ -210,8 +241,9 @@ async def get_opportunity_evaluation(
     if not eval_dict or not isinstance(eval_dict, dict):
         raise EntityNotFoundError("OpportunityEvaluation", opportunity_id)
 
+    is_stale = service.compute_evaluation_staleness(principal.user_id, opp)
     snapshot = OpportunityEvaluationSnapshot.from_dict(eval_dict)
-    return _snapshot_to_response(snapshot)
+    return _snapshot_to_response(snapshot, is_stale=is_stale)
 
 
 @router.post("/{opportunity_id}/shortlist", response_model=OpportunityResponse)
@@ -264,6 +296,7 @@ async def convert_opportunity_to_case(
         case, opp, created = service.convert_opportunity_to_case(
             user_id=principal.user_id,
             opportunity_id=opportunity_id,
+            mission_id=req.mission_id,
             case_type=req.case_type,
             title=req.title,
             goal=req.goal,
@@ -273,7 +306,7 @@ async def convert_opportunity_to_case(
         return ConvertToCaseResponse(
             case_id=case.case_id,
             opportunity_id=opp.opportunity_id,
-            case=case.to_dict(),
+            case=_to_case_response(case),
             opportunity=make_opportunity_response(opp),
             created=False,
         )
@@ -284,6 +317,7 @@ async def convert_opportunity_to_case(
     case, opp, created = service.convert_opportunity_to_case(
         user_id=principal.user_id,
         opportunity_id=opportunity_id,
+        mission_id=req.mission_id,
         case_type=req.case_type,
         title=req.title,
         goal=req.goal,
@@ -296,7 +330,7 @@ async def convert_opportunity_to_case(
     return ConvertToCaseResponse(
         case_id=case.case_id,
         opportunity_id=opp.opportunity_id,
-        case=case.to_dict(),
+        case=_to_case_response(case),
         opportunity=make_opportunity_response(opp),
         created=created,
     )
@@ -313,9 +347,14 @@ async def transition_opportunity(
 ) -> OpportunityResponse:
     """Transition opportunity status with strict ETag precondition verification.
 
-    Protected transitions (shortlisted, converted_to_case) are blocked.
+    Protected transitions (normalized, evaluating, shortlisted, converted_to_case) are blocked.
     """
-    if req.new_status in (OpportunityStatus.SHORTLISTED, OpportunityStatus.CONVERTED_TO_CASE):
+    if req.new_status in (
+        OpportunityStatus.NORMALIZED,
+        OpportunityStatus.EVALUATING,
+        OpportunityStatus.SHORTLISTED,
+        OpportunityStatus.CONVERTED_TO_CASE,
+    ):
         raise InvalidStateTransitionError(
             "Opportunity",
             "current",

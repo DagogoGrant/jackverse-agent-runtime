@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+import hashlib
 import re
 from typing import Any
 import uuid
@@ -90,18 +91,39 @@ _SKILL_RE = re.compile(
 )
 
 
-def parse_requirements(raw_requirements: list[str]) -> list[NormalizedRequirement]:
+def parse_requirements(
+    arg1: str | list[str],
+    arg2: list[str] | str | None = None,
+) -> list[NormalizedRequirement]:
     """Parse a list of raw string requirements into structured NormalizedRequirement items.
+
+    Supports both signatures:
+    - parse_requirements(opportunity_id: str, raw_requirements: list[str])
+    - parse_requirements(raw_requirements: list[str], opportunity_id: str = "default")
 
     Recognized patterns become structured criteria (opp_req_v1).
     Unrecognized items are categorized as custom/unparsed.
+    Requirement IDs are deterministically derived from opportunity_id, ordinal, and canonical text.
     """
+    if isinstance(arg1, str):
+        opportunity_id = arg1
+        raw_requirements = arg2 if isinstance(arg2, list) else []
+    else:
+        raw_requirements = arg1
+        opportunity_id = str(arg2) if isinstance(arg2, str) else "default"
+
     normalized: list[NormalizedRequirement] = []
 
-    for raw in raw_requirements:
+    for idx, raw in enumerate(raw_requirements):
         cleaned = raw.strip()
         if not cleaned:
             continue
+
+        canonical_text = cleaned.lower()
+        req_hash = hashlib.sha256(
+            f"opp_req_v1:{opportunity_id}:{idx}:{canonical_text}".encode("utf-8")
+        ).hexdigest()[:16]
+        req_id = f"req_{req_hash}"
 
         # Check category (mandatory vs preferred)
         category = (
@@ -157,7 +179,7 @@ def parse_requirements(raw_requirements: list[str]) -> list[NormalizedRequiremen
 
         normalized.append(
             NormalizedRequirement(
-                requirement_id=str(uuid.uuid4()),
+                requirement_id=req_id,
                 raw_text=cleaned,
                 criterion=criterion,
                 category=category,

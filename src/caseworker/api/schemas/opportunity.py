@@ -4,10 +4,21 @@ from __future__ import annotations
 
 from datetime import datetime
 from typing import Any
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
+from caseworker.api.schemas.case import CaseResponse
 from caseworker.domain.enums import OpportunityStatus, OpportunityType
 from caseworker.domain.opportunity import Opportunity
 from caseworker.domain.types import to_iso_utc
+
+RESERVED_METADATA_KEYS = {
+    "evaluation",
+    "normalized_requirements",
+    "requirement_schema",
+    "converted_case_id",
+    "fingerprint",
+    "fingerprint_v2",
+    "is_stale",
+}
 
 
 class CreateOpportunityRequest(BaseModel):
@@ -19,11 +30,19 @@ class CreateOpportunityRequest(BaseModel):
     source_url: str = Field("", max_length=2048, description="Web address for the opportunity.")
     source_name: str = Field("", max_length=255, description="Source platform name.")
     location: str = Field("", max_length=255, description="Geographic or remote location.")
-    status: OpportunityStatus = Field(OpportunityStatus.DISCOVERED, description="Initial discovery status.")
     requirements: list[str] = Field(default_factory=list, description="Eligibility requirements.")
     metadata: dict[str, Any] = Field(default_factory=dict, description="Custom metadata attributes.")
     deadline: datetime | None = Field(None, description="Application or submission deadline.")
     mission_id: str | None = Field(None, description="Optional associated mission ID.")
+    external_posting_id: str | None = Field(None, max_length=255, description="Canonical employer requisition ID (e.g. REQ-18473).")
+
+    @field_validator("metadata")
+    @classmethod
+    def validate_metadata_keys(cls, v: dict[str, Any]) -> dict[str, Any]:
+        for key in v:
+            if key in RESERVED_METADATA_KEYS:
+                raise ValueError(f"Reserved metadata key '{key}' cannot be provided directly.")
+        return v
 
 
 class TransitionOpportunityRequest(BaseModel):
@@ -43,6 +62,7 @@ class ShortlistOpportunityRequest(BaseModel):
 class ConvertToCaseRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
+    mission_id: str | None = Field(None, description="Optional target mission ID for conversion.")
     case_type: str | None = Field(None, description="Optional override for CaseType.")
     title: str | None = Field(None, max_length=255, description="Optional custom title for the Case.")
     goal: str | None = Field(None, max_length=1000, description="Optional custom goal for the Case.")
@@ -76,6 +96,7 @@ class OpportunityResponse(BaseModel):
     version: int
     converted_case_id: str | None = None
     fingerprint_v2: str | None = None
+    external_posting_id: str | None = None
     evaluation_summary: EvaluationSummary | None = None
 
 
@@ -132,17 +153,21 @@ class EvaluationSnapshotResponse(BaseModel):
     evidence: list[RequirementEvidenceResponse] = Field(default_factory=list)
     evaluation_input_hash: str
     context_snapshot_hash: str
+    is_stale: bool = False
 
 
 class ConvertToCaseResponse(BaseModel):
     case_id: str
     opportunity_id: str
-    case: dict[str, Any]
+    case: CaseResponse
     opportunity: OpportunityResponse
     created: bool
 
 
-def make_opportunity_response(opp: Opportunity) -> OpportunityResponse:
+def make_opportunity_response(
+    opp: Opportunity,
+    evaluation_is_stale: bool = False,
+) -> OpportunityResponse:
     """Project domain Opportunity entity into safe API response, stripping raw evaluation payload."""
     safe_metadata = dict(opp.metadata)
     eval_meta = safe_metadata.pop("evaluation", None)
@@ -157,7 +182,7 @@ def make_opportunity_response(opp: Opportunity) -> OpportunityResponse:
             fit_tier=str(fit.get("fit_tier", "low")),
             coverage=float(elig.get("coverage", 0.0)),
             evaluated_at=str(eval_meta.get("evaluated_at", "")),
-            is_stale=False,
+            is_stale=evaluation_is_stale,
         )
 
     return OpportunityResponse(
@@ -179,5 +204,6 @@ def make_opportunity_response(opp: Opportunity) -> OpportunityResponse:
         version=opp.version,
         converted_case_id=opp.converted_case_id,
         fingerprint_v2=opp.fingerprint_v2,
+        external_posting_id=opp.external_posting_id,
         evaluation_summary=eval_summary,
     )

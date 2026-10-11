@@ -241,4 +241,5 @@ class FitTier(StrEnum):
     STRONG = "strong"
     MODERATE = "moderate"
     LOW = "low"
+    INSUFFICIENT_EVIDENCE = "insufficient_evidence"
 

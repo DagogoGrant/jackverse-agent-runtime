@@ -598,18 +598,20 @@ export function useConvertOpportunityToCase() {
       case_type,
       title,
       goal,
+      mission_id,
     }: {
       id: string;
       etag?: string;
       case_type?: string;
       title?: string;
       goal?: string;
+      mission_id?: string;
     }) => {
       const res = await apiRequest<ConvertToCaseResponse>(
         `/opportunities/${id}/convert-to-case`,
         {
           method: 'POST',
-          body: JSON.stringify({ case_type, title, goal }),
+          body: JSON.stringify({ case_type, title, goal, mission_id }),
         },
         etag
       );

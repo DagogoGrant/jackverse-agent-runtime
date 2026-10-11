@@ -9,6 +9,7 @@ import {
   useShortlistOpportunity,
   useConvertOpportunityToCase,
   useTransitionOpportunity,
+  useMissions,
 } from '../hooks/useCaseworker';
 import { TextureBadge } from '../components/ui/TextureBadge';
 import { TactileButton } from '../components/ui/TactileButton';
@@ -19,6 +20,8 @@ export const OpportunityDetailView: React.FC = () => {
 
   const { data: oppData, isLoading, error, refetch } = useOpportunity(id);
   const { data: evalSnapshot } = useOpportunityEvaluation(id);
+  const { data: missionsData } = useMissions({ archived: false });
+  const activeMissions = (missionsData ?? []).filter((m) => m.status === 'active' || m.status === 'draft');
 
   const normalizeOpp = useNormalizeOpportunity();
   const evaluateOpp = useEvaluateOpportunity();
@@ -34,6 +37,7 @@ export const OpportunityDetailView: React.FC = () => {
   const [convertModalOpen, setConvertModalOpen] = useState(false);
   const [caseTitle, setCaseTitle] = useState('');
   const [caseGoal, setCaseGoal] = useState('');
+  const [selectedMissionId, setSelectedMissionId] = useState('');
 
   if (isLoading) {
     return (
@@ -116,11 +120,17 @@ export const OpportunityDetailView: React.FC = () => {
 
   const handleConvertSubmit = async () => {
     if (!id) return;
+    const targetMissionId = opp.mission_id || selectedMissionId || (activeMissions[0]?.mission_id ?? '');
+    if (!targetMissionId) {
+      setConcurrencyNotice('An active mission is required to convert an opportunity into a case.');
+      return;
+    }
     setConcurrencyNotice(null);
     try {
       const res = await convertOpp.mutateAsync({
         id,
         etag: etag || undefined,
+        mission_id: targetMissionId,
         title: caseTitle.trim() || undefined,
         goal: caseGoal.trim() || undefined,
       });
@@ -235,6 +245,23 @@ export const OpportunityDetailView: React.FC = () => {
           {/* Fit Assessment & Eligibility Meter */}
           {summary ? (
             <section className="p-6 border border-jv-rule bg-jv-surface space-y-6">
+              {evalSnapshot?.is_stale && (
+                <div className="p-3 border border-jv-accent/40 bg-jv-accent/10 flex items-center justify-between text-xs font-interface text-jv-ink">
+                  <div className="flex items-center gap-2">
+                    <AlertTriangle className="w-4 h-4 text-jv-accent shrink-0" />
+                    <span>Evaluation is stale: Context vault or mission parameters have changed since last evaluation.</span>
+                  </div>
+                  <TactileButton
+                    variant="outline"
+                    size="sm"
+                    loading={evaluateOpp.isPending}
+                    onClick={handleEvaluate}
+                  >
+                    Re-evaluate Now
+                  </TactileButton>
+                </div>
+              )}
+
               <div className="flex items-start justify-between border-b border-jv-rule pb-4">
                 <div>
                   <div className="font-machine text-[11px] text-jv-muted uppercase tracking-wider">
@@ -245,6 +272,8 @@ export const OpportunityDetailView: React.FC = () => {
                       ? 'Strong Fit'
                       : summary.fit_tier === 'moderate'
                       ? 'Moderate Fit'
+                      : summary.fit_tier === 'insufficient_evidence'
+                      ? 'Insufficient Evidence'
                       : 'Low Fit'}
                   </h2>
                 </div>
@@ -633,6 +662,29 @@ export const OpportunityDetailView: React.FC = () => {
             </p>
 
             <div className="space-y-3">
+              {!opp.mission_id && (
+                <div className="space-y-1">
+                  <label className="text-xs font-interface text-jv-muted">Target Mission</label>
+                  {activeMissions.length > 0 ? (
+                    <select
+                      value={selectedMissionId || (activeMissions[0]?.mission_id ?? '')}
+                      onChange={(e) => setSelectedMissionId(e.target.value)}
+                      className="w-full p-2 border border-jv-rule bg-jv-surface text-xs font-interface text-jv-ink rounded-none"
+                    >
+                      {activeMissions.map((m) => (
+                        <option key={m.mission_id} value={m.mission_id}>
+                          {m.title}
+                        </option>
+                      ))}
+                    </select>
+                  ) : (
+                    <div className="p-2 border border-jv-accent/40 bg-jv-accent/5 text-xs text-jv-ink font-interface">
+                      No active mission found. Please create or activate a mission before converting.
+                    </div>
+                  )}
+                </div>
+              )}
+
               <div className="space-y-1">
                 <label className="text-xs font-interface text-jv-muted">Case Title</label>
                 <input

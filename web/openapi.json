@@ -577,6 +577,18 @@
             "description": "Optional custom goal for the Case.",
             "title": "Goal"
           },
+          "mission_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Optional target mission ID for conversion.",
+            "title": "Mission Id"
+          },
           "title": {
             "anyOf": [
               {
@@ -597,9 +609,7 @@
       "ConvertToCaseResponse": {
         "properties": {
           "case": {
-            "additionalProperties": true,
-            "title": "Case",
-            "type": "object"
+            "$ref": "#/components/schemas/CaseResponse"
           },
           "case_id": {
             "title": "Case Id",
@@ -778,6 +788,19 @@
             "description": "Application or submission deadline.",
             "title": "Deadline"
           },
+          "external_posting_id": {
+            "anyOf": [
+              {
+                "maxLength": 255,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Canonical employer requisition ID (e.g. REQ-18473).",
+            "title": "External Posting Id"
+          },
           "location": {
             "default": "",
             "description": "Geographic or remote location.",
@@ -835,11 +858,6 @@
             "maxLength": 2048,
             "title": "Source Url",
             "type": "string"
-          },
-          "status": {
-            "$ref": "#/components/schemas/OpportunityStatus",
-            "default": "discovered",
-            "description": "Initial discovery status."
           },
           "title": {
             "description": "Opportunity title.",
@@ -1095,6 +1113,11 @@
           },
           "fit": {
             "$ref": "#/components/schemas/FitScoreComponentsResponse"
+          },
+          "is_stale": {
+            "default": false,
+            "title": "Is Stale",
+            "type": "boolean"
           }
         },
         "required": [
@@ -1646,6 +1669,17 @@
                 "type": "null"
               }
             ]
+          },
+          "external_posting_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "External Posting Id"
           },
           "fingerprint": {
             "title": "Fingerprint",
@@ -5348,7 +5382,7 @@
     },
     "/api/v1/opportunities/{opportunity_id}/transition": {
       "post": {
-        "description": "Transition opportunity status with strict ETag precondition verification.\n\nProtected transitions (shortlisted, converted_to_case) are blocked.",
+        "description": "Transition opportunity status with strict ETag precondition verification.\n\nProtected transitions (normalized, evaluating, shortlisted, converted_to_case) are blocked.",
         "operationId": "transition_opportunity_api_v1_opportunities__opportunity_id__transition_post",
         "parameters": [
           {

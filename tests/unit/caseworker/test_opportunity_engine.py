@@ -183,7 +183,21 @@ class TestOpportunityServiceLifecycle(unittest.TestCase):
         self.storage.close()
 
     def test_full_pipeline_to_case_conversion(self) -> None:
-        # 1. Create opportunity in DISCOVERED state
+        from caseworker.domain.mission import Mission
+        from caseworker.domain.enums import MissionKind, MissionStatus
+
+        # 1. Create active mission
+        with self.storage.unit_of_work() as uow:
+            mission = Mission(
+                user_id=self.user_id,
+                title="Academic Pursuit",
+                goal="Secure research role",
+                kind=MissionKind.OPPORTUNITY_PURSUIT,
+                status=MissionStatus.ACTIVE,
+            )
+            uow.missions.save(mission)
+
+        # 2. Create opportunity in DISCOVERED state linked to mission
         opp, created = self.service.create_opportunity(
             user_id=self.user_id,
             title="Principal AI Research Scientist",
@@ -191,11 +205,12 @@ class TestOpportunityServiceLifecycle(unittest.TestCase):
             organization="Max Planck Institute",
             location="Munich, Germany",
             requirements=["Ph.D. degree required", "Python skills", "Publication record preferred"],
+            mission_id=mission.mission_id,
         )
         self.assertTrue(created)
         self.assertEqual(opp.status, OpportunityStatus.DISCOVERED)
 
-        # 2. Add supporting context facts
+        # 3. Add supporting context facts (including location preference)
         with self.storage.unit_of_work() as uow:
             uow.context.save(
                 ContextFact(
@@ -217,8 +232,18 @@ class TestOpportunityServiceLifecycle(unittest.TestCase):
                     allowed_purposes=["opportunity_evaluation"],
                 )
             )
+            uow.context.save(
+                ContextFact(
+                    user_id=self.user_id,
+                    namespace="preferences",
+                    key="location",
+                    value="Munich, Germany",
+                    verification_status=VerificationStatus.USER_VERIFIED,
+                    allowed_purposes=["opportunity_evaluation"],
+                )
+            )
 
-        # 3. Normalize
+        # 4. Normalize
         opp_norm, normalized = self.service.normalize_opportunity_for_user(self.user_id, opp.opportunity_id)
         self.assertEqual(opp_norm.status, OpportunityStatus.NORMALIZED)
         self.assertEqual(len(normalized), 3)

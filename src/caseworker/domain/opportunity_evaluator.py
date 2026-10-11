@@ -118,6 +118,7 @@ class FitScoreComponents:
     seniority_score: float = 0.0       # 0.0 to 15.0
     total_score: float = 0.0           # 0.0 to 100.0
     fit_tier: FitTier = FitTier.LOW
+    fit_coverage: float = 0.0          # 0.0 to 1.0 (applicable weight / total possible weight)
     explanations: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
@@ -128,6 +129,7 @@ class FitScoreComponents:
             "seniority_score": round(self.seniority_score, 2),
             "total_score": round(self.total_score, 2),
             "fit_tier": self.fit_tier.value if isinstance(self.fit_tier, FitTier) else str(self.fit_tier),
+            "fit_coverage": round(self.fit_coverage, 4),
             "explanations": list(self.explanations),
         }
 
@@ -146,6 +148,7 @@ class FitScoreComponents:
             seniority_score=float(data.get("seniority_score", 0.0)),
             total_score=float(data.get("total_score", 0.0)),
             fit_tier=ft,
+            fit_coverage=float(data.get("fit_coverage", 0.0)),
             explanations=list(data.get("explanations", [])),
         )
 
@@ -210,12 +213,86 @@ class OpportunityEvaluationSnapshot:
         )
 
 
+_CEFR_LEVELS: dict[str, int] = {
+    "a1": 1,
+    "beginner": 1,
+    "basic": 1,
+    "elementary": 1,
+    "a2": 2,
+    "pre-intermediate": 2,
+    "b1": 3,
+    "intermediate": 3,
+    "b2": 4,
+    "upper-intermediate": 4,
+    "professional": 4,
+    "c1": 5,
+    "advanced": 5,
+    "fluent": 5,
+    "c2": 6,
+    "mastery": 6,
+    "native": 6,
+    "bilingual": 6,
+}
+
+
+def _extract_cefr_level(text: str) -> int | None:
+    if not text:
+        return None
+    normalized = text.lower()
+    for key, lvl in sorted(_CEFR_LEVELS.items(), key=lambda kv: len(kv[0]), reverse=True):
+        if re.search(r"\b" + re.escape(key) + r"\b", normalized):
+            return lvl
+    return None
+
+
 class OpportunityEvaluator:
     """Evaluates an Opportunity against purpose-gated user ContextFacts."""
 
+    CRITERION_TO_NAMESPACES: dict[str, set[str]] = {
+        "skill": {"skills", "skill"},
+        "years_experience": {"experience", "career"},
+        "degree": {"education"},
+        "work_authorization": {"legal", "citizenship", "work_authorization"},
+        "language": {"languages", "language"},
+        "location": {"preferences", "location"},
+        "seniority": {"career", "seniority"},
+    }
+
+    @classmethod
+    def get_relevant_context_facts(
+        cls,
+        normalized_requirements: list[NormalizedRequirement],
+        active_facts: list[ContextFact],
+    ) -> list[ContextFact]:
+        """Filter active facts to those in namespaces relevant to requirement criteria."""
+        target_namespaces: set[str] = set()
+        for req in normalized_requirements:
+            ns_set = cls.CRITERION_TO_NAMESPACES.get(req.criterion)
+            if ns_set:
+                target_namespaces.update(ns_set)
+
+        if not target_namespaces:
+            target_namespaces = {
+                "skills",
+                "skill",
+                "experience",
+                "career",
+                "education",
+                "legal",
+                "citizenship",
+                "work_authorization",
+                "languages",
+                "language",
+                "preferences",
+                "location",
+                "seniority",
+            }
+
+        return [f for f in active_facts if f.namespace.lower() in target_namespaces]
+
     @staticmethod
     def compute_context_snapshot_hash(granted_facts: list[ContextFact]) -> str:
-        """Compute deterministic hash solely from granted evidence facts (fact_id, version)."""
+        """Compute deterministic hash from relevant evidence facts (fact_id, version)."""
         components = sorted([(f.fact_id, f.version) for f in granted_facts])
         return compute_sha256(canonical_json_dumps(components))
 
@@ -247,9 +324,6 @@ class OpportunityEvaluator:
         mandatory_total = 0
         mandatory_met = 0
 
-        # We also collect facts that actually provided evidence to hash the context snapshot
-        evidence_facts_used: set[str] = set()
-
         for req in normalized_requirements:
             is_mandatory = req.category == RequirementCategory.MANDATORY
             if is_mandatory:
@@ -274,9 +348,6 @@ class OpportunityEvaluator:
             fact_ver = matched_fact.version if matched_fact else None
             v_status = matched_fact.verification_status if matched_fact else None
 
-            if matched_fact:
-                evidence_facts_used.add(matched_fact.fact_id)
-
             evidence = RequirementEvidence(
                 requirement_id=req.requirement_id,
                 fact_id=fact_id,
@@ -296,13 +367,10 @@ class OpportunityEvaluator:
                     unknown_ids.append(req.requirement_id)
 
         # 2. Tri-state Eligibility determination
-        # INELIGIBLE if any mandatory requirement is positively contradicted
         if len(contradicted_ids) > 0:
             elig_status = EligibilityStatus.INELIGIBLE
-        # ELIGIBLE if all mandatory requirements are met
         elif mandatory_total == 0 or mandatory_met == mandatory_total:
             elig_status = EligibilityStatus.ELIGIBLE
-        # Otherwise UNKNOWN (missing evidence or unparsed mandatory requirements)
         else:
             elig_status = EligibilityStatus.UNKNOWN
 
@@ -321,7 +389,7 @@ class OpportunityEvaluator:
             missing_or_unknown_requirements=unknown_ids,
         )
 
-        # 3. Explainable Fit Scoring (0 - 100)
+        # 3. Explainable Fit Scoring with coverage guard
         fit_components = cls._calculate_fit(
             opportunity=opportunity,
             normalized_requirements=normalized_requirements,
@@ -339,9 +407,8 @@ class OpportunityEvaluator:
             mission_goal=mission_goal,
             mission_constraints=mission_constraints,
         )
-        used_facts_list = [f for f in active_facts if f.fact_id in evidence_facts_used]
-        # If no specific facts were matched, snapshot hash includes all active facts
-        context_hash = cls.compute_context_snapshot_hash(used_facts_list or active_facts)
+        relevant_facts = cls.get_relevant_context_facts(normalized_requirements, active_facts)
+        context_hash = cls.compute_context_snapshot_hash(relevant_facts)
 
         return OpportunityEvaluationSnapshot(
             evaluation_id=str(uuid.uuid4()),
@@ -363,41 +430,50 @@ class OpportunityEvaluator:
     ) -> tuple[RequirementMatchResult, ContextFact | None, str]:
         """Match a normalized requirement against relevant active facts."""
         crit = req.criterion
+        match_res = RequirementMatchResult.UNKNOWN
+        matched_fact: ContextFact | None = None
+        notes = "No specific matching rule applied"
 
         if crit == "skill":
             skill_name = str(req.value).lower() if req.value else ""
-            # Search skills namespace or any fact mentioning skill
             skill_facts = facts_by_ns.get("skills", []) + facts_by_ns.get("skill", [])
             for sf in skill_facts:
                 val_str = str(sf.value).lower()
                 key_str = sf.key.lower()
                 if skill_name in val_str or skill_name in key_str:
-                    return RequirementMatchResult.MET, sf, f"Found verified skill in context"
-            # Check general facts
-            for af in active_facts:
-                if skill_name in str(af.value).lower() or skill_name in af.key.lower():
-                    return RequirementMatchResult.MET, af, f"Found matching skill mention"
-            return RequirementMatchResult.UNKNOWN, None, f"Skill not recorded in context vault"
+                    match_res, matched_fact, notes = RequirementMatchResult.MET, sf, "Found skill in context"
+                    break
+            if not matched_fact:
+                for af in active_facts:
+                    if skill_name in str(af.value).lower() or skill_name in af.key.lower():
+                        match_res, matched_fact, notes = RequirementMatchResult.MET, af, "Found matching skill mention"
+                        break
+            if not matched_fact:
+                match_res, matched_fact, notes = RequirementMatchResult.UNKNOWN, None, "Skill not recorded in context vault"
 
         elif crit == "years_experience":
             needed_years = int(req.value) if isinstance(req.value, (int, float)) else 0
             exp_facts = facts_by_ns.get("experience", []) + facts_by_ns.get("career", [])
+            found_exp = False
             for ef in exp_facts:
                 if "years" in ef.key.lower() or "experience" in ef.key.lower():
+                    found_exp = True
                     try:
-                        # Extract int from value
                         val_num = int(re.search(r"\d+", str(ef.value)).group(0))
                         if val_num >= needed_years:
-                            return RequirementMatchResult.MET, ef, f"User has sufficient years of experience"
+                            match_res, matched_fact, notes = RequirementMatchResult.MET, ef, "User has sufficient years of experience"
                         else:
-                            return RequirementMatchResult.NOT_MET, ef, f"User experience is below required threshold"
+                            match_res, matched_fact, notes = RequirementMatchResult.NOT_MET, ef, "User experience is below required threshold"
+                        break
                     except Exception:
                         pass
-            return RequirementMatchResult.UNKNOWN, None, f"Experience duration not verified in context vault"
+            if not found_exp:
+                match_res, matched_fact, notes = RequirementMatchResult.UNKNOWN, None, "Experience duration not verified in context vault"
 
         elif crit == "degree":
             req_degree = str(req.value).lower().replace(".", "")
             edu_facts = facts_by_ns.get("education", [])
+            found_degree = False
             for ef in edu_facts:
                 val_str = str(ef.value).lower().replace(".", "")
                 key_str = ef.key.lower()
@@ -407,60 +483,116 @@ class OpportunityEvaluator:
 
                 if any(t in req_degree for t in ["phd", "doctorate", "doctoral"]):
                     if is_doctorate:
-                        return RequirementMatchResult.MET, ef, "User doctorate satisfies requirement"
+                        match_res, matched_fact, notes = RequirementMatchResult.MET, ef, "User doctorate satisfies requirement"
+                        found_degree = True
+                        break
                 elif any(t in req_degree for t in ["master", "ms"]):
                     if is_master:
-                        return RequirementMatchResult.MET, ef, "User degree satisfies master requirement"
+                        match_res, matched_fact, notes = RequirementMatchResult.MET, ef, "User degree satisfies master requirement"
+                        found_degree = True
+                        break
                 elif any(t in req_degree for t in ["bachelor", "bs", "degree"]):
                     if is_bachelor:
-                        return RequirementMatchResult.MET, ef, "User degree satisfies bachelor requirement"
+                        match_res, matched_fact, notes = RequirementMatchResult.MET, ef, "User degree satisfies bachelor requirement"
+                        found_degree = True
+                        break
                 elif req_degree in val_str or req_degree in key_str:
-                    return RequirementMatchResult.MET, ef, "User degree matches requirement"
-            return RequirementMatchResult.UNKNOWN, None, "Degree not found in context vault"
+                    match_res, matched_fact, notes = RequirementMatchResult.MET, ef, "User degree matches requirement"
+                    found_degree = True
+                    break
+            if not found_degree:
+                match_res, matched_fact, notes = RequirementMatchResult.UNKNOWN, None, "Degree not found in context vault"
 
         elif crit == "work_authorization":
-            req_text = str(req.value).lower()
+            req_text = (str(req.value) + " " + req.raw_text).lower()
+            if "sponsorship" in req_text:
+                return RequirementMatchResult.UNKNOWN, None, "Ambiguous visa sponsorship requirement requires manual confirmation"
             auth_facts = facts_by_ns.get("legal", []) + facts_by_ns.get("citizenship", []) + facts_by_ns.get("work_authorization", [])
+            found_auth = False
             for af in auth_facts:
                 val_str = str(af.value).lower()
-                if "unauthorized" in val_str or "no work permit" in val_str or "requires visa" in val_str:
-                    return RequirementMatchResult.NOT_MET, af, f"User context explicitly notes lack of authorization"
+                if "sponsorship" in val_str or "requires visa" in val_str:
+                    return RequirementMatchResult.UNKNOWN, af, "User context indicates visa sponsorship may be needed; pending manual verification"
+                if "unauthorized" in val_str or "no work permit" in val_str:
+                    return RequirementMatchResult.NOT_MET, af, "User context explicitly notes lack of authorization"
                 if any(w in val_str for w in ["eu citizen", "authorized", "permanent resident", "citizen", "work permit"]):
-                    return RequirementMatchResult.MET, af, f"User has verified work authorization"
-            return RequirementMatchResult.UNKNOWN, None, f"Work authorization not documented in context vault"
+                    match_res, matched_fact, notes = RequirementMatchResult.MET, af, "User has verified work authorization"
+                    found_auth = True
+                    break
+            if not found_auth:
+                match_res, matched_fact, notes = RequirementMatchResult.UNKNOWN, None, "Work authorization not documented in context vault"
 
         elif crit == "language":
-            req_lang = str(req.value).lower()
+            req_text = (str(req.value) + " " + req.raw_text).lower()
+            req_level = _extract_cefr_level(req_text)
             lang_facts = facts_by_ns.get("languages", []) + facts_by_ns.get("language", [])
+            matched_lf = None
             for lf in lang_facts:
                 val_str = str(lf.value).lower()
                 key_str = lf.key.lower()
-                if any(lang in key_str or lang in val_str for lang in ["english", "german", "french", "spanish"] if lang in req_lang):
-                    # Check level contradiction if explicit
-                    return RequirementMatchResult.MET, lf, f"Language documented in context vault"
-            return RequirementMatchResult.UNKNOWN, None, f"Language proficiency not documented in context vault"
+                for lang in ["english", "german", "deutsch", "french", "spanish", "mandarin", "italian"]:
+                    if lang in req_text and (lang in key_str or lang in val_str):
+                        matched_lf = lf
+                        fact_level = _extract_cefr_level(val_str) or _extract_cefr_level(key_str)
+                        if req_level is not None and fact_level is not None:
+                            if fact_level < req_level:
+                                return RequirementMatchResult.NOT_MET, lf, f"Language level ({fact_level}) is below required level ({req_level})"
+                            else:
+                                match_res = RequirementMatchResult.MET
+                                notes = f"Language level ({fact_level}) meets or exceeds requirement ({req_level})"
+                        else:
+                            match_res = RequirementMatchResult.MET
+                            notes = "Language documented in context vault"
+                        break
+                if matched_lf:
+                    matched_fact = matched_lf
+                    break
+            if not matched_fact:
+                match_res, matched_fact, notes = RequirementMatchResult.UNKNOWN, None, "Language proficiency not documented in context vault"
 
         elif crit == "location":
             req_loc = str(req.value).lower()
             if "remote" in req_loc:
                 return RequirementMatchResult.MET, None, "Remote position satisfies location criteria"
             pref_facts = facts_by_ns.get("preferences", []) + facts_by_ns.get("location", [])
+            matched_loc = False
             for pf in pref_facts:
                 val_str = str(pf.value).lower()
                 if any(city in val_str for city in ["berlin", "munich", "germany", "eu", "london", "zurich"] if city in req_loc):
-                    return RequirementMatchResult.MET, pf, "User location matches position"
-            return RequirementMatchResult.UNKNOWN, None, f"Location compatibility unknown"
+                    match_res, matched_fact, notes = RequirementMatchResult.MET, pf, "User location matches position"
+                    matched_loc = True
+                    break
+            if not matched_loc:
+                match_res, matched_fact, notes = RequirementMatchResult.UNKNOWN, None, "Location compatibility unknown"
 
         elif crit == "seniority":
             req_sen = str(req.value).lower()
             career_facts = facts_by_ns.get("career", []) + facts_by_ns.get("seniority", [])
+            matched_sen = False
             for cf in career_facts:
                 val_str = str(cf.value).lower()
                 if req_sen in val_str:
-                    return RequirementMatchResult.MET, cf, "Seniority level aligns"
-            return RequirementMatchResult.UNKNOWN, None, f"Seniority level not documented"
+                    match_res, matched_fact, notes = RequirementMatchResult.MET, cf, "Seniority level aligns"
+                    matched_sen = True
+                    break
+            if not matched_sen:
+                match_res, matched_fact, notes = RequirementMatchResult.UNKNOWN, None, "Seniority level not documented"
 
-        return RequirementMatchResult.UNKNOWN, None, "No specific matching rule applied"
+        # HARD ELIGIBILITY VERIFICATION GUARD:
+        # Mandatory requirements can ONLY be satisfied (MET) by USER_VERIFIED or SOURCE_VERIFIED context facts.
+        # Unverified, claim-only, or pending context facts MUST produce UNKNOWN.
+        if match_res == RequirementMatchResult.MET and req.category == RequirementCategory.MANDATORY:
+            if matched_fact is not None:
+                v_stat = matched_fact.verification_status
+                if v_stat not in (VerificationStatus.USER_VERIFIED, VerificationStatus.SOURCE_VERIFIED):
+                    v_label = v_stat.value if isinstance(v_stat, VerificationStatus) else str(v_stat)
+                    return (
+                        RequirementMatchResult.UNKNOWN,
+                        matched_fact,
+                        f"Matched fact '{matched_fact.fact_id}' is unverified ({v_label}); mandatory requirement requires verified evidence",
+                    )
+
+        return match_res, matched_fact, notes
 
     @classmethod
     def _calculate_fit(
@@ -471,79 +603,98 @@ class OpportunityEvaluator:
         facts_by_ns: dict[str, list[ContextFact]],
         active_facts: list[ContextFact],
     ) -> FitScoreComponents:
-        """Calculate explainable fit components summing up to 100."""
+        """Calculate explainable fit components summing up to 100 with coverage guard."""
         evidence_by_req_id = {e.requirement_id: e for e in evidence_list}
         explanations: list[str] = []
+
+        applicable_weight = 0.0
 
         # 1. Skills Score (0 - 50)
         skill_reqs = [r for r in normalized_requirements if r.criterion == "skill"]
         if skill_reqs:
+            applicable_weight += 50.0
             skills_met = sum(
                 1 for r in skill_reqs
-                if evidence_by_req_id.get(r.requirement_id, None) is not None
+                if evidence_by_req_id.get(r.requirement_id) is not None
                 and evidence_by_req_id[r.requirement_id].match_result == RequirementMatchResult.MET
             )
             skills_score = round(50.0 * (skills_met / len(skill_reqs)), 2)
             explanations.append(f"Skills: {skills_met}/{len(skill_reqs)} matched ({skills_score}/50 pts)")
         else:
-            # Baseline when no explicit skill requirements are listed
-            skills_score = 35.0
-            explanations.append(f"Skills: No specific skill requirements parsed (default 35/50 pts)")
+            skills_score = 0.0
+            explanations.append("Skills: No explicit skill requirements parsed (0/0 weight)")
 
         # 2. Preferred Requirements Score (0 - 20)
         preferred_reqs = [r for r in normalized_requirements if r.category == RequirementCategory.PREFERRED]
         if preferred_reqs:
+            applicable_weight += 20.0
             pref_met = sum(
                 1 for r in preferred_reqs
-                if evidence_by_req_id.get(r.requirement_id, None) is not None
+                if evidence_by_req_id.get(r.requirement_id) is not None
                 and evidence_by_req_id[r.requirement_id].match_result == RequirementMatchResult.MET
             )
             pref_score = round(20.0 * (pref_met / len(preferred_reqs)), 2)
             explanations.append(f"Preferred: {pref_met}/{len(preferred_reqs)} met ({pref_score}/20 pts)")
         else:
-            pref_score = 15.0
-            explanations.append(f"Preferred: No bonus requirements listed (default 15/20 pts)")
+            pref_score = 0.0
+            explanations.append("Preferred: No preferred requirements listed (0/0 weight)")
 
         # 3. Location Score (0 - 15)
         loc_str = (opportunity.location or "").lower()
-        if "remote" in loc_str:
-            location_score = 15.0
-            explanations.append("Location: Fully remote position (15/15 pts)")
-        else:
-            # Check user location preference
-            loc_facts = facts_by_ns.get("preferences", []) + facts_by_ns.get("location", [])
-            matched_loc = False
-            for lf in loc_facts:
-                if any(place in str(lf.value).lower() for place in loc_str.split() if len(place) > 3):
-                    matched_loc = True
-                    break
-            if matched_loc:
+        has_loc_req = any(r.criterion == "location" for r in normalized_requirements)
+        if loc_str or has_loc_req:
+            applicable_weight += 15.0
+            if "remote" in loc_str:
                 location_score = 15.0
-                explanations.append(f"Location: Local match for '{opportunity.location}' (15/15 pts)")
-            elif not loc_str:
-                location_score = 10.0
-                explanations.append("Location: Unspecified location (10/15 pts)")
+                explanations.append("Location: Fully remote position (15/15 pts)")
             else:
-                location_score = 8.0
-                explanations.append(f"Location: Location '{opportunity.location}' compatibility pending (8/15 pts)")
+                loc_facts = facts_by_ns.get("preferences", []) + facts_by_ns.get("location", [])
+                matched_loc = False
+                for lf in loc_facts:
+                    if any(place in str(lf.value).lower() for place in loc_str.split() if len(place) > 3):
+                        matched_loc = True
+                        break
+                if matched_loc:
+                    location_score = 15.0
+                    explanations.append(f"Location: Local match for '{opportunity.location}' (15/15 pts)")
+                else:
+                    location_score = 0.0
+                    explanations.append(f"Location: Location '{opportunity.location}' compatibility pending (0/15 pts)")
+        else:
+            location_score = 0.0
+            explanations.append("Location: Unspecified location (0/0 weight)")
 
         # 4. Seniority Score (0 - 15)
         sen_reqs = [r for r in normalized_requirements if r.criterion in ("seniority", "years_experience")]
         if sen_reqs:
+            applicable_weight += 15.0
             sen_met = sum(
                 1 for r in sen_reqs
-                if evidence_by_req_id.get(r.requirement_id, None) is not None
+                if evidence_by_req_id.get(r.requirement_id) is not None
                 and evidence_by_req_id[r.requirement_id].match_result == RequirementMatchResult.MET
             )
             sen_score = round(15.0 * (sen_met / len(sen_reqs)), 2)
             explanations.append(f"Seniority: Experience aligned ({sen_score}/15 pts)")
         else:
-            sen_score = 12.0
-            explanations.append("Seniority: Open level / standard seniority (12/15 pts)")
+            sen_score = 0.0
+            explanations.append("Seniority: No seniority requirements listed (0/0 weight)")
 
-        total = round(min(100.0, max(0.0, skills_score + pref_score + location_score + sen_score)), 2)
+        # Coverage guard: ratio of applicable weight to total policy maximum (100.0)
+        fit_coverage = round(applicable_weight / 100.0, 4)
+        earned_points = skills_score + pref_score + location_score + sen_score
 
-        if total >= 80.0:
+        if applicable_weight > 0.0:
+            total = round(min(100.0, max(0.0, (earned_points / applicable_weight) * 100.0)), 2)
+        else:
+            total = 0.0
+
+        if fit_coverage < 0.40:
+            tier = FitTier.INSUFFICIENT_EVIDENCE
+            explanations.insert(
+                0,
+                f"Limited fit signal (coverage {int(fit_coverage * 100)}%); Insufficient evidence for strong-fit determination",
+            )
+        elif total >= 80.0:
             tier = FitTier.STRONG
         elif total >= 55.0:
             tier = FitTier.MODERATE
@@ -557,5 +708,6 @@ class OpportunityEvaluator:
             seniority_score=sen_score,
             total_score=total,
             fit_tier=tier,
+            fit_coverage=fit_coverage,
             explanations=explanations,
         )

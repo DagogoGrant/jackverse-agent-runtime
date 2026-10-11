@@ -34,6 +34,7 @@ _VALID_OPPORTUNITY_TRANSITIONS: dict[OpportunityStatus, set[OpportunityStatus]] 
     },
     OpportunityStatus.EVALUATING: {
         OpportunityStatus.SHORTLISTED,
+        OpportunityStatus.NORMALIZED,
         OpportunityStatus.EVALUATING,
         OpportunityStatus.ARCHIVED,
         OpportunityStatus.REJECTED,
@@ -80,6 +81,7 @@ class Opportunity:
     version: int = 1
     converted_case_id: str | None = None
     fingerprint_v2: str = ""
+    external_posting_id: str | None = None
 
     def __post_init__(self) -> None:
         if not self.opportunity_id or not self.opportunity_id.strip():
@@ -132,14 +134,28 @@ class Opportunity:
         return compute_sha256(canonical)
 
     def compute_fingerprint_v2(self) -> str:
-        """Compute stable SHA-256 fingerprint for cross-source deduplication (V2)."""
-        components = [
-            FINGERPRINT_SCHEMA_V2,
-            self.opportunity_type_str,
-            (self.organization or "").strip().lower(),
-            self.title.strip().lower(),
-            (self.location or "").strip().lower(),
-        ]
+        """Compute stable SHA-256 fingerprint for cross-source deduplication (V2).
+
+        When an external_posting_id is provided by the originating organization
+        (e.g. REQ-18473), it is prioritized to distinguish separate requisitions
+        at the same company/location. Otherwise, falls back to type + org + title + location.
+        """
+        if self.external_posting_id and self.external_posting_id.strip():
+            components = [
+                FINGERPRINT_SCHEMA_V2,
+                self.opportunity_type_str,
+                (self.organization or "").strip().lower(),
+                "ext_id",
+                self.external_posting_id.strip().lower(),
+            ]
+        else:
+            components = [
+                FINGERPRINT_SCHEMA_V2,
+                self.opportunity_type_str,
+                (self.organization or "").strip().lower(),
+                self.title.strip().lower(),
+                (self.location or "").strip().lower(),
+            ]
         canonical = canonical_json_dumps(components)
         return compute_sha256(canonical)
 
@@ -153,6 +169,7 @@ class Opportunity:
             (self.organization or "").strip(),
             self.opportunity_type_str,
             (self.location or "").strip(),
+            (self.external_posting_id or "").strip(),
             raw_reqs,
             norm_reqs,
             mission_goal.strip(),
@@ -203,6 +220,23 @@ class Opportunity:
         self.status = new_status
         self.version += 1
 
+    def invalidate_evaluation_for_renormalization(self) -> None:
+        """Invalidate existing evaluation and return state to NORMALIZED.
+
+        Enforces aggregate encapsulation: clears evaluation snapshot,
+        sets status to NORMALIZED, and increments version exactly once.
+        """
+        if self.status != OpportunityStatus.EVALUATING:
+            raise InvalidStateTransitionError(
+                "Opportunity",
+                self.status.value,
+                OpportunityStatus.NORMALIZED.value,
+                "Can only re-normalize from EVALUATING state.",
+            )
+        self.metadata.pop("evaluation", None)
+        self.status = OpportunityStatus.NORMALIZED
+        self.version += 1
+
     def to_dict(self) -> dict[str, Any]:
         """Serialize Opportunity to a JSON-compatible dictionary."""
         return {
@@ -224,6 +258,7 @@ class Opportunity:
             "version": self.version,
             "converted_case_id": self.converted_case_id,
             "fingerprint_v2": self.fingerprint_v2,
+            "external_posting_id": self.external_posting_id,
         }
 
     @classmethod
@@ -248,4 +283,5 @@ class Opportunity:
             version=int(data.get("version", 1)),
             converted_case_id=data.get("converted_case_id"),
             fingerprint_v2=data.get("fingerprint_v2", ""),
+            external_posting_id=data.get("external_posting_id"),
         )

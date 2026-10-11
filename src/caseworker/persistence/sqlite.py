@@ -372,8 +372,9 @@ class SQLiteOpportunityRepository(OpportunityRepository):
                         opportunity_id, mission_id, user_id, opportunity_type,
                         title, organization, source_url, source_name, location,
                         status, requirements, metadata, fingerprint,
-                        discovered_at, deadline, version, converted_case_id, fingerprint_v2
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        discovered_at, deadline, version, converted_case_id, fingerprint_v2,
+                        external_posting_id
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         opportunity.opportunity_id,
@@ -394,6 +395,7 @@ class SQLiteOpportunityRepository(OpportunityRepository):
                         opportunity.version,
                         opportunity.converted_case_id,
                         opportunity.fingerprint_v2,
+                        opportunity.external_posting_id,
                     ),
                 )
             except sqlite3.IntegrityError as e:
@@ -408,7 +410,8 @@ class SQLiteOpportunityRepository(OpportunityRepository):
                     mission_id = ?, user_id = ?, opportunity_type = ?, title = ?,
                     organization = ?, source_url = ?, source_name = ?, location = ?,
                     status = ?, requirements = ?, metadata = ?, fingerprint = ?,
-                    deadline = ?, version = ?, converted_case_id = ?, fingerprint_v2 = ?
+                    deadline = ?, version = ?, converted_case_id = ?, fingerprint_v2 = ?,
+                    external_posting_id = ?
                 WHERE opportunity_id = ? AND version = ?
                 """,
                 (
@@ -428,6 +431,7 @@ class SQLiteOpportunityRepository(OpportunityRepository):
                     opportunity.version,
                     opportunity.converted_case_id,
                     opportunity.fingerprint_v2,
+                    opportunity.external_posting_id,
                     opportunity.opportunity_id,
                     expected_version,
                 ),
@@ -455,6 +459,7 @@ class SQLiteOpportunityRepository(OpportunityRepository):
             version=row[15],
             converted_case_id=row[16] if len(row) > 16 else None,
             fingerprint_v2=row[17] if len(row) > 17 else "",
+            external_posting_id=row[18] if len(row) > 18 else None,
         )
 
     def get_by_id(self, opportunity_id: str) -> Opportunity | None:
@@ -464,7 +469,8 @@ class SQLiteOpportunityRepository(OpportunityRepository):
             SELECT opportunity_id, mission_id, user_id, opportunity_type,
                    title, organization, source_url, source_name, location,
                    status, requirements, metadata, fingerprint,
-                   discovered_at, deadline, version, converted_case_id, fingerprint_v2
+                   discovered_at, deadline, version, converted_case_id, fingerprint_v2,
+                   external_posting_id
             FROM opportunities WHERE opportunity_id = ?
             """,
             (opportunity_id,),
@@ -479,7 +485,8 @@ class SQLiteOpportunityRepository(OpportunityRepository):
             SELECT opportunity_id, mission_id, user_id, opportunity_type,
                title, organization, source_url, source_name, location,
                status, requirements, metadata, fingerprint,
-               discovered_at, deadline, version, converted_case_id, fingerprint_v2
+               discovered_at, deadline, version, converted_case_id, fingerprint_v2,
+               external_posting_id
             FROM opportunities WHERE user_id = ? AND fingerprint = ?
             """,
             (user_id, fingerprint),
@@ -494,7 +501,8 @@ class SQLiteOpportunityRepository(OpportunityRepository):
             SELECT opportunity_id, mission_id, user_id, opportunity_type,
                    title, organization, source_url, source_name, location,
                    status, requirements, metadata, fingerprint,
-                   discovered_at, deadline, version, converted_case_id, fingerprint_v2
+                   discovered_at, deadline, version, converted_case_id, fingerprint_v2,
+                   external_posting_id
             FROM opportunities WHERE user_id = ? AND fingerprint_v2 = ?
             ORDER BY discovered_at DESC
             LIMIT 1
@@ -504,6 +512,22 @@ class SQLiteOpportunityRepository(OpportunityRepository):
         row = cur.fetchone()
         return self._row_to_opportunity(row) if row else None
 
+    def list_by_fingerprint_v2(self, user_id: str, fingerprint_v2: str) -> list[Opportunity]:
+        cur = self.conn.cursor()
+        cur.execute(
+            """
+            SELECT opportunity_id, mission_id, user_id, opportunity_type,
+                   title, organization, source_url, source_name, location,
+                   status, requirements, metadata, fingerprint,
+                   discovered_at, deadline, version, converted_case_id, fingerprint_v2,
+                   external_posting_id
+            FROM opportunities WHERE user_id = ? AND fingerprint_v2 = ?
+            ORDER BY discovered_at DESC
+            """,
+            (user_id, fingerprint_v2),
+        )
+        return [self._row_to_opportunity(r) for r in cur.fetchall()]
+
     def list_by_mission(self, mission_id: str) -> list[Opportunity]:
         cur = self.conn.cursor()
         cur.execute(
@@ -511,7 +535,8 @@ class SQLiteOpportunityRepository(OpportunityRepository):
             SELECT opportunity_id, mission_id, user_id, opportunity_type,
                    title, organization, source_url, source_name, location,
                    status, requirements, metadata, fingerprint,
-                   discovered_at, deadline, version, converted_case_id, fingerprint_v2
+                   discovered_at, deadline, version, converted_case_id, fingerprint_v2,
+                   external_posting_id
             FROM opportunities WHERE mission_id = ?
             ORDER BY discovered_at DESC
             """,
@@ -527,7 +552,8 @@ class SQLiteOpportunityRepository(OpportunityRepository):
                 SELECT opportunity_id, mission_id, user_id, opportunity_type,
                        title, organization, source_url, source_name, location,
                        status, requirements, metadata, fingerprint,
-                       discovered_at, deadline, version, converted_case_id, fingerprint_v2
+                       discovered_at, deadline, version, converted_case_id, fingerprint_v2,
+                       external_posting_id
                 FROM opportunities WHERE user_id = ? AND status = ?
                 ORDER BY discovered_at DESC
                 """,
@@ -539,7 +565,8 @@ class SQLiteOpportunityRepository(OpportunityRepository):
                 SELECT opportunity_id, mission_id, user_id, opportunity_type,
                        title, organization, source_url, source_name, location,
                        status, requirements, metadata, fingerprint,
-                       discovered_at, deadline, version, converted_case_id, fingerprint_v2
+                       discovered_at, deadline, version, converted_case_id, fingerprint_v2,
+                       external_posting_id
                 FROM opportunities WHERE user_id = ?
                 ORDER BY discovered_at DESC
                 """,

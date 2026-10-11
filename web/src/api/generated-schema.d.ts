@@ -893,7 +893,7 @@ export interface paths {
          * Transition Opportunity
          * @description Transition opportunity status with strict ETag precondition verification.
          *
-         *     Protected transitions (shortlisted, converted_to_case) are blocked.
+         *     Protected transitions (normalized, evaluating, shortlisted, converted_to_case) are blocked.
          */
         post: operations["transition_opportunity_api_v1_opportunities__opportunity_id__transition_post"];
         delete?: never;
@@ -1141,6 +1141,11 @@ export interface components {
              */
             goal?: string | null;
             /**
+             * Mission Id
+             * @description Optional target mission ID for conversion.
+             */
+            mission_id?: string | null;
+            /**
              * Title
              * @description Optional custom title for the Case.
              */
@@ -1148,10 +1153,7 @@ export interface components {
         };
         /** ConvertToCaseResponse */
         ConvertToCaseResponse: {
-            /** Case */
-            case: {
-                [key: string]: unknown;
-            };
+            case: components["schemas"]["CaseResponse"];
             /** Case Id */
             case_id: string;
             /** Created */
@@ -1239,6 +1241,11 @@ export interface components {
              */
             deadline?: string | null;
             /**
+             * External Posting Id
+             * @description Canonical employer requisition ID (e.g. REQ-18473).
+             */
+            external_posting_id?: string | null;
+            /**
              * Location
              * @description Geographic or remote location.
              * @default
@@ -1281,11 +1288,6 @@ export interface components {
              * @default
              */
             source_url: string;
-            /**
-             * @description Initial discovery status.
-             * @default discovered
-             */
-            status: components["schemas"]["OpportunityStatus"];
             /**
              * Title
              * @description Opportunity title.
@@ -1404,6 +1406,11 @@ export interface components {
             /** Evidence */
             evidence?: components["schemas"]["RequirementEvidenceResponse"][];
             fit: components["schemas"]["FitScoreComponentsResponse"];
+            /**
+             * Is Stale
+             * @default false
+             */
+            is_stale: boolean;
         };
         /** EvaluationSummary */
         EvaluationSummary: {
@@ -1605,6 +1612,8 @@ export interface components {
             /** Discovered At */
             discovered_at: string;
             evaluation_summary?: components["schemas"]["EvaluationSummary"] | null;
+            /** External Posting Id */
+            external_posting_id?: string | null;
             /** Fingerprint */
             fingerprint: string;
             /** Fingerprint V2 */

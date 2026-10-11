@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import sqlite3
 
-LATEST_SCHEMA_VERSION = 4
+LATEST_SCHEMA_VERSION = 5
 
 MIGRATION_V1_DDL = """
 CREATE TABLE IF NOT EXISTS missions (
@@ -274,5 +274,54 @@ class SQLiteMigrator:
                 )
             conn.execute("PRAGMA user_version = 4;")
             current_version = 4
+
+        # Migrate 4 -> 5 (Phase 5.1.1: Opportunity Engine Integrity - external_posting_id, indexing & V2 backfill)
+        if current_version < 5:
+            cur = conn.cursor()
+            cur.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='opportunities';")
+            if cur.fetchone():
+                cur.execute("PRAGMA table_info(opportunities);")
+                columns = {row[1] for row in cur.fetchall()}
+
+                if "external_posting_id" not in columns:
+                    conn.execute("ALTER TABLE opportunities ADD COLUMN external_posting_id TEXT;")
+
+                conn.execute(
+                    "CREATE INDEX IF NOT EXISTS idx_opportunities_ext_posting ON opportunities(user_id, external_posting_id);"
+                )
+
+                # Safe legacy fingerprint_v2 backfill for rows where fingerprint_v2 IS NULL or empty
+                import hashlib
+                import json
+                cur.execute(
+                    "SELECT opportunity_id, opportunity_type, organization, title, location, external_posting_id FROM opportunities WHERE fingerprint_v2 IS NULL OR fingerprint_v2 = '';"
+                )
+                rows = cur.fetchall()
+                for opp_id, opp_type, org, title, loc, ext_id in rows:
+                    if ext_id and str(ext_id).strip():
+                        components = [
+                            "opp_fp_v2",
+                            opp_type or "",
+                            (org or "").strip().lower(),
+                            "ext_id",
+                            str(ext_id).strip().lower(),
+                        ]
+                    else:
+                        components = [
+                            "opp_fp_v2",
+                            opp_type or "",
+                            (org or "").strip().lower(),
+                            (title or "").strip().lower(),
+                            (loc or "").strip().lower(),
+                        ]
+                    canonical = json.dumps(components, separators=(",", ":"), ensure_ascii=True)
+                    fp_v2 = hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+                    conn.execute(
+                        "UPDATE opportunities SET fingerprint_v2 = ? WHERE opportunity_id = ?;",
+                        (fp_v2, opp_id),
+                    )
+
+            conn.execute("PRAGMA user_version = 5;")
+            current_version = 5
 
         return current_version

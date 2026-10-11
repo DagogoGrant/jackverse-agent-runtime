@@ -44,7 +44,6 @@ export const OpportunitiesView: React.FC = () => {
       const created = await createOpportunity.mutateAsync({
         title: title.trim(),
         opportunity_type: oppType,
-        status: "discovered",
         organization: organization.trim(),
         location: location.trim(),
         source_name: sourceName.trim(),

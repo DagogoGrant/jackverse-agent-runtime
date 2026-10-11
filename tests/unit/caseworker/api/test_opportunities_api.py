@@ -66,27 +66,24 @@ class TestOpportunitiesAPI(unittest.TestCase):
         opp_id = create_res.json()["opportunity_id"]
         etag_v1 = create_res.headers.get("etag")
 
-        # Transition: DISCOVERED -> NORMALIZED
+        # Generic transition to protected states (normalized, evaluating, shortlisted, converted_to_case) returns 409 Conflict
         trans_res = self.client.post(
             f"/api/v1/opportunities/{opp_id}/transition",
             headers={**self.user_a_headers, "If-Match": etag_v1},
             json={"new_status": "normalized", "reason": "Parsed requirements"},
         )
-        self.assertEqual(trans_res.status_code, 200)
-        self.assertEqual(trans_res.json()["status"], "normalized")
-        etag_v2 = trans_res.headers.get("etag")
-        self.assertEqual(etag_v2, f'"opportunity:{opp_id}:v2"')
+        self.assertEqual(trans_res.status_code, 409)
 
-        # Transition: NORMALIZED -> EVALUATING
+        # Transition: DISCOVERED -> ARCHIVED (allowed generic transition)
         trans_res2 = self.client.post(
             f"/api/v1/opportunities/{opp_id}/transition",
-            headers={**self.user_a_headers, "If-Match": etag_v2},
-            json={"new_status": "evaluating", "reason": "Passed initial keyword screening"},
+            headers={**self.user_a_headers, "If-Match": etag_v1},
+            json={"new_status": "archived", "reason": "No longer pursuing"},
         )
         self.assertEqual(trans_res2.status_code, 200)
-        self.assertEqual(trans_res2.json()["status"], "evaluating")
-        etag_v3 = trans_res2.headers.get("etag")
-        self.assertEqual(etag_v3, f'"opportunity:{opp_id}:v3"')
+        self.assertEqual(trans_res2.json()["status"], "archived")
+        etag_v2 = trans_res2.headers.get("etag")
+        self.assertEqual(etag_v2, f'"opportunity:{opp_id}:v2"')
 
     def test_normalize_and_evaluate_endpoints(self) -> None:
         """Test dedicated normalize, evaluate, and get evaluation endpoints."""
@@ -147,13 +144,23 @@ class TestOpportunitiesAPI(unittest.TestCase):
                 )
             )
 
-        # Create opportunity
+        # Create active mission for user_a
+        m_res = self.client.post(
+            "/api/v1/missions",
+            headers=self.user_a_headers,
+            json={"title": "ML Career Mission", "goal": "Find ML role", "kind": "opportunity_pursuit"},
+        )
+        self.assertEqual(m_res.status_code, 201)
+        mission_id = m_res.json()["mission_id"]
+
+        # Create opportunity linked to mission
         payload = {
             "title": "Machine Learning Engineer",
             "opportunity_type": "job",
             "organization": "Mistral AI",
             "location": "Remote",
             "requirements": ["Python proficiency", "Remote friendly"],
+            "mission_id": mission_id,
         }
         create_res = self.client.post("/api/v1/opportunities", headers=self.user_a_headers, json=payload)
         opp_id = create_res.json()["opportunity_id"]
@@ -216,6 +223,14 @@ class TestOpportunitiesAPI(unittest.TestCase):
         self.assertEqual(replay_res.status_code, 200)
         self.assertFalse(replay_res.json()["created"])
         self.assertEqual(replay_res.json()["case_id"], case_id)
+
+        # Convert to Case: Replay with conflicting parameters -> 409 Conflict
+        conflict_res = self.client.post(
+            f"/api/v1/opportunities/{opp_id}/convert-to-case",
+            headers=self.user_a_headers,
+            json={"title": "Different Conflicting Title"},
+        )
+        self.assertEqual(conflict_res.status_code, 409)
 
     def test_mission_opportunities_list(self) -> None:
         """GET /api/v1/missions/{mission_id}/opportunities lists associated opportunities."""

@@ -23,6 +23,7 @@ class RawOpportunity:
     requirements: list[str] = field(default_factory=list)
     metadata: dict[str, Any] = field(default_factory=dict)
     deadline: datetime | None = None
+    external_posting_id: str | None = None
 
     def __post_init__(self) -> None:
         if self.deadline is not None:
@@ -62,6 +63,7 @@ class ManualOpportunityProvider:
         if isinstance(deadline, str):
             deadline = from_iso_utc(deadline)
 
+        ext_id = raw_data.get("external_posting_id")
         return RawOpportunity(
             title=title,
             organization=(raw_data.get("organization") or "").strip(),
@@ -72,4 +74,5 @@ class ManualOpportunityProvider:
             requirements=list(raw_data.get("requirements") or []),
             metadata=dict(raw_data.get("metadata") or {}),
             deadline=deadline,
+            external_posting_id=str(ext_id).strip() if ext_id else None,
         )

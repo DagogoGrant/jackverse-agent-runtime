@@ -5,11 +5,13 @@ from __future__ import annotations
 from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
+from caseworker.api.schemas.opportunity import RESERVED_METADATA_KEYS
 from caseworker.domain.case import Case
 from caseworker.domain.context_package import ContextPackageBuilder
 from caseworker.domain.enums import (
     CaseType,
     EligibilityStatus,
+    MissionStatus,
     OpportunityStatus,
     OpportunityType,
 )
@@ -88,6 +90,7 @@ class OpportunityService:
             metadata=raw_opp.metadata,
             deadline=raw_opp.deadline,
             mission_id=mission_id,
+            external_posting_id=raw_opp.external_posting_id,
         )
 
     def create_opportunity(
@@ -99,13 +102,19 @@ class OpportunityService:
         source_url: str = "",
         source_name: str = "",
         location: str = "",
-        status: OpportunityStatus | str = OpportunityStatus.DISCOVERED,
         requirements: list[str] | None = None,
         metadata: dict[str, Any] | None = None,
         deadline: datetime | None = None,
         mission_id: str | None = None,
+        external_posting_id: str | None = None,
+        status: OpportunityStatus | str = OpportunityStatus.DISCOVERED,
     ) -> tuple[Opportunity, bool]:
         """Create an opportunity or return an existing deduplicated record scoped to this user."""
+        meta = dict(metadata or {})
+        for k in meta:
+            if k in RESERVED_METADATA_KEYS:
+                raise DomainValidationError(f"Reserved metadata key '{k}' cannot be provided directly.")
+
         with self.storage.unit_of_work() as uow:
             if mission_id is not None:
                 mission = uow.missions.get_by_id(mission_id)
@@ -120,21 +129,26 @@ class OpportunityService:
                 source_url=source_url,
                 source_name=source_name,
                 location=location,
-                status=OpportunityStatus(status) if isinstance(status, str) else status,
+                status=OpportunityStatus.DISCOVERED,
                 requirements=list(requirements or []),
-                metadata=dict(metadata or {}),
+                metadata=meta,
                 deadline=deadline,
                 mission_id=mission_id,
+                external_posting_id=external_posting_id,
             )
 
             # Check cross-source V2 deduplication fingerprint first
-            existing = uow.opportunities.get_by_fingerprint_v2(user_id, opp.fingerprint_v2)
-            if existing is None:
+            matches_v2 = uow.opportunities.list_by_fingerprint_v2(user_id, opp.fingerprint_v2)
+            if len(matches_v2) == 1:
+                return matches_v2[0], False
+            elif len(matches_v2) > 1:
+                # Ambiguous collision: do NOT merge; create new record
+                pass
+            else:
                 # Check legacy V1 fingerprint
                 existing = uow.opportunities.get_by_fingerprint(user_id, opp.fingerprint)
-
-            if existing is not None:
-                return existing, False
+                if existing is not None:
+                    return existing, False
 
             uow.opportunities.save(opp)
             event = make_opportunity_discovered_event(
@@ -191,13 +205,29 @@ class OpportunityService:
             if opp is None or opp.user_id != user_id:
                 raise EntityNotFoundError("Opportunity", opportunity_id)
 
-            normalized = parse_requirements(opp.requirements)
+            if opp.status in (
+                OpportunityStatus.SHORTLISTED,
+                OpportunityStatus.CONVERTED_TO_CASE,
+                OpportunityStatus.ARCHIVED,
+                OpportunityStatus.REJECTED,
+            ):
+                raise InvalidStateTransitionError(
+                    "Opportunity",
+                    opp.status.value,
+                    OpportunityStatus.NORMALIZED.value,
+                    f"Cannot normalize opportunity in status '{opp.status.value}'.",
+                )
+
+            normalized = parse_requirements(opp.opportunity_id, opp.requirements)
             opp.metadata["normalized_requirements"] = [r.to_dict() for r in normalized]
             opp.metadata["requirement_schema"] = "opp_req_v1"
 
             if opp.status == OpportunityStatus.DISCOVERED:
                 opp.transition_to(OpportunityStatus.NORMALIZED)
+            elif opp.status == OpportunityStatus.EVALUATING:
+                opp.invalidate_evaluation_for_renormalization()
             else:
+                # NORMALIZED re-normalization
                 opp.version += 1
 
             uow.opportunities.save(opp)
@@ -222,10 +252,18 @@ class OpportunityService:
             if opp is None or opp.user_id != user_id:
                 raise EntityNotFoundError("Opportunity", opportunity_id)
 
+            if opp.status not in (OpportunityStatus.NORMALIZED, OpportunityStatus.EVALUATING):
+                raise InvalidStateTransitionError(
+                    "Opportunity",
+                    opp.status.value,
+                    OpportunityStatus.EVALUATING.value,
+                    f"Can only evaluate opportunities in NORMALIZED or EVALUATING state, got '{opp.status.value}'.",
+                )
+
             # Ensure requirements are normalized
             raw_normalized = opp.metadata.get("normalized_requirements")
             if not raw_normalized:
-                normalized = parse_requirements(opp.requirements)
+                normalized = parse_requirements(opp.opportunity_id, opp.requirements)
                 opp.metadata["normalized_requirements"] = [r.to_dict() for r in normalized]
                 opp.metadata["requirement_schema"] = "opp_req_v1"
             else:
@@ -284,10 +322,12 @@ class OpportunityService:
                 mission_constraints=mission_constraints,
             )
 
-            # Record snapshot and advance status
+            # Record snapshot and advance status / version
             opp.record_evaluation(snapshot.to_dict())
             if opp.status == OpportunityStatus.NORMALIZED:
                 opp.transition_to(OpportunityStatus.EVALUATING)
+            elif opp.status == OpportunityStatus.EVALUATING:
+                opp.version += 1
 
             uow.opportunities.save(opp)
 
@@ -302,6 +342,41 @@ class OpportunityService:
             )
             uow.events.append(opp_event)
             return opp, snapshot
+
+    def compute_evaluation_staleness(self, user_id: str, opportunity: Opportunity) -> bool:
+        """Deterministically determine if an opportunity's evaluation snapshot is stale."""
+        eval_meta = opportunity.metadata.get("evaluation")
+        if not eval_meta or not isinstance(eval_meta, dict):
+            return False
+
+        with self.storage.unit_of_work() as uow:
+            mission_goal = ""
+            mission_constraints: list[str] = []
+            if opportunity.mission_id:
+                mission = uow.missions.get_by_id(opportunity.mission_id)
+                if mission:
+                    mission_goal = mission.goal
+                    mission_constraints = list(mission.constraints)
+
+            current_input_hash = opportunity.compute_input_hash(mission_goal, mission_constraints)
+            stored_input_hash = eval_meta.get("evaluation_input_hash")
+            if stored_input_hash and stored_input_hash != current_input_hash:
+                return True
+
+            active_facts = uow.context.list_active(user_id=user_id)
+            raw_normalized = opportunity.metadata.get("normalized_requirements")
+            if raw_normalized:
+                normalized = [NormalizedRequirement.from_dict(d) for d in raw_normalized]
+            else:
+                normalized = parse_requirements(opportunity.opportunity_id, opportunity.requirements)
+
+            relevant_facts = OpportunityEvaluator.get_relevant_context_facts(normalized, active_facts)
+            current_context_hash = OpportunityEvaluator.compute_context_snapshot_hash(relevant_facts)
+            stored_context_hash = eval_meta.get("context_snapshot_hash")
+            if stored_context_hash and stored_context_hash != current_context_hash:
+                return True
+
+            return False
 
     def shortlist_opportunity_for_user(
         self,
@@ -325,7 +400,7 @@ class OpportunityService:
                     "Cannot shortlist an opportunity that has not been evaluated.",
                 )
 
-            # Check staleness
+            # Check staleness: input hash + relevant context hash
             mission_goal = ""
             mission_constraints: list[str] = []
             if opp.mission_id:
@@ -335,17 +410,31 @@ class OpportunityService:
                     mission_constraints = list(mission.constraints)
 
             current_input_hash = opp.compute_input_hash(mission_goal, mission_constraints)
-            active_facts = uow.context.list_active(user_id=user_id)
-            current_context_hash = OpportunityEvaluator.compute_context_snapshot_hash(active_facts)
-
-            # If stored input hash does not match current inputs, fail with 409 Conflict
             stored_input_hash = eval_meta.get("evaluation_input_hash")
             if stored_input_hash and stored_input_hash != current_input_hash:
                 raise InvalidStateTransitionError(
                     "Opportunity",
                     opp.status.value,
                     OpportunityStatus.SHORTLISTED.value,
-                    "Evaluation input has changed since evaluation was performed. Please re-evaluate.",
+                    "Evaluation is stale. Re-evaluate before shortlisting.",
+                )
+
+            active_facts = uow.context.list_active(user_id=user_id)
+            raw_normalized = opp.metadata.get("normalized_requirements")
+            if raw_normalized:
+                normalized = [NormalizedRequirement.from_dict(d) for d in raw_normalized]
+            else:
+                normalized = parse_requirements(opp.opportunity_id, opp.requirements)
+
+            relevant_facts = OpportunityEvaluator.get_relevant_context_facts(normalized, active_facts)
+            current_context_hash = OpportunityEvaluator.compute_context_snapshot_hash(relevant_facts)
+            stored_context_hash = eval_meta.get("context_snapshot_hash")
+            if stored_context_hash and stored_context_hash != current_context_hash:
+                raise InvalidStateTransitionError(
+                    "Opportunity",
+                    opp.status.value,
+                    OpportunityStatus.SHORTLISTED.value,
+                    "Evaluation is stale. Re-evaluate before shortlisting.",
                 )
 
             # Eligibility policy checks
@@ -380,6 +469,7 @@ class OpportunityService:
         self,
         user_id: str,
         opportunity_id: str,
+        mission_id: str | None = None,
         case_type: CaseType | str | None = None,
         title: str | None = None,
         goal: str | None = None,
@@ -387,8 +477,6 @@ class OpportunityService:
         """Convert a shortlisted opportunity to a Case atomically and idempotently.
 
         Returns (case, opportunity, created).
-        If the opportunity has already been converted and has a converted_case_id,
-        the existing case is returned with created=False.
         """
         with self.storage.unit_of_work() as uow:
             opp = uow.opportunities.get_by_id(opportunity_id)
@@ -399,6 +487,37 @@ class OpportunityService:
             if opp.status == OpportunityStatus.CONVERTED_TO_CASE and opp.converted_case_id:
                 existing_case = uow.cases.get_by_id(opp.converted_case_id)
                 if existing_case is not None:
+                    # Check replay parameter conflict
+                    if mission_id is not None and existing_case.mission_id != mission_id:
+                        raise InvalidStateTransitionError(
+                            "Opportunity",
+                            opp.status.value,
+                            OpportunityStatus.CONVERTED_TO_CASE.value,
+                            f"Replay conflict: requested mission_id '{mission_id}' conflicts with existing converted case mission_id '{existing_case.mission_id}'.",
+                        )
+                    if case_type is not None:
+                        expected_ct = case_type.value if isinstance(case_type, CaseType) else str(case_type)
+                        if existing_case.case_type_str != expected_ct:
+                            raise InvalidStateTransitionError(
+                                "Opportunity",
+                                opp.status.value,
+                                OpportunityStatus.CONVERTED_TO_CASE.value,
+                                f"Replay conflict: requested case_type '{case_type}' conflicts with existing converted case.",
+                            )
+                    if title is not None and title.strip() and existing_case.title != title.strip():
+                        raise InvalidStateTransitionError(
+                            "Opportunity",
+                            opp.status.value,
+                            OpportunityStatus.CONVERTED_TO_CASE.value,
+                            "Replay conflict: requested title conflicts with existing converted case.",
+                        )
+                    if goal is not None and goal.strip() and existing_case.goal != goal.strip():
+                        raise InvalidStateTransitionError(
+                            "Opportunity",
+                            opp.status.value,
+                            OpportunityStatus.CONVERTED_TO_CASE.value,
+                            "Replay conflict: requested goal conflicts with existing converted case.",
+                        )
                     return existing_case, opp, False
 
             # Invariant: Must be in SHORTLISTED status to convert
@@ -410,7 +529,32 @@ class OpportunityService:
                     "Only shortlisted opportunities can be converted to cases.",
                 )
 
-            # Resolve CaseType from 11-type mapping table or user override
+            # Target mission resolution and validation
+            target_mission_id = mission_id or opp.mission_id
+            if not target_mission_id:
+                raise DomainValidationError("A mission is required to convert an opportunity to a case.")
+
+            mission = uow.missions.get_by_id(target_mission_id)
+            if mission is None or mission.user_id != user_id:
+                raise EntityNotFoundError("Mission", target_mission_id)
+
+            if mission.archived:
+                raise InvalidStateTransitionError(
+                    "Opportunity",
+                    opp.status.value,
+                    OpportunityStatus.CONVERTED_TO_CASE.value,
+                    "Cannot convert opportunity to an archived mission.",
+                )
+
+            if mission.status not in (MissionStatus.DRAFT, MissionStatus.ACTIVE):
+                raise InvalidStateTransitionError(
+                    "Opportunity",
+                    opp.status.value,
+                    OpportunityStatus.CONVERTED_TO_CASE.value,
+                    f"Cannot convert opportunity to mission in status '{mission.status.value}'. Mission must be DRAFT or ACTIVE.",
+                )
+
+            # Resolve CaseType from mapping table or user override
             if case_type is not None:
                 resolved_case_type = CaseType(case_type) if isinstance(case_type, str) else case_type
             else:
@@ -427,20 +571,18 @@ class OpportunityService:
                 f"Pursue and apply for {opp.title} at {opp.organization or 'target organization'}"
             )
 
+            from caseworker.domain.enums import CaseStatus
             new_case = Case(
                 user_id=user_id,
-                mission_id=opp.mission_id,
+                mission_id=target_mission_id,
                 case_type=resolved_case_type,
                 title=case_title,
                 goal=case_goal,
-                status=opp.status.NEW if hasattr(opp.status, "NEW") else Case.status if False else "new",
+                status=CaseStatus.NEW,
                 success_criteria=[f"Complete application for {opp.title}"],
                 constraints=[],
                 deadline=opp.deadline,
             )
-            # Ensure status is CaseStatus.NEW
-            from caseworker.domain.enums import CaseStatus
-            new_case.status = CaseStatus.NEW
 
             uow.cases.save(new_case)
 
@@ -452,8 +594,9 @@ class OpportunityService:
             )
             uow.events.append(case_event)
 
-            # Update Opportunity with converted_case_id and transition to CONVERTED_TO_CASE
+            # Update Opportunity with mission_id, converted_case_id and transition to CONVERTED_TO_CASE
             old_status = opp.status.value
+            opp.mission_id = target_mission_id
             opp.converted_case_id = new_case.case_id
             opp.transition_to(OpportunityStatus.CONVERTED_TO_CASE)
             uow.opportunities.save(opp)
@@ -464,7 +607,7 @@ class OpportunityService:
                 user_id=user_id,
                 aggregate_version=opp.version,
                 case_id=new_case.case_id,
-                mission_id=opp.mission_id,
+                mission_id=target_mission_id,
                 old_status=old_status,
                 new_status=opp.status.value,
             )
@@ -481,10 +624,15 @@ class OpportunityService:
     ) -> Opportunity:
         """Transition an opportunity's state, asserting user ownership.
 
-        Protected states (SHORTLISTED, CONVERTED_TO_CASE) cannot be transitioned via this method.
+        Protected states (NORMALIZED, EVALUATING, SHORTLISTED, CONVERTED_TO_CASE) cannot be transitioned via this method.
         """
         target = OpportunityStatus(new_status) if isinstance(new_status, str) else new_status
-        if target in (OpportunityStatus.SHORTLISTED, OpportunityStatus.CONVERTED_TO_CASE):
+        if target in (
+            OpportunityStatus.NORMALIZED,
+            OpportunityStatus.EVALUATING,
+            OpportunityStatus.SHORTLISTED,
+            OpportunityStatus.CONVERTED_TO_CASE,
+        ):
             raise InvalidStateTransitionError(
                 "Opportunity",
                 "generic",

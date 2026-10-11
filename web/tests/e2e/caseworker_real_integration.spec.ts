@@ -144,7 +144,17 @@ test.describe('Caseworker Real Integration Suite (Live FastAPI + Temporary SQLit
   });
 
   // FLOW D: Opportunity Flow (Add Opportunity, Render Schema Fields, State Transitions)
-  test('Flow D: Opportunity schema compliance, manual ingress, and state transitions', async ({ page }) => {
+  test('Flow D: Opportunity schema compliance, manual ingress, and state transitions', async ({ page, request }) => {
+    // 0. Ensure an unarchived mission exists for opportunity pursuit (governed case conversion prerequisite)
+    await request.post('http://127.0.0.1:8089/api/v1/missions', {
+      headers: { 'X-JackVerse-User': 'alice', 'Content-Type': 'application/json' },
+      data: {
+        title: 'Career Acceleration 2026',
+        goal: 'Secure senior engineering role',
+        kind: 'opportunity_pursuit',
+      },
+    });
+
     await page.goto('/opportunities');
 
     // 1. Open manual creation modal
@@ -460,7 +470,7 @@ test.describe('Caseworker Real Integration Suite (Live FastAPI + Temporary SQLit
     ).toBeVisible();
 
     // Verify approval leaves pending queue and appears in All Decisions
-    await expect(page.locator('button', { hasText: 'Pending (0)' })).toBeVisible();
+    await expect(page.locator(`button:has-text("${caseItem.case_id}")`)).toHaveCount(0);
     await page.locator('button', { hasText: 'All Decisions' }).click();
     await expect(page.locator('text=DECISION RECORDED // STATUS: APPROVED')).toBeVisible();
   });
