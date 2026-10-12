@@ -15,6 +15,7 @@ from caseworker.domain.enums import CaseStatus, ClaimStatus, MissionStatus, Oppo
 from caseworker.domain.events import DomainEvent
 from caseworker.domain.mission import Mission
 from caseworker.domain.opportunity import Opportunity
+from caseworker.domain.preparation import PreparationIntelligenceReport
 from caseworker.domain.source import ContextSource
 
 
@@ -95,6 +96,10 @@ class OpportunityRepository(Protocol):
 
     def list_by_user(self, user_id: str, status: OpportunityStatus | None = None) -> list[Opportunity]:
         """List opportunities for a user, optionally filtered by status."""
+        ...
+
+    def get_by_converted_case_id(self, case_id: str) -> Opportunity | None:
+        """Retrieve an opportunity converted into the specified case ID."""
         ...
 
 
@@ -263,6 +268,27 @@ class EventStore(Protocol):
 
 
 @runtime_checkable
+class PreparationReportRepository(Protocol):
+    """Repository interface for PreparationIntelligenceReport entities."""
+
+    def save(self, report: PreparationIntelligenceReport) -> None:
+        """Save a new preparation intelligence report snapshot."""
+        ...
+
+    def get_by_id(self, report_id: str) -> PreparationIntelligenceReport | None:
+        """Retrieve a preparation intelligence report by its ID."""
+        ...
+
+    def get_latest_for_case(self, case_id: str) -> PreparationIntelligenceReport | None:
+        """Retrieve the latest preparation intelligence report for a case."""
+        ...
+
+    def list_for_case(self, case_id: str) -> list[PreparationIntelligenceReport]:
+        """List all preparation intelligence reports for a case in chronological order."""
+        ...
+
+
+@runtime_checkable
 class CaseworkerUnitOfWork(Protocol):
     """Transaction / Unit-of-Work boundary ensuring atomic domain state and event persistence."""
 
@@ -274,6 +300,7 @@ class CaseworkerUnitOfWork(Protocol):
     sources: ContextSourceRepository
     context: ContextRepository
     claims: ClaimRepository
+    preparation_reports: PreparationReportRepository
     events: EventStore
 
     def commit(self) -> None:

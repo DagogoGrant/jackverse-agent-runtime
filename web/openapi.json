@@ -379,6 +379,46 @@
         "title": "CaseType",
         "type": "string"
       },
+      "ClaimIntentResponse": {
+        "properties": {
+          "claim_topic": {
+            "title": "Claim Topic",
+            "type": "string"
+          },
+          "intent_id": {
+            "title": "Intent Id",
+            "type": "string"
+          },
+          "requirement_id": {
+            "title": "Requirement Id",
+            "type": "string"
+          },
+          "suggested_angle": {
+            "default": "",
+            "title": "Suggested Angle",
+            "type": "string"
+          },
+          "supporting_fact_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Supporting Fact Ids",
+            "type": "array"
+          },
+          "target_material": {
+            "title": "Target Material",
+            "type": "string"
+          }
+        },
+        "required": [
+          "intent_id",
+          "requirement_id",
+          "target_material",
+          "claim_topic"
+        ],
+        "title": "ClaimIntentResponse",
+        "type": "object"
+      },
       "ClaimResponse": {
         "properties": {
           "case_id": {
@@ -1170,6 +1210,99 @@
         "title": "EvaluationSummary",
         "type": "object"
       },
+      "EvidenceMappingItemResponse": {
+        "properties": {
+          "description": {
+            "title": "Description",
+            "type": "string"
+          },
+          "fact_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fact Key"
+          },
+          "fact_namespace": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fact Namespace"
+          },
+          "mandatory": {
+            "title": "Mandatory",
+            "type": "boolean"
+          },
+          "matched_fact_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Matched Fact Id"
+          },
+          "matched_fact_version": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Matched Fact Version"
+          },
+          "notes": {
+            "default": "",
+            "title": "Notes",
+            "type": "string"
+          },
+          "requirement_id": {
+            "title": "Requirement Id",
+            "type": "string"
+          },
+          "requirement_type": {
+            "title": "Requirement Type",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "verification_status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Verification Status"
+          }
+        },
+        "required": [
+          "requirement_id",
+          "requirement_type",
+          "description",
+          "mandatory",
+          "status"
+        ],
+        "title": "EvidenceMappingItemResponse",
+        "type": "object"
+      },
       "FactResponse": {
         "properties": {
           "allowed_purposes": {
@@ -1433,6 +1566,60 @@
           "fit_tier"
         ],
         "title": "FitScoreComponentsResponse",
+        "type": "object"
+      },
+      "GapItemResponse": {
+        "properties": {
+          "category": {
+            "title": "Category",
+            "type": "string"
+          },
+          "description": {
+            "title": "Description",
+            "type": "string"
+          },
+          "fact_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fact Id"
+          },
+          "gap_id": {
+            "title": "Gap Id",
+            "type": "string"
+          },
+          "mitigation_guidance": {
+            "title": "Mitigation Guidance",
+            "type": "string"
+          },
+          "requirement_id": {
+            "title": "Requirement Id",
+            "type": "string"
+          },
+          "requirement_type": {
+            "title": "Requirement Type",
+            "type": "string"
+          },
+          "severity": {
+            "title": "Severity",
+            "type": "string"
+          }
+        },
+        "required": [
+          "gap_id",
+          "requirement_id",
+          "requirement_type",
+          "category",
+          "description",
+          "severity",
+          "mitigation_guidance"
+        ],
+        "title": "GapItemResponse",
         "type": "object"
       },
       "HTTPValidationError": {
@@ -1982,6 +2169,140 @@
           "offset"
         ],
         "title": "PaginatedResponse[OpportunityResponse]",
+        "type": "object"
+      },
+      "PreparationIntelligenceReportResponse": {
+        "properties": {
+          "analyzer_version": {
+            "title": "Analyzer Version",
+            "type": "string"
+          },
+          "case_id": {
+            "title": "Case Id",
+            "type": "string"
+          },
+          "context_snapshot_hash": {
+            "title": "Context Snapshot Hash",
+            "type": "string"
+          },
+          "created_at": {
+            "title": "Created At",
+            "type": "string"
+          },
+          "evidence_map": {
+            "items": {
+              "$ref": "#/components/schemas/EvidenceMappingItemResponse"
+            },
+            "title": "Evidence Map",
+            "type": "array"
+          },
+          "gaps": {
+            "items": {
+              "$ref": "#/components/schemas/GapItemResponse"
+            },
+            "title": "Gaps",
+            "type": "array"
+          },
+          "input_hash": {
+            "title": "Input Hash",
+            "type": "string"
+          },
+          "is_stale": {
+            "default": false,
+            "title": "Is Stale",
+            "type": "boolean"
+          },
+          "opportunity_id": {
+            "title": "Opportunity Id",
+            "type": "string"
+          },
+          "report_id": {
+            "title": "Report Id",
+            "type": "string"
+          },
+          "schema_version": {
+            "title": "Schema Version",
+            "type": "string"
+          },
+          "source_evaluation_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Evaluation Id"
+          },
+          "strategy": {
+            "$ref": "#/components/schemas/PreparationStrategyResponse"
+          },
+          "user_id": {
+            "title": "User Id",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "report_id",
+          "case_id",
+          "opportunity_id",
+          "user_id",
+          "schema_version",
+          "analyzer_version",
+          "strategy",
+          "input_hash",
+          "context_snapshot_hash",
+          "created_at",
+          "version"
+        ],
+        "title": "PreparationIntelligenceReportResponse",
+        "type": "object"
+      },
+      "PreparationStrategyResponse": {
+        "properties": {
+          "claim_intents": {
+            "items": {
+              "$ref": "#/components/schemas/ClaimIntentResponse"
+            },
+            "title": "Claim Intents",
+            "type": "array"
+          },
+          "materials_checklist": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Materials Checklist",
+            "type": "array"
+          },
+          "mitigations": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Mitigations",
+            "type": "array"
+          },
+          "recommended_materials": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Recommended Materials",
+            "type": "array"
+          },
+          "strengths": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Strengths",
+            "type": "array"
+          }
+        },
+        "title": "PreparationStrategyResponse",
         "type": "object"
       },
       "ProfileReadinessResponse": {
@@ -3335,6 +3656,90 @@
         "summary": "Propose Action",
         "tags": [
           "actions"
+        ]
+      }
+    },
+    "/api/v1/cases/{case_id}/preparation/intelligence": {
+      "get": {
+        "description": "Retrieve the latest preparation intelligence report for case, including staleness status.",
+        "operationId": "get_latest_preparation_intelligence_api_v1_cases__case_id__preparation_intelligence_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "case_id",
+            "required": true,
+            "schema": {
+              "title": "Case Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PreparationIntelligenceReportResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Latest Preparation Intelligence",
+        "tags": [
+          "cases"
+        ]
+      },
+      "post": {
+        "description": "Analyze preparation intelligence for converted case, advance lifecycle, and return versioned report.",
+        "operationId": "generate_preparation_intelligence_api_v1_cases__case_id__preparation_intelligence_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "case_id",
+            "required": true,
+            "schema": {
+              "title": "Case Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PreparationIntelligenceReportResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Generate Preparation Intelligence",
+        "tags": [
+          "cases"
         ]
       }
     },

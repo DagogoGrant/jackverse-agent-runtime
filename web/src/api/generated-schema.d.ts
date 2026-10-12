@@ -192,6 +192,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/cases/{case_id}/preparation/intelligence": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Latest Preparation Intelligence
+         * @description Retrieve the latest preparation intelligence report for case, including staleness status.
+         */
+        get: operations["get_latest_preparation_intelligence_api_v1_cases__case_id__preparation_intelligence_get"];
+        put?: never;
+        /**
+         * Generate Preparation Intelligence
+         * @description Analyze preparation intelligence for converted case, advance lifecycle, and return versioned report.
+         */
+        post: operations["generate_preparation_intelligence_api_v1_cases__case_id__preparation_intelligence_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/cases/{case_id}/resolve": {
         parameters: {
             query?: never;
@@ -1074,6 +1098,24 @@ export interface components {
          * @enum {string}
          */
         CaseType: "job_application" | "scholarship_application" | "grant_pursuit" | "housing_search" | "package_investigation" | "refund_request" | "service_complaint" | "general";
+        /** ClaimIntentResponse */
+        ClaimIntentResponse: {
+            /** Claim Topic */
+            claim_topic: string;
+            /** Intent Id */
+            intent_id: string;
+            /** Requirement Id */
+            requirement_id: string;
+            /**
+             * Suggested Angle
+             * @default
+             */
+            suggested_angle: string;
+            /** Supporting Fact Ids */
+            supporting_fact_ids?: string[];
+            /** Target Material */
+            target_material: string;
+        };
         /** ClaimResponse */
         ClaimResponse: {
             /** Case Id */
@@ -1430,6 +1472,34 @@ export interface components {
              */
             is_stale: boolean;
         };
+        /** EvidenceMappingItemResponse */
+        EvidenceMappingItemResponse: {
+            /** Description */
+            description: string;
+            /** Fact Key */
+            fact_key?: string | null;
+            /** Fact Namespace */
+            fact_namespace?: string | null;
+            /** Mandatory */
+            mandatory: boolean;
+            /** Matched Fact Id */
+            matched_fact_id?: string | null;
+            /** Matched Fact Version */
+            matched_fact_version?: number | null;
+            /**
+             * Notes
+             * @default
+             */
+            notes: string;
+            /** Requirement Id */
+            requirement_id: string;
+            /** Requirement Type */
+            requirement_type: string;
+            /** Status */
+            status: string;
+            /** Verification Status */
+            verification_status?: string | null;
+        };
         /** FactResponse */
         FactResponse: {
             /** Allowed Purposes */
@@ -1525,6 +1595,25 @@ export interface components {
             skills_score: number;
             /** Total Score */
             total_score: number;
+        };
+        /** GapItemResponse */
+        GapItemResponse: {
+            /** Category */
+            category: string;
+            /** Description */
+            description: string;
+            /** Fact Id */
+            fact_id?: string | null;
+            /** Gap Id */
+            gap_id: string;
+            /** Mitigation Guidance */
+            mitigation_guidance: string;
+            /** Requirement Id */
+            requirement_id: string;
+            /** Requirement Type */
+            requirement_type: string;
+            /** Severity */
+            severity: string;
         };
         /** HTTPValidationError */
         HTTPValidationError: {
@@ -1785,6 +1874,56 @@ export interface components {
              * @description Total number of items matching filter.
              */
             total: number;
+        };
+        /** PreparationIntelligenceReportResponse */
+        PreparationIntelligenceReportResponse: {
+            /** Analyzer Version */
+            analyzer_version: string;
+            /** Case Id */
+            case_id: string;
+            /** Context Snapshot Hash */
+            context_snapshot_hash: string;
+            /** Created At */
+            created_at: string;
+            /** Evidence Map */
+            evidence_map?: components["schemas"]["EvidenceMappingItemResponse"][];
+            /** Gaps */
+            gaps?: components["schemas"]["GapItemResponse"][];
+            /** Input Hash */
+            input_hash: string;
+            /**
+             * Is Stale
+             * @default false
+             */
+            is_stale: boolean;
+            /** Opportunity Id */
+            opportunity_id: string;
+            /** Report Id */
+            report_id: string;
+            /** Schema Version */
+            schema_version: string;
+            /** Source Evaluation Id */
+            source_evaluation_id?: string | null;
+            strategy: components["schemas"]["PreparationStrategyResponse"];
+            /** User Id */
+            user_id: string;
+            /** Version */
+            version: number;
+        };
+        /** PreparationStrategyResponse */
+        PreparationStrategyResponse: {
+            /** Claim Intents */
+            claim_intents?: components["schemas"]["ClaimIntentResponse"][];
+            /** Materials Checklist */
+            materials_checklist?: {
+                [key: string]: unknown;
+            }[];
+            /** Mitigations */
+            mitigations?: string[];
+            /** Recommended Materials */
+            recommended_materials?: string[];
+            /** Strengths */
+            strengths?: string[];
         };
         /** ProfileReadinessResponse */
         ProfileReadinessResponse: {
@@ -2518,6 +2657,68 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ActionResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_latest_preparation_intelligence_api_v1_cases__case_id__preparation_intelligence_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                case_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PreparationIntelligenceReportResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    generate_preparation_intelligence_api_v1_cases__case_id__preparation_intelligence_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                case_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PreparationIntelligenceReportResponse"];
                 };
             };
             /** @description Validation Error */

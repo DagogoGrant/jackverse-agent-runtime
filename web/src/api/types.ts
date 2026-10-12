@@ -88,6 +88,15 @@ export type EvaluateClaimRequest = Schemas['EvaluateClaimRequest'];
 export type RejectClaimRequest = Schemas['RejectClaimRequest'];
 
 // ----------------------------------------------------------------------------
+// Preparation Intelligence
+// ----------------------------------------------------------------------------
+export type PreparationIntelligenceReport = Schemas['PreparationIntelligenceReportResponse'];
+export type PreparationStrategy = Schemas['PreparationStrategyResponse'];
+export type EvidenceMappingItem = Schemas['EvidenceMappingItemResponse'];
+export type GapItem = Schemas['GapItemResponse'];
+export type ClaimIntent = Schemas['ClaimIntentResponse'];
+
+// ----------------------------------------------------------------------------
 // Activity & Domain Events
 // ----------------------------------------------------------------------------
 export type DomainEvent = Schemas['DomainEventResponse'];

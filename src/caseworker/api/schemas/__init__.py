@@ -44,6 +44,13 @@ from caseworker.api.schemas.opportunity import (
     OpportunityResponse,
     TransitionOpportunityRequest,
 )
+from caseworker.api.schemas.preparation import (
+    ClaimIntentResponse,
+    EvidenceMappingItemResponse,
+    GapItemResponse,
+    PreparationIntelligenceReportResponse,
+    PreparationStrategyResponse,
+)
 
 __all__ = [
     "ActionResponse",
@@ -51,6 +58,7 @@ __all__ = [
     "ApprovalResponse",
     "ApproveActionRequest",
     "CaseResponse",
+    "ClaimIntentResponse",
     "ClaimResponse",
     "ContextPackageResponse",
     "CreateCaseRequest",
@@ -60,10 +68,14 @@ __all__ = [
     "CursorPaginatedResponse",
     "DomainEventResponse",
     "EvaluateClaimRequest",
+    "EvidenceMappingItemResponse",
     "FactResponse",
+    "GapItemResponse",
     "MissionResponse",
     "OpportunityResponse",
     "PaginatedResponse",
+    "PreparationIntelligenceReportResponse",
+    "PreparationStrategyResponse",
     "ProposeActionRequest",
     "ProposeClaimRequest",
     "RecordFactRequest",

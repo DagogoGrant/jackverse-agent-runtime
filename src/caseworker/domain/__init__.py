@@ -22,10 +22,13 @@ from caseworker.domain.enums import (
     CaseStatus,
     CaseType,
     ClaimStatus,
+    EvidenceAlignmentStatus,
+    GapCategory,
     MissionKind,
     MissionStatus,
     OpportunityStatus,
     OpportunityType,
+    PreparationMaterialType,
     RiskLevel,
     SensitivityLevel,
     SourceType,
@@ -63,6 +66,7 @@ from caseworker.domain.events import (
     make_mission_status_changed_event,
     make_opportunity_discovered_event,
     make_opportunity_status_changed_event,
+    make_preparation_report_created_event,
 )
 from caseworker.domain.mission import Mission
 from caseworker.domain.namespaces import (
@@ -73,6 +77,17 @@ from caseworker.domain.namespaces import (
     normalize_namespace,
 )
 from caseworker.domain.opportunity import Opportunity
+from caseworker.domain.preparation import (
+    ClaimIntent,
+    EvidenceMappingItem,
+    GapItem,
+    PreparationIntelligenceReport,
+    PreparationStrategy,
+    compute_prep_context_snapshot_hash,
+    compute_prep_input_hash,
+)
+from caseworker.domain.preparation_analyzer import PreparationAnalyzer
+from caseworker.domain.requirement_matcher import RequirementMatcher, extract_cefr_level, is_fact_verified
 from caseworker.domain.source import ContextSource
 from caseworker.domain.types import (
     JSONObject,
@@ -121,6 +136,7 @@ __all__ = [
     "make_context_access_denied_event",
     "make_claim_proposed_event",
     "make_claim_status_changed_event",
+    "make_preparation_report_created_event",
     # Enums
     "MissionStatus",
     "MissionKind",
@@ -136,6 +152,21 @@ __all__ = [
     "VerificationStatus",
     "SensitivityLevel",
     "ClaimStatus",
+    "EvidenceAlignmentStatus",
+    "GapCategory",
+    "PreparationMaterialType",
+    # Preparation Intelligence
+    "EvidenceMappingItem",
+    "GapItem",
+    "ClaimIntent",
+    "PreparationStrategy",
+    "PreparationIntelligenceReport",
+    "PreparationAnalyzer",
+    "compute_prep_input_hash",
+    "compute_prep_context_snapshot_hash",
+    "RequirementMatcher",
+    "extract_cefr_level",
+    "is_fact_verified",
     # Errors
     "CaseworkerError",
     "EntityNotFoundError",

@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { apiRequest } from '../api/client';
+import { apiRequest, ApiError } from '../api/client';
 import type {
   Mission,
   Case,
@@ -19,6 +19,7 @@ import type {
   ConvertToCaseResponse,
   EvaluationSnapshotResponse,
   NormalizeOpportunityResponse,
+  PreparationIntelligenceReport,
 } from '../api/types';
 
 // Invalidate on dev user switch
@@ -276,6 +277,52 @@ export function useResolveCase() {
     onSuccess: (_, vars) => {
       queryClient.invalidateQueries({ queryKey: ['cases'] });
       queryClient.invalidateQueries({ queryKey: ['cases', vars.caseId] });
+      queryClient.invalidateQueries({ queryKey: ['events'] });
+    },
+  });
+}
+
+// ----------------------------------------------------------------------------
+// Preparation Intelligence
+// ----------------------------------------------------------------------------
+
+export function usePreparationReport(caseId?: string) {
+  return useQuery({
+    queryKey: ['preparation', caseId],
+    queryFn: async () => {
+      if (!caseId) return null;
+      try {
+        const res = await apiRequest<PreparationIntelligenceReport>(
+          `/cases/${caseId}/preparation/intelligence`
+        );
+        return res.data;
+      } catch (err: unknown) {
+        if (err instanceof ApiError && err.status === 404) {
+          return null;
+        }
+        throw err;
+      }
+    },
+    enabled: Boolean(caseId),
+  });
+}
+
+export function useGeneratePreparation() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ caseId }: { caseId: string }) => {
+      const res = await apiRequest<PreparationIntelligenceReport>(
+        `/cases/${caseId}/preparation/intelligence`,
+        {
+          method: 'POST',
+        }
+      );
+      return res.data;
+    },
+    onSuccess: (_, vars) => {
+      queryClient.invalidateQueries({ queryKey: ['cases'] });
+      queryClient.invalidateQueries({ queryKey: ['cases', vars.caseId] });
+      queryClient.invalidateQueries({ queryKey: ['preparation', vars.caseId] });
       queryClient.invalidateQueries({ queryKey: ['events'] });
     },
   });

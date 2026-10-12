@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
-import { ArrowLeft, AlertTriangle, CheckCircle2 } from 'lucide-react';
+import { ArrowLeft, AlertTriangle, CheckCircle2, Sparkles } from 'lucide-react';
 import {
   useCase,
   useCaseActions,
@@ -11,6 +11,8 @@ import {
   useProposeClaim,
   useEvaluateClaim,
   useRequestActionApproval,
+  usePreparationReport,
+  useGeneratePreparation,
 } from '../hooks/useCaseworker';
 import { apiRequest } from '../api/client';
 import type { Claim } from '../api/types';
@@ -25,6 +27,7 @@ export const CaseDetailView: React.FC = () => {
   const { data: caseData, isLoading, error, refetch: refetchCase } = useCase(caseId);
   const { data: actions, isLoading: actionsLoading } = useCaseActions(caseId);
   const { data: claims, isLoading: claimsLoading } = useClaims({ case_id: caseId });
+  const { data: prepReport, isLoading: prepLoading } = usePreparationReport(caseId);
   const { data: eventsData } = useEvents();
 
   const transitionCase = useTransitionCase();
@@ -32,6 +35,7 @@ export const CaseDetailView: React.FC = () => {
   const proposeClaim = useProposeClaim();
   const evaluateClaim = useEvaluateClaim();
   const requestApproval = useRequestActionApproval();
+  const generatePrep = useGeneratePreparation();
 
   const [concurrencyNotice, setConcurrencyNotice] = useState<string | null>(null);
   const [resolveOutcome, setResolveOutcome] = useState('');
@@ -151,6 +155,17 @@ export const CaseDetailView: React.FC = () => {
       } else {
         setConcurrencyNotice(err.message || 'Claim evaluation failed');
       }
+    }
+  };
+
+  const handleGeneratePrep = async () => {
+    if (!caseId) return;
+    setConcurrencyNotice(null);
+    try {
+      await generatePrep.mutateAsync({ caseId });
+      refetchCase();
+    } catch (err: any) {
+      setConcurrencyNotice(err.message || 'Preparation intelligence analysis failed');
     }
   };
 
@@ -342,7 +357,358 @@ export const CaseDetailView: React.FC = () => {
             </div>
           </section>
 
-          {/* Section 2: Associated Claims */}
+          {/* Section 2: Preparation Intelligence */}
+          <section className="space-y-4">
+            <div className="flex items-baseline justify-between border-b border-jv-rule pb-2">
+              <div className="flex items-center gap-3">
+                <h2 className="font-interface font-medium text-xl text-jv-ink tracking-tight">
+                  Preparation intelligence
+                </h2>
+                {prepReport && (
+                  <span className="font-machine text-xs px-2 py-0.5 border border-jv-rule bg-jv-surface text-jv-muted">
+                    v{prepReport.version}
+                  </span>
+                )}
+              </div>
+              {prepReport ? (
+                <TactileButton
+                  variant="outline"
+                  size="sm"
+                  loading={generatePrep.isPending}
+                  onClick={handleGeneratePrep}
+                >
+                  <Sparkles className="w-3.5 h-3.5 mr-1.5 inline" />
+                  Re-analyze Preparation
+                </TactileButton>
+              ) : (
+                <TactileButton
+                  variant="primary"
+                  size="sm"
+                  loading={generatePrep.isPending}
+                  onClick={handleGeneratePrep}
+                >
+                  <Sparkles className="w-3.5 h-3.5 mr-1.5 inline" />
+                  Analyze Preparation →
+                </TactileButton>
+              )}
+            </div>
+
+            {prepLoading ? (
+              <div className="py-6 font-interface text-sm text-jv-muted">
+                Loading preparation intelligence dossier…
+              </div>
+            ) : !prepReport ? (
+              <div className="p-8 border border-dashed border-jv-rule bg-jv-surface/20 text-center space-y-4">
+                <div className="font-machine text-xs text-jv-muted uppercase">
+                  PREPARATION INTELLIGENCE // UNINITIALIZED
+                </div>
+                <h3 className="font-display text-2xl text-jv-ink">
+                  No Preparation Intelligence Generated
+                </h3>
+                <p className="font-interface text-sm text-jv-muted max-w-xl mx-auto">
+                  Analyze the converted prospect requirements against your verified context vault to map evidence alignments, identify actionable gaps, and synthesize strategic claim intents.
+                </p>
+                <div className="pt-2">
+                  <TactileButton
+                    variant="primary"
+                    size="md"
+                    loading={generatePrep.isPending}
+                    onClick={handleGeneratePrep}
+                  >
+                    <Sparkles className="w-4 h-4 mr-2 inline" />
+                    Analyze Preparation Intelligence →
+                  </TactileButton>
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-6">
+                {/* Staleness Banner */}
+                {prepReport.is_stale && (
+                  <div className="p-4 border border-jv-rule bg-jv-surface flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs font-interface text-jv-ink">
+                    <div className="flex items-center gap-2.5">
+                      <AlertTriangle className="w-4 h-4 text-jv-accent shrink-0" />
+                      <span>
+                        <strong>Intelligence Report is Stale:</strong> Source opportunity requirements or context vault facts have changed since this report was generated.
+                      </span>
+                    </div>
+                    <TactileButton
+                      variant="outline"
+                      size="sm"
+                      loading={generatePrep.isPending}
+                      onClick={handleGeneratePrep}
+                    >
+                      Re-analyze Now →
+                    </TactileButton>
+                  </div>
+                )}
+
+                {/* Report Metadata Bar */}
+                <div className="flex flex-wrap items-center gap-4 text-xs font-machine text-jv-muted p-3 border border-jv-rule bg-jv-surface/40">
+                  <span>REPORT: {prepReport.report_id.slice(0, 8)}</span>
+                  <span className="text-jv-rule">·</span>
+                  <span>ANALYZER: {prepReport.analyzer_version}</span>
+                  <span className="text-jv-rule">·</span>
+                  <span>INPUT: {prepReport.input_hash.slice(0, 8)}</span>
+                  <span className="text-jv-rule">·</span>
+                  <span>SNAPSHOT: {prepReport.context_snapshot_hash.slice(0, 8)}</span>
+                  <span className="text-jv-rule">·</span>
+                  <span>DATE: {new Date(prepReport.created_at).toLocaleDateString()}</span>
+                </div>
+
+                {/* Evidence Alignment Matrix (5 States) */}
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <h3 className="font-machine text-xs text-jv-muted uppercase tracking-wider">
+                      Evidence Alignment Matrix
+                    </h3>
+                    <span className="font-machine text-xs text-jv-muted">
+                      {(prepReport.evidence_map || []).length} CRITERIA EVALUATED
+                    </span>
+                  </div>
+
+                  {/* 5-State Summary Counters */}
+                  <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 text-center font-machine">
+                    <div className="p-2.5 border border-jv-rule bg-jv-bg">
+                      <div className="text-lg font-bold text-jv-ink">
+                        {(prepReport.evidence_map || []).filter((e) => e.status === 'SUPPORTED').length}
+                      </div>
+                      <div className="text-[10px] text-jv-muted uppercase">SUPPORTED</div>
+                    </div>
+                    <div className="p-2.5 border border-jv-rule bg-jv-bg">
+                      <div className="text-lg font-bold text-jv-ink">
+                        {(prepReport.evidence_map || []).filter((e) => e.status === 'POTENTIAL').length}
+                      </div>
+                      <div className="text-[10px] text-jv-muted uppercase">POTENTIAL</div>
+                    </div>
+                    <div className="p-2.5 border border-jv-rule bg-jv-bg">
+                      <div className="text-lg font-bold text-jv-ink">
+                        {(prepReport.evidence_map || []).filter((e) => e.status === 'RESTRICTED').length}
+                      </div>
+                      <div className="text-[10px] text-jv-muted uppercase">RESTRICTED</div>
+                    </div>
+                    <div className="p-2.5 border border-jv-rule bg-jv-bg">
+                      <div className="text-lg font-bold text-jv-ink">
+                        {(prepReport.evidence_map || []).filter((e) => e.status === 'CONTRADICTED').length}
+                      </div>
+                      <div className="text-[10px] text-jv-muted uppercase">CONTRADICTED</div>
+                    </div>
+                    <div className="p-2.5 border border-jv-rule bg-jv-bg">
+                      <div className="text-lg font-bold text-jv-ink">
+                        {(prepReport.evidence_map || []).filter((e) => e.status === 'GAP').length}
+                      </div>
+                      <div className="text-[10px] text-jv-muted uppercase">GAP</div>
+                    </div>
+                  </div>
+
+                  {/* Criteria Items List */}
+                  <div className="divide-y divide-jv-rule border border-jv-rule">
+                    {(prepReport.evidence_map || []).map((item) => (
+                      <div key={item.requirement_id} className="p-4 space-y-2 bg-jv-surface/20">
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="space-y-1">
+                            <div className="flex items-center gap-2 font-machine text-xs">
+                              <span className={item.mandatory ? 'font-bold text-jv-ink' : 'text-jv-muted'}>
+                                {item.mandatory ? '[MANDATORY]' : '[PREFERRED]'}
+                              </span>
+                              <span className="uppercase text-jv-muted">{item.requirement_type}</span>
+                            </div>
+                            <p className="font-interface text-sm text-jv-ink font-medium">{item.description}</p>
+                          </div>
+                          <TextureBadge status={item.status} />
+                        </div>
+
+                        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 font-machine text-xs text-jv-muted pt-1">
+                          {item.matched_fact_id && (
+                            <span>
+                              FACT: {item.fact_namespace ? `${item.fact_namespace}.${item.fact_key || ''}` : item.matched_fact_id.slice(0, 8)}
+                              {item.verification_status && ` (${item.verification_status.toUpperCase()})`}
+                            </span>
+                          )}
+                          {item.notes && (
+                            <span className="font-interface text-xs text-jv-muted italic">
+                              Note: {item.notes}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Gap Analysis (3 Classes) */}
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <h3 className="font-machine text-xs text-jv-muted uppercase tracking-wider">
+                      Identified Gaps & Conflicts
+                    </h3>
+                    <span className="font-machine text-xs text-jv-muted">
+                      {(prepReport.gaps || []).length} ISSUE{(prepReport.gaps || []).length === 1 ? '' : 'S'}
+                    </span>
+                  </div>
+
+                  {(prepReport.gaps || []).length === 0 ? (
+                    <div className="p-4 border border-jv-rule bg-jv-surface/30 flex items-center gap-2.5 text-xs font-interface text-jv-ink">
+                      <CheckCircle2 className="w-4 h-4 text-jv-ink shrink-0" />
+                      <span>Zero eligibility or evidence gaps identified. Profile fully satisfies requirements.</span>
+                    </div>
+                  ) : (
+                    <div className="divide-y divide-jv-rule border border-jv-rule">
+                      {(prepReport.gaps || []).map((gap) => {
+                        const isConflict = gap.category === 'HARD_CONFLICT';
+                        const isMandatory = gap.category === 'MANDATORY_EVIDENCE_GAP';
+                        return (
+                          <div key={gap.gap_id} className="p-4 space-y-2 bg-jv-surface/20">
+                            <div className="flex items-start justify-between gap-3">
+                              <div className="space-y-1">
+                                <div className="flex items-center gap-2 font-machine text-xs">
+                                  <span
+                                    className={`px-1.5 py-0.5 border uppercase text-[10px] ${
+                                      isConflict
+                                        ? 'border-jv-ink bg-jv-ink text-jv-bg font-bold'
+                                        : isMandatory
+                                        ? 'border-jv-ink font-medium text-jv-ink'
+                                        : 'border-jv-rule text-jv-muted'
+                                    }`}
+                                  >
+                                    {gap.category.replace(/_/g, ' ')}
+                                  </span>
+                                  <span className="text-jv-muted uppercase">SEVERITY: {gap.severity}</span>
+                                </div>
+                                <p className="font-interface text-sm text-jv-ink font-medium">{gap.description}</p>
+                              </div>
+                            </div>
+                            <div className="p-2.5 border border-jv-rule/60 bg-jv-bg font-interface text-xs text-jv-ink-soft">
+                              <span className="font-machine text-[10px] uppercase text-jv-muted block mb-0.5">
+                                Actionable Mitigation Guidance:
+                              </span>
+                              {gap.mitigation_guidance}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+
+                {/* Strategic Direction */}
+                <div className="space-y-4">
+                  <h3 className="font-machine text-xs text-jv-muted uppercase tracking-wider">
+                    Strategic Direction
+                  </h3>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {/* Key Strengths */}
+                    <div className="p-4 border border-jv-rule bg-jv-surface/20 space-y-2">
+                      <div className="font-machine text-xs text-jv-muted uppercase tracking-wider">
+                        Key Strengths to Highlight
+                      </div>
+                      {(prepReport.strategy?.strengths || []).length === 0 ? (
+                        <p className="font-interface text-xs text-jv-muted">No explicit strengths derived.</p>
+                      ) : (
+                        <ul className="space-y-1.5 font-interface text-xs text-jv-ink">
+                          {(prepReport.strategy?.strengths || []).map((s, idx) => (
+                            <li key={idx} className="flex items-start gap-2">
+                              <span className="font-machine text-xs text-jv-muted">▸</span>
+                              <span>{s}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </div>
+
+                    {/* Strategic Mitigations */}
+                    <div className="p-4 border border-jv-rule bg-jv-surface/20 space-y-2">
+                      <div className="font-machine text-xs text-jv-muted uppercase tracking-wider">
+                        Strategic Mitigations
+                      </div>
+                      {(prepReport.strategy?.mitigations || []).length === 0 ? (
+                        <p className="font-interface text-xs text-jv-muted">No mitigations necessary.</p>
+                      ) : (
+                        <ul className="space-y-1.5 font-interface text-xs text-jv-ink">
+                          {(prepReport.strategy?.mitigations || []).map((m, idx) => (
+                            <li key={idx} className="flex items-start gap-2">
+                              <span className="font-machine text-xs text-jv-muted">▸</span>
+                              <span>{m}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Claim Intents */}
+                  <div className="space-y-3 pt-2">
+                    <div className="font-machine text-xs text-jv-muted uppercase tracking-wider">
+                      Claim Intents ({(prepReport.strategy?.claim_intents || []).length})
+                    </div>
+                    {(prepReport.strategy?.claim_intents || []).length === 0 ? (
+                      <div className="p-4 border border-jv-rule text-center font-interface text-xs text-jv-muted bg-jv-surface/20">
+                        No claim intents formulated yet.
+                      </div>
+                    ) : (
+                      <div className="divide-y divide-jv-rule border border-jv-rule">
+                        {(prepReport.strategy?.claim_intents || []).map((intent) => (
+                          <div key={intent.intent_id} className="p-4 space-y-2 bg-jv-surface/20">
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="font-machine text-xs font-semibold text-jv-ink">
+                                {intent.claim_topic}
+                              </span>
+                              <span className="font-machine text-[10px] px-2 py-0.5 border border-jv-rule uppercase text-jv-muted">
+                                TARGET: {intent.target_material}
+                              </span>
+                            </div>
+                            <div className="font-interface text-xs text-jv-ink-soft">
+                              <span className="font-machine text-[10px] uppercase text-jv-muted block mb-0.5">
+                                Suggested Angle:
+                              </span>
+                              {intent.suggested_angle}
+                            </div>
+                            <div className="font-machine text-[10px] text-jv-muted">
+                              SUPPORTING FACTS: {intent.supporting_fact_ids?.length || 0} LINKED
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Materials Checklist */}
+                  <div className="space-y-3 pt-2">
+                    <div className="flex items-center justify-between">
+                      <div className="font-machine text-xs text-jv-muted uppercase tracking-wider">
+                        Materials Checklist
+                      </div>
+                      <span className="font-machine text-[10px] text-jv-muted">
+                        PHASE 5.2.1 // DRAFTING COMMENCES IN 5.2.2
+                      </span>
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      {(prepReport.strategy?.materials_checklist || []).map((mat: any, idx: number) => {
+                        const type = mat.material_type || mat.type || 'DOCUMENT';
+                        const status = mat.status || 'PENDING_DRAFT';
+                        const count = mat.claim_intents_count ?? 0;
+                        return (
+                          <div key={idx} className="p-3 border border-jv-rule bg-jv-bg flex items-center justify-between">
+                            <div className="space-y-0.5">
+                              <div className="font-machine text-xs uppercase font-medium text-jv-ink">
+                                {String(type).replace(/_/g, ' ')}
+                              </div>
+                              <div className="font-interface text-[11px] text-jv-muted">
+                                {count} claim intent{count === 1 ? '' : 's'} assigned
+                              </div>
+                            </div>
+                            <TextureBadge status={String(status)} />
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+          </section>
+
+          {/* Section 3: Associated Claims */}
           <section className="space-y-4">
             <div className="flex items-baseline justify-between border-b border-jv-rule pb-2">
               <h2 className="font-interface font-medium text-xl text-jv-ink tracking-tight">
@@ -438,7 +804,7 @@ export const CaseDetailView: React.FC = () => {
             )}
           </section>
 
-          {/* Section 3: Case Actions */}
+          {/* Section 4: Case Actions */}
           <section className="space-y-4">
             <div className="border-b border-jv-rule pb-2">
               <h2 className="font-interface font-medium text-xl text-jv-ink tracking-tight">

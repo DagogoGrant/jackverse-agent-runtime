@@ -33,13 +33,22 @@ class InvalidStateTransitionError(CaseworkerError):
 class OptimisticLockError(CaseworkerError):
     """Raised when a concurrent update modifies an aggregate while another transaction was processing it."""
 
-    def __init__(self, entity_type: str, entity_id: str, expected_version: int) -> None:
+    def __init__(self, entity_type: str, entity_id: str, expected_version: int, actual_version: int | None = None) -> None:
         super().__init__(
             f"Optimistic lock conflict on {entity_type} '{entity_id}' (expected version {expected_version})."
         )
         self.entity_type = entity_type
         self.entity_id = entity_id
         self.expected_version = expected_version
+        self.actual_version = actual_version
+
+    @property
+    def aggregate_type(self) -> str:
+        return self.entity_type
+
+    @property
+    def aggregate_id(self) -> str:
+        return self.entity_id
 
 
 class DomainValidationError(CaseworkerError):

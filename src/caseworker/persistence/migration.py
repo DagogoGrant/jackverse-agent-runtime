@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import sqlite3
 
-LATEST_SCHEMA_VERSION = 5
+LATEST_SCHEMA_VERSION = 6
 
 MIGRATION_V1_DDL = """
 CREATE TABLE IF NOT EXISTS missions (
@@ -188,6 +188,30 @@ CREATE INDEX IF NOT EXISTS idx_claims_user ON claims(user_id, status);
 CREATE INDEX IF NOT EXISTS idx_claims_case ON claims(case_id);
 """
 
+MIGRATION_V6_TABLES_DDL = """
+CREATE TABLE IF NOT EXISTS preparation_intelligence_reports (
+    report_id TEXT PRIMARY KEY,
+    case_id TEXT NOT NULL,
+    opportunity_id TEXT NOT NULL,
+    user_id TEXT NOT NULL,
+    schema_version TEXT NOT NULL,
+    analyzer_version TEXT NOT NULL,
+    evidence_map_json TEXT NOT NULL,
+    gaps_json TEXT NOT NULL,
+    strategy_json TEXT NOT NULL,
+    input_hash TEXT NOT NULL,
+    context_snapshot_hash TEXT NOT NULL,
+    source_evaluation_id TEXT,
+    created_at TEXT NOT NULL,
+    version INTEGER NOT NULL DEFAULT 1,
+    FOREIGN KEY (case_id) REFERENCES cases(case_id) ON DELETE CASCADE,
+    FOREIGN KEY (opportunity_id) REFERENCES opportunities(opportunity_id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_prep_reports_case ON preparation_intelligence_reports(case_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_prep_reports_user ON preparation_intelligence_reports(user_id);
+"""
+
 
 class SQLiteMigrator:
     """Manages transactional database schema upgrades for Caseworker persistence."""
@@ -315,4 +339,11 @@ class SQLiteMigrator:
             conn.execute("PRAGMA user_version = 5;")
             current_version = 5
 
+        # Migrate 5 -> 6 (Phase 5.2.1: Preparation Intelligence Reports)
+        if current_version < 6:
+            conn.executescript(MIGRATION_V6_TABLES_DDL)
+            conn.execute("PRAGMA user_version = 6;")
+            current_version = 6
+
         return current_version
+

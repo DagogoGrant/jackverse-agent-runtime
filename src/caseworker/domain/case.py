@@ -36,6 +36,7 @@ _VALID_CASE_TRANSITIONS: dict[CaseStatus, set[CaseStatus]] = {
     },
     CaseStatus.AWAITING_APPROVAL: {
         CaseStatus.ACTION_IN_PROGRESS,
+        CaseStatus.ACTION_REQUIRED,
         CaseStatus.PLANNING,
         CaseStatus.BLOCKED,
         CaseStatus.CANCELLED,

@@ -157,4 +157,29 @@ describe("Authoritative OpenAPI Contract Invariants", () => {
     expect(schemas.CaseType.enum).not.toContain("grant_submission");
     expect(schemas.CaseType.enum).not.toContain("dispute");
   });
+
+  it("POST and GET /api/v1/cases/{case_id}/preparation/intelligence exist and return PreparationIntelligenceReportResponse", () => {
+    const route = paths["/api/v1/cases/{case_id}/preparation/intelligence"];
+    expect(route).toBeDefined();
+    expect(route.post).toBeDefined();
+    const postResp = route.post.responses["201"].content["application/json"].schema;
+    expect(postResp.$ref).toContain("PreparationIntelligenceReportResponse");
+
+    expect(route.get).toBeDefined();
+    const getResp = route.get.responses["200"].content["application/json"].schema;
+    expect(getResp.$ref).toContain("PreparationIntelligenceReportResponse");
+
+    const reportSchema = schemas.PreparationIntelligenceReportResponse;
+    expect(reportSchema.properties.report_id).toBeDefined();
+    expect(reportSchema.properties.case_id).toBeDefined();
+    expect(reportSchema.properties.opportunity_id).toBeDefined();
+    expect(reportSchema.properties.schema_version).toBeDefined();
+    expect(reportSchema.properties.analyzer_version).toBeDefined();
+    expect(reportSchema.properties.is_stale).toBeDefined();
+    expect(reportSchema.properties.input_hash).toBeDefined();
+    expect(reportSchema.properties.context_snapshot_hash).toBeDefined();
+    expect(reportSchema.properties.evidence_map).toBeDefined();
+    expect(reportSchema.properties.gaps).toBeDefined();
+    expect(reportSchema.properties.strategy).toBeDefined();
+  });
 });

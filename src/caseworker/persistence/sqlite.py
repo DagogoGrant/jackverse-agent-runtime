@@ -49,6 +49,12 @@ from caseworker.domain.events import DomainEvent
 from caseworker.domain.mission import Mission
 from caseworker.domain.namespaces import matches_namespace_filter
 from caseworker.domain.opportunity import Opportunity
+from caseworker.domain.preparation import (
+    EvidenceMappingItem,
+    GapItem,
+    PreparationIntelligenceReport,
+    PreparationStrategy,
+)
 from caseworker.domain.source import ContextSource
 from caseworker.domain.types import (
     canonical_json_dumps,
@@ -67,6 +73,7 @@ from caseworker.persistence.base import (
     EventStore,
     MissionRepository,
     OpportunityRepository,
+    PreparationReportRepository,
 )
 from caseworker.persistence.migration import SQLiteMigrator
 
@@ -589,6 +596,22 @@ class SQLiteOpportunityRepository(OpportunityRepository):
                 (user_id,),
             )
         return [self._row_to_opportunity(r) for r in cur.fetchall()]
+
+    def get_by_converted_case_id(self, case_id: str) -> Opportunity | None:
+        cur = self.conn.cursor()
+        cur.execute(
+            """
+            SELECT opportunity_id, mission_id, user_id, opportunity_type,
+                   title, organization, source_url, source_name, location,
+                   status, requirements, metadata, fingerprint,
+                   discovered_at, deadline, version, converted_case_id, fingerprint_v2,
+                   external_posting_id
+            FROM opportunities WHERE converted_case_id = ?
+            """,
+            (case_id,),
+        )
+        row = cur.fetchone()
+        return self._row_to_opportunity(row) if row else None
 
 
 class SQLiteActionRepository(ActionRepository):
@@ -1480,6 +1503,158 @@ class SQLiteEventStore(EventStore):
         return results
 
 
+class SQLitePreparationReportRepository(PreparationReportRepository):
+    def __init__(self, conn: sqlite3.Connection) -> None:
+        self.conn = conn
+
+    def save(self, report: PreparationIntelligenceReport) -> None:
+        cur = self.conn.cursor()
+        cur.execute(
+            "SELECT version FROM preparation_intelligence_reports WHERE report_id = ?",
+            (report.report_id,),
+        )
+        row = cur.fetchone()
+        if row is None:
+            try:
+                cur.execute(
+                    """
+                    INSERT INTO preparation_intelligence_reports (
+                        report_id, case_id, opportunity_id, user_id,
+                        schema_version, analyzer_version,
+                        evidence_map_json, gaps_json, strategy_json,
+                        input_hash, context_snapshot_hash,
+                        source_evaluation_id, created_at, version
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        report.report_id,
+                        report.case_id,
+                        report.opportunity_id,
+                        report.user_id,
+                        report.schema_version,
+                        report.analyzer_version,
+                        canonical_json_dumps([e.to_dict() for e in report.evidence_map]),
+                        canonical_json_dumps([g.to_dict() for g in report.gaps]),
+                        canonical_json_dumps(report.strategy.to_dict()),
+                        report.input_hash,
+                        report.context_snapshot_hash,
+                        report.source_evaluation_id,
+                        to_iso_utc(report.created_at),
+                        report.version,
+                    ),
+                )
+            except sqlite3.IntegrityError as e:
+                raise PersistenceError(
+                    f"Integrity violation saving PreparationIntelligenceReport '{report.report_id}': {e}"
+                ) from e
+        else:
+            expected_version = report.version - 1
+            cur.execute(
+                """
+                UPDATE preparation_intelligence_reports SET
+                    case_id = ?, opportunity_id = ?, user_id = ?,
+                    schema_version = ?, analyzer_version = ?,
+                    evidence_map_json = ?, gaps_json = ?, strategy_json = ?,
+                    input_hash = ?, context_snapshot_hash = ?,
+                    source_evaluation_id = ?, created_at = ?, version = ?
+                WHERE report_id = ? AND version = ?
+                """,
+                (
+                    report.case_id,
+                    report.opportunity_id,
+                    report.user_id,
+                    report.schema_version,
+                    report.analyzer_version,
+                    canonical_json_dumps([e.to_dict() for e in report.evidence_map]),
+                    canonical_json_dumps([g.to_dict() for g in report.gaps]),
+                    canonical_json_dumps(report.strategy.to_dict()),
+                    report.input_hash,
+                    report.context_snapshot_hash,
+                    report.source_evaluation_id,
+                    to_iso_utc(report.created_at),
+                    report.version,
+                    report.report_id,
+                    expected_version,
+                ),
+            )
+            if cur.rowcount == 0:
+                raise OptimisticLockError("PreparationIntelligenceReport", report.report_id, expected_version)
+
+    def _row_to_report(self, row: tuple[Any, ...]) -> PreparationIntelligenceReport:
+        evidence_raw = json.loads(row[6]) if row[6] else []
+        gaps_raw = json.loads(row[7]) if row[7] else []
+        strategy_raw = json.loads(row[8]) if row[8] else {}
+
+        return PreparationIntelligenceReport(
+            report_id=row[0],
+            case_id=row[1],
+            opportunity_id=row[2],
+            user_id=row[3],
+            schema_version=row[4],
+            analyzer_version=row[5],
+            evidence_map=[EvidenceMappingItem.from_dict(e) for e in evidence_raw],
+            gaps=[GapItem.from_dict(g) for g in gaps_raw],
+            strategy=PreparationStrategy.from_dict(strategy_raw),
+            input_hash=row[9],
+            context_snapshot_hash=row[10],
+            source_evaluation_id=row[11],
+            created_at=from_iso_utc(row[12]) or now_utc(),
+            version=row[13],
+        )
+
+    def get_by_id(self, report_id: str) -> PreparationIntelligenceReport | None:
+        cur = self.conn.cursor()
+        cur.execute(
+            """
+            SELECT report_id, case_id, opportunity_id, user_id,
+                   schema_version, analyzer_version,
+                   evidence_map_json, gaps_json, strategy_json,
+                   input_hash, context_snapshot_hash,
+                   source_evaluation_id, created_at, version
+            FROM preparation_intelligence_reports WHERE report_id = ?
+            """,
+            (report_id,),
+        )
+        row = cur.fetchone()
+        return self._row_to_report(row) if row else None
+
+    def get_latest_for_case(self, case_id: str) -> PreparationIntelligenceReport | None:
+        cur = self.conn.cursor()
+        cur.execute(
+            """
+            SELECT report_id, case_id, opportunity_id, user_id,
+                   schema_version, analyzer_version,
+                   evidence_map_json, gaps_json, strategy_json,
+                   input_hash, context_snapshot_hash,
+                   source_evaluation_id, created_at, version
+            FROM preparation_intelligence_reports
+            WHERE case_id = ?
+            ORDER BY created_at DESC, version DESC
+            LIMIT 1
+            """,
+            (case_id,),
+        )
+        row = cur.fetchone()
+        return self._row_to_report(row) if row else None
+
+    def list_for_case(self, case_id: str) -> list[PreparationIntelligenceReport]:
+        cur = self.conn.cursor()
+        cur.execute(
+            """
+            SELECT report_id, case_id, opportunity_id, user_id,
+                   schema_version, analyzer_version,
+                   evidence_map_json, gaps_json, strategy_json,
+                   input_hash, context_snapshot_hash,
+                   source_evaluation_id, created_at, version
+            FROM preparation_intelligence_reports
+            WHERE case_id = ?
+            ORDER BY created_at ASC, version ASC
+            """,
+            (case_id,),
+        )
+        return [self._row_to_report(r) for r in cur.fetchall()]
+
+
 class SQLiteCaseworkerUnitOfWork(CaseworkerUnitOfWork):
     """Transaction / Unit-of-Work boundary using SQLite."""
 
@@ -1494,6 +1669,7 @@ class SQLiteCaseworkerUnitOfWork(CaseworkerUnitOfWork):
         self.sources = SQLiteContextSourceRepository(conn)
         self.context = SQLiteContextRepository(conn)
         self.claims = SQLiteClaimRepository(conn)
+        self.preparation_reports = SQLitePreparationReportRepository(conn)
         self.events = SQLiteEventStore(conn)
         self._in_transaction = False
 

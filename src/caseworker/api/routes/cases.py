@@ -20,9 +20,17 @@ from caseworker.api.schemas.case import (
     TransitionCaseRequest,
 )
 from caseworker.api.schemas.common import PaginatedResponse
+from caseworker.api.schemas.preparation import (
+    ClaimIntentResponse,
+    EvidenceMappingItemResponse,
+    GapItemResponse,
+    PreparationIntelligenceReportResponse,
+    PreparationStrategyResponse,
+)
 from caseworker.domain.case import Case
 from caseworker.domain.enums import CaseStatus
 from caseworker.domain.errors import EntityNotFoundError
+from caseworker.domain.preparation import PreparationIntelligenceReport
 from caseworker.domain.types import to_iso_utc
 from caseworker.services.case_service import CaseService
 from caseworker.services.mission_service import MissionService
@@ -194,3 +202,122 @@ async def resolve_case(
     )
     set_etag_header(response, "case", updated.case_id, updated.version)
     return _to_case_response(updated)
+
+
+def _to_prep_report_response(
+    report: PreparationIntelligenceReport,
+    is_stale: bool = False,
+) -> PreparationIntelligenceReportResponse:
+    evidence_items = [
+        EvidenceMappingItemResponse(
+            requirement_id=e.requirement_id,
+            requirement_type=e.requirement_type,
+            description=e.description,
+            mandatory=e.mandatory,
+            status=e.status.value if hasattr(e.status, "value") else str(e.status),
+            matched_fact_id=e.matched_fact_id,
+            matched_fact_version=e.matched_fact_version,
+            verification_status=(
+                e.verification_status.value
+                if hasattr(e.verification_status, "value")
+                else (str(e.verification_status) if e.verification_status else None)
+            ),
+            fact_namespace=e.fact_namespace,
+            fact_key=e.fact_key,
+            notes=e.notes,
+        )
+        for e in report.evidence_map
+    ]
+
+    gap_items = [
+        GapItemResponse(
+            gap_id=g.gap_id,
+            requirement_id=g.requirement_id,
+            requirement_type=g.requirement_type,
+            category=g.category.value if hasattr(g.category, "value") else str(g.category),
+            description=g.description,
+            severity=g.severity,
+            mitigation_guidance=g.mitigation_guidance,
+            fact_id=g.fact_id,
+        )
+        for g in report.gaps
+    ]
+
+    claim_intents = [
+        ClaimIntentResponse(
+            intent_id=c.intent_id,
+            requirement_id=c.requirement_id,
+            target_material=c.target_material.value if hasattr(c.target_material, "value") else str(c.target_material),
+            claim_topic=c.claim_topic,
+            supporting_fact_ids=list(c.supporting_fact_ids),
+            suggested_angle=c.suggested_angle,
+        )
+        for c in report.strategy.claim_intents
+    ]
+
+    strategy_res = PreparationStrategyResponse(
+        recommended_materials=[
+            m.value if hasattr(m, "value") else str(m)
+            for m in report.strategy.recommended_materials
+        ],
+        strengths=list(report.strategy.strengths),
+        mitigations=list(report.strategy.mitigations),
+        claim_intents=claim_intents,
+        materials_checklist=list(report.strategy.materials_checklist),
+    )
+
+    return PreparationIntelligenceReportResponse(
+        report_id=report.report_id,
+        case_id=report.case_id,
+        opportunity_id=report.opportunity_id,
+        user_id=report.user_id,
+        schema_version=report.schema_version,
+        analyzer_version=report.analyzer_version,
+        evidence_map=evidence_items,
+        gaps=gap_items,
+        strategy=strategy_res,
+        input_hash=report.input_hash,
+        context_snapshot_hash=report.context_snapshot_hash,
+        source_evaluation_id=report.source_evaluation_id,
+        created_at=to_iso_utc(report.created_at) or "",
+        version=report.version,
+        is_stale=is_stale,
+    )
+
+
+@router.post(
+    "/api/v1/cases/{case_id}/preparation/intelligence",
+    response_model=PreparationIntelligenceReportResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def generate_preparation_intelligence(
+    case_id: str,
+    principal: Annotated[Principal, Depends(get_principal)],
+    service: Annotated[CaseService, Depends(get_case_service)],
+) -> PreparationIntelligenceReportResponse:
+    """Analyze preparation intelligence for converted case, advance lifecycle, and return versioned report."""
+    report = service.generate_preparation_intelligence(
+        user_id=principal.user_id,
+        case_id=case_id,
+    )
+    return _to_prep_report_response(report, is_stale=False)
+
+
+@router.get(
+    "/api/v1/cases/{case_id}/preparation/intelligence",
+    response_model=PreparationIntelligenceReportResponse,
+)
+async def get_latest_preparation_intelligence(
+    case_id: str,
+    principal: Annotated[Principal, Depends(get_principal)],
+    service: Annotated[CaseService, Depends(get_case_service)],
+) -> PreparationIntelligenceReportResponse:
+    """Retrieve the latest preparation intelligence report for case, including staleness status."""
+    report, is_stale = service.get_latest_preparation_report(
+        user_id=principal.user_id,
+        case_id=case_id,
+    )
+    if report is None:
+        raise EntityNotFoundError("PreparationIntelligenceReport", case_id)
+    return _to_prep_report_response(report, is_stale=is_stale)
+

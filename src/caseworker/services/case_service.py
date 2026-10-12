@@ -5,14 +5,25 @@ from __future__ import annotations
 from datetime import datetime
 from typing import TYPE_CHECKING
 
+from caseworker.domain.context_package import ContextPackageBuilder
 from caseworker.domain.enums import CaseStatus, CaseType
 from caseworker.domain.errors import DomainValidationError, EntityNotFoundError
 from caseworker.domain.events import (
     make_case_created_event,
     make_case_resolved_event,
     make_case_status_changed_event,
+    make_context_access_denied_event,
+    make_context_access_granted_event,
+    make_preparation_report_created_event,
 )
 from caseworker.domain.case import Case
+from caseworker.domain.preparation import (
+    PreparationIntelligenceReport,
+    compute_prep_context_snapshot_hash,
+    compute_prep_input_hash,
+)
+from caseworker.domain.preparation_analyzer import PreparationAnalyzer
+from caseworker.domain.vault_policy import ContextAccessPolicy
 
 if TYPE_CHECKING:
     from caseworker.persistence.sqlite import SQLiteCaseworkerStorage
@@ -196,3 +207,190 @@ class CaseService:
             uow.events.append(event)
 
         return case
+
+    def generate_preparation_intelligence(
+        self,
+        user_id: str,
+        case_id: str,
+    ) -> PreparationIntelligenceReport:
+        """Analyze preparation requirements, gate Context Vault access, advance Case to PLANNING, and store report."""
+        with self.storage.unit_of_work() as uow:
+            case = uow.cases.get_by_id(case_id)
+            if case is None or case.user_id != user_id:
+                raise EntityNotFoundError("Case", case_id)
+
+            opportunity = uow.opportunities.get_by_converted_case_id(case_id)
+            if opportunity is None:
+                raise DomainValidationError(
+                    f"Case '{case_id}' has no associated source Opportunity."
+                )
+
+            # Retrieve mission goal and constraints if parent mission exists
+            mission_goal = ""
+            mission_constraints: list[str] = []
+            if case.mission_id:
+                mission = uow.missions.get_by_id(case.mission_id)
+                if mission:
+                    mission_goal = mission.goal
+                    mission_constraints = list(mission.constraints)
+
+            # Query context vault strictly with purpose='case_preparation'
+            all_facts = uow.context.list_active(user_id=user_id)
+            builder = ContextPackageBuilder(ContextAccessPolicy())
+            package, granted_decisions, denied_decisions = builder.build_with_report(
+                user_id=user_id,
+                purpose="case_preparation",
+                available_facts=all_facts,
+            )
+            granted_facts = package.facts
+            denied_facts = [f for f in all_facts if any(d.fact_id == f.fact_id for d in denied_decisions)]
+
+            # Emit audited context access events
+            vault_ver = uow.events.get_next_aggregate_version("context_vault", user_id)
+            if granted_facts:
+                grant_event = make_context_access_granted_event(
+                    user_id=user_id,
+                    aggregate_version=vault_ver,
+                    purpose="case_preparation",
+                    fact_ids=[f.fact_id for f in granted_facts],
+                    namespaces=list({f.namespace for f in granted_facts}),
+                )
+                uow.events.append(grant_event)
+                vault_ver += 1
+
+            for d in denied_decisions:
+                deny_event = make_context_access_denied_event(
+                    user_id=user_id,
+                    aggregate_version=vault_ver,
+                    purpose="case_preparation",
+                    fact_id=d.fact_id,
+                    reason=d.reason,
+                    reason_code=d.reason_code,
+                    namespace=d.namespace,
+                    key=d.key,
+                )
+                uow.events.append(deny_event)
+                vault_ver += 1
+
+            # Case state machine progression: NEW -> INTAKE -> INVESTIGATING
+            if case.status == CaseStatus.NEW:
+                old_st = case.status.value
+                case.transition_to(CaseStatus.INTAKE, "Starting case intake")
+                uow.cases.save(case)
+                uow.events.append(
+                    make_case_status_changed_event(
+                        case.case_id, user_id, case.version, old_st, case.status.value, "Starting case intake"
+                    )
+                )
+                old_st = case.status.value
+                case.transition_to(CaseStatus.INVESTIGATING, "Analyzing preparation requirements")
+                uow.cases.save(case)
+                uow.events.append(
+                    make_case_status_changed_event(
+                        case.case_id, user_id, case.version, old_st, case.status.value, "Analyzing preparation requirements"
+                    )
+                )
+            elif case.status == CaseStatus.INTAKE:
+                old_st = case.status.value
+                case.transition_to(CaseStatus.INVESTIGATING, "Analyzing preparation requirements")
+                uow.cases.save(case)
+                uow.events.append(
+                    make_case_status_changed_event(
+                        case.case_id, user_id, case.version, old_st, case.status.value, "Analyzing preparation requirements"
+                    )
+                )
+            elif case.status == CaseStatus.PLANNING:
+                old_st = case.status.value
+                case.transition_to(CaseStatus.INVESTIGATING, "Re-analyzing preparation requirements")
+                uow.cases.save(case)
+                uow.events.append(
+                    make_case_status_changed_event(
+                        case.case_id, user_id, case.version, old_st, case.status.value, "Re-analyzing preparation requirements"
+                    )
+                )
+
+            # Check existing version
+            latest_existing = uow.preparation_reports.get_latest_for_case(case_id)
+            previous_version = latest_existing.version if latest_existing else 0
+
+            # Execute preparation analysis
+            report = PreparationAnalyzer.analyze(
+                case=case,
+                opportunity=opportunity,
+                granted_facts=granted_facts,
+                denied_facts=denied_facts,
+                denied_decisions=denied_decisions,
+                mission_goal=mission_goal,
+                mission_constraints=mission_constraints,
+                previous_version=previous_version,
+            )
+            uow.preparation_reports.save(report)
+
+            # Advance Case to PLANNING (report finalized)
+            if case.status == CaseStatus.INVESTIGATING:
+                old_st = case.status.value
+                case.transition_to(CaseStatus.PLANNING, "Preparation intelligence report finalized")
+                uow.events.append(
+                    make_case_status_changed_event(
+                        case.case_id, user_id, case.version, old_st, case.status.value, "Preparation intelligence report finalized"
+                    )
+                )
+            uow.cases.save(case)
+
+            # Emit preparation report created event
+            report_event = make_preparation_report_created_event(
+                report_id=report.report_id,
+                case_id=case.case_id,
+                opportunity_id=opportunity.opportunity_id,
+                user_id=user_id,
+                aggregate_version=uow.events.get_next_aggregate_version("case", case.case_id),
+                input_hash=report.input_hash,
+                context_snapshot_hash=report.context_snapshot_hash,
+                schema_version=report.schema_version,
+            )
+            uow.events.append(report_event)
+
+        return report
+
+    def get_latest_preparation_report(
+        self,
+        user_id: str,
+        case_id: str,
+    ) -> tuple[PreparationIntelligenceReport | None, bool]:
+        """Retrieve latest preparation report for case and check if it is stale."""
+        with self.storage.unit_of_work() as uow:
+            case = uow.cases.get_by_id(case_id)
+            if case is None or case.user_id != user_id:
+                raise EntityNotFoundError("Case", case_id)
+
+            report = uow.preparation_reports.get_latest_for_case(case_id)
+            if report is None:
+                return None, False
+
+            opportunity = uow.opportunities.get_by_converted_case_id(case_id)
+            if opportunity is None:
+                return report, True
+
+            mission_goal = ""
+            mission_constraints: list[str] = []
+            if case.mission_id:
+                mission = uow.missions.get_by_id(case.mission_id)
+                if mission:
+                    mission_goal = mission.goal
+                    mission_constraints = list(mission.constraints)
+
+            all_facts = uow.context.list_active(user_id=user_id)
+            builder = ContextPackageBuilder(ContextAccessPolicy())
+            package, _, _ = builder.build_with_report(
+                user_id=user_id,
+                purpose="case_preparation",
+                available_facts=all_facts,
+            )
+            granted_facts = package.facts
+
+            current_input_hash = compute_prep_input_hash(opportunity, mission_goal, mission_constraints)
+            current_context_hash = compute_prep_context_snapshot_hash(granted_facts)
+
+            is_stale = report.is_stale(current_input_hash, current_context_hash)
+            return report, is_stale
+

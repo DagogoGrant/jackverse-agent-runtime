@@ -14,7 +14,7 @@ class TestSQLiteMigration(unittest.TestCase):
         cur = conn.cursor()
         cur.execute("PRAGMA user_version;")
         version = cur.fetchone()[0]
-        self.assertEqual(version, 5)
+        self.assertEqual(version, 6)
 
         # Verify all tables exist
         cur.execute("SELECT name FROM sqlite_master WHERE type='table';")
@@ -29,6 +29,7 @@ class TestSQLiteMigration(unittest.TestCase):
             "context_facts",
             "claims",
             "domain_events",
+            "preparation_intelligence_reports",
         }
         for table in expected_tables:
             self.assertIn(table, tables, f"Expected table '{table}' missing after migration.")
@@ -109,7 +110,7 @@ class TestSQLiteMigration(unittest.TestCase):
         SQLiteMigrator.migrate(conn)
 
         cur.execute("PRAGMA user_version;")
-        self.assertEqual(cur.fetchone()[0], 5)
+        self.assertEqual(cur.fetchone()[0], 6)
 
         # 3. Verify new columns exist in context_facts and missions
         cur.execute("PRAGMA table_info(context_facts);")
@@ -179,7 +180,7 @@ class TestSQLiteMigration(unittest.TestCase):
         SQLiteMigrator.migrate(conn)
 
         cur.execute("PRAGMA user_version;")
-        self.assertEqual(cur.fetchone()[0], 5)
+        self.assertEqual(cur.fetchone()[0], 6)
 
         # 3. Verify columns added
         cur.execute("PRAGMA table_info(missions);")
@@ -244,7 +245,7 @@ class TestSQLiteMigration(unittest.TestCase):
         SQLiteMigrator.migrate(conn)
 
         cur.execute("PRAGMA user_version;")
-        self.assertEqual(cur.fetchone()[0], 5)
+        self.assertEqual(cur.fetchone()[0], 6)
 
         # 3. Verify columns added
         cur.execute("PRAGMA table_info(opportunities);")
@@ -315,7 +316,7 @@ class TestSQLiteMigration(unittest.TestCase):
         SQLiteMigrator.migrate(conn)
 
         cur.execute("PRAGMA user_version;")
-        self.assertEqual(cur.fetchone()[0], 5)
+        self.assertEqual(cur.fetchone()[0], 6)
 
         # 3. Verify columns added
         cur.execute("PRAGMA table_info(opportunities);")
@@ -332,6 +333,84 @@ class TestSQLiteMigration(unittest.TestCase):
         self.assertEqual(row[1], "Senior Researcher")
         self.assertEqual(row[4], "fp_v2_existing")
         self.assertIsNone(row[5])
+
+        conn.close()
+
+    def test_migration_from_v5_schema_creates_prep_reports_table(self) -> None:
+        """Verify Migration 5->6 creates preparation_intelligence_reports table and indexes."""
+        conn = sqlite3.connect(":memory:")
+        cur = conn.cursor()
+
+        # Run migration baseline up to v5 by simulating schema
+        conn.executescript("""
+            CREATE TABLE cases (
+                case_id TEXT PRIMARY KEY,
+                mission_id TEXT,
+                user_id TEXT NOT NULL,
+                case_type TEXT NOT NULL,
+                title TEXT NOT NULL,
+                goal TEXT NOT NULL,
+                status TEXT NOT NULL,
+                success_criteria TEXT NOT NULL,
+                constraints TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                deadline TEXT,
+                resolved_at TEXT,
+                outcome TEXT,
+                version INTEGER NOT NULL DEFAULT 1
+            );
+            CREATE TABLE opportunities (
+                opportunity_id TEXT PRIMARY KEY,
+                mission_id TEXT,
+                user_id TEXT NOT NULL,
+                opportunity_type TEXT NOT NULL,
+                title TEXT NOT NULL,
+                organization TEXT NOT NULL,
+                source_url TEXT NOT NULL,
+                source_name TEXT NOT NULL,
+                location TEXT NOT NULL,
+                status TEXT NOT NULL,
+                requirements TEXT NOT NULL,
+                metadata TEXT NOT NULL,
+                fingerprint TEXT NOT NULL,
+                discovered_at TEXT NOT NULL,
+                deadline TEXT,
+                version INTEGER NOT NULL DEFAULT 1,
+                converted_case_id TEXT,
+                fingerprint_v2 TEXT,
+                external_posting_id TEXT
+            );
+        """)
+        cur.execute("PRAGMA user_version = 5;")
+        conn.commit()
+
+        # Run migration to v6
+        SQLiteMigrator.migrate(conn)
+
+        cur.execute("PRAGMA user_version;")
+        self.assertEqual(cur.fetchone()[0], 6)
+
+        # Verify table exists
+        cur.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='preparation_intelligence_reports';")
+        self.assertIsNotNone(cur.fetchone())
+
+        # Verify columns
+        cur.execute("PRAGMA table_info(preparation_intelligence_reports);")
+        columns = {row[1] for row in cur.fetchall()}
+        expected_cols = {
+            "report_id", "case_id", "opportunity_id", "user_id",
+            "schema_version", "analyzer_version", "evidence_map_json",
+            "gaps_json", "strategy_json", "input_hash",
+            "context_snapshot_hash", "source_evaluation_id", "created_at", "version"
+        }
+        self.assertTrue(expected_cols.issubset(columns))
+
+        # Verify indexes
+        cur.execute("SELECT name FROM sqlite_master WHERE type='index' AND name LIKE 'idx_prep_reports_%';")
+        index_names = {row[0] for row in cur.fetchall()}
+        self.assertIn("idx_prep_reports_case", index_names)
+        self.assertIn("idx_prep_reports_user", index_names)
 
         conn.close()
 
@@ -403,8 +482,9 @@ class TestSQLiteMigration(unittest.TestCase):
 
         cur = conn.cursor()
         cur.execute("PRAGMA user_version;")
-        self.assertEqual(cur.fetchone()[0], 5)
+        self.assertEqual(cur.fetchone()[0], 6)
         conn.close()
+
 
 
 if __name__ == "__main__":

@@ -577,3 +577,31 @@ def make_claim_status_changed_event(
             "reason": reason,
         },
     )
+
+
+def make_preparation_report_created_event(
+    report_id: str,
+    case_id: str,
+    opportunity_id: str,
+    user_id: str,
+    aggregate_version: int,
+    input_hash: str,
+    context_snapshot_hash: str,
+    schema_version: str = "prep_intel_v1",
+) -> DomainEvent:
+    return DomainEvent(
+        event_type="preparation.report_created",
+        aggregate_type="case",
+        aggregate_id=case_id,
+        aggregate_version=aggregate_version,
+        user_id=user_id,
+        payload={
+            "report_id": report_id,
+            "case_id": case_id,
+            "opportunity_id": opportunity_id,
+            "input_hash": input_hash,
+            "context_snapshot_hash": context_snapshot_hash,
+            "schema_version": schema_version,
+        },
+    )
+

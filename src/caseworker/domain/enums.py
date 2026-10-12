@@ -243,3 +243,32 @@ class FitTier(StrEnum):
     LOW = "low"
     INSUFFICIENT_EVIDENCE = "insufficient_evidence"
 
+
+class EvidenceAlignmentStatus(StrEnum):
+    """Alignment status of a requirement against user Context Vault evidence."""
+
+    SUPPORTED = "supported"
+    POTENTIAL = "potential"
+    GAP = "gap"
+    CONTRADICTED = "contradicted"
+    RESTRICTED = "restricted"
+
+
+class GapCategory(StrEnum):
+    """Classification of requirement evidence deficit or conflict."""
+
+    MANDATORY_EVIDENCE_GAP = "mandatory_evidence_gap"
+    PREFERRED_EVIDENCE_GAP = "preferred_evidence_gap"
+    HARD_CONFLICT = "hard_conflict"
+
+
+class PreparationMaterialType(StrEnum):
+    """Type of pursuit artifact to be synthesized."""
+
+    CV = "cv"
+    COVER_LETTER = "cover_letter"
+    SCREENING_ANSWERS = "screening_answers"
+    PORTFOLIO_EXCERPT = "portfolio_excerpt"
+    STATEMENT_OF_PURPOSE = "statement_of_purpose"
+    CUSTOM = "custom"
+
