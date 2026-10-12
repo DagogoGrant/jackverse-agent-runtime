@@ -28,12 +28,13 @@ from caseworker.domain.preparation import (
     GapItem,
     PreparationIntelligenceReport,
     PreparationStrategy,
+    SafeDeniedFactDescriptor,
     compute_prep_context_snapshot_hash,
     compute_prep_input_hash,
+    is_fact_or_descriptor_relevant_to_requirements,
 )
 from caseworker.domain.requirement_matcher import RequirementMatcher, is_fact_verified
 from caseworker.domain.types import now_utc
-from caseworker.domain.vault_policy import AccessDecision
 
 
 class PreparationAnalyzer:
@@ -48,8 +49,7 @@ class PreparationAnalyzer:
         case: Case,
         opportunity: Opportunity,
         granted_facts: list[ContextFact],
-        denied_facts: list[ContextFact] | None = None,
-        denied_decisions: list[AccessDecision] | None = None,
+        denied_descriptors: list[SafeDeniedFactDescriptor] | None = None,
         mission_goal: str = "",
         mission_constraints: list[str] | None = None,
         previous_version: int = 0,
@@ -73,20 +73,6 @@ class PreparationAnalyzer:
         for f in active_granted:
             granted_by_ns.setdefault(f.namespace.lower(), []).append(f)
 
-        # Filter active denied facts
-        active_denied = [
-            f for f in (denied_facts or [])
-            if f.superseded_by_fact_id is None and f.verification_status != VerificationStatus.REJECTED
-        ]
-        denied_by_ns: dict[str, list[ContextFact]] = {}
-        for f in active_denied:
-            denied_by_ns.setdefault(f.namespace.lower(), []).append(f)
-
-        denial_reason_by_fact_id: dict[str, str] = {}
-        if denied_decisions:
-            for d in denied_decisions:
-                denial_reason_by_fact_id[d.fact_id] = d.reason
-
         evidence_map: list[EvidenceMappingItem] = []
         gaps: list[GapItem] = []
         claim_intents: list[ClaimIntent] = []
@@ -104,6 +90,8 @@ class PreparationAnalyzer:
                 active_facts=active_granted,
             )
 
+            matched_denied: SafeDeniedFactDescriptor | None = None
+
             # Determine alignment status across 5 states
             if match_res == RequirementMatchResult.MET and matched_fact is not None:
                 if is_fact_verified(matched_fact.verification_status):
@@ -116,38 +104,70 @@ class PreparationAnalyzer:
                 # Matched unverified fact for mandatory requirement returns UNKNOWN from matcher
                 status = EvidenceAlignmentStatus.POTENTIAL
             else:
-                # Check if requirement matches a restricted fact in denied context
-                denied_match_res, denied_matched_fact, denied_notes = RequirementMatcher.match(
-                    req=req,
-                    facts_by_ns=denied_by_ns,
-                    active_facts=active_denied,
-                )
-                if denied_matched_fact is not None:
+                # Check if requirement matches a restricted fact via safe metadata descriptor
+                # CRITICAL SECURITY INVARIANT: Never inspect denied values
+                if denied_descriptors:
+                    relevant_ns = RequirementMatcher.CRITERION_TO_NAMESPACES.get(req.criterion, set())
+                    for desc in denied_descriptors:
+                        desc_ns = desc.namespace.lower()
+                        desc_key = desc.key.lower()
+                        if desc_ns in relevant_ns:
+                            if req.criterion == "skill":
+                                skill_name = str(req.value or "").lower()
+                                if not skill_name or skill_name in desc_key or desc_key in skill_name:
+                                    matched_denied = desc
+                                    break
+                            elif req.criterion == "language":
+                                lang_name = str(req.value or "").lower()
+                                if not lang_name or lang_name in desc_key or desc_key in lang_name:
+                                    matched_denied = desc
+                                    break
+                            else:
+                                matched_denied = desc
+                                break
+                        else:
+                            val_str = str(req.value or "").lower()
+                            if val_str and (val_str in desc_key or desc_key in val_str):
+                                matched_denied = desc
+                                break
+
+                if matched_denied is not None:
                     status = EvidenceAlignmentStatus.RESTRICTED
-                    matched_fact = denied_matched_fact
-                    reason = denial_reason_by_fact_id.get(
-                        denied_matched_fact.fact_id,
-                        "Purpose 'case_preparation' not authorized",
-                    )
+                    reason = matched_denied.reason or "Purpose 'case_preparation' not authorized"
                     notes = f"Relevant vault evidence exists but access was restricted: {reason}"
                 else:
                     status = EvidenceAlignmentStatus.GAP
                     notes = notes or "No matching fact found in context vault."
 
             # Construct safe EvidenceMappingItem (CRITICAL PRIVACY INVARIANT: no sensitive fact values)
-            ev_item = EvidenceMappingItem(
-                requirement_id=req.requirement_id,
-                requirement_type=req.criterion,
-                description=req.raw_text,
-                mandatory=is_mandatory,
-                status=status,
-                matched_fact_id=matched_fact.fact_id if matched_fact else None,
-                matched_fact_version=matched_fact.version if matched_fact else None,
-                verification_status=matched_fact.verification_status if matched_fact else None,
-                fact_namespace=matched_fact.namespace if matched_fact else None,
-                fact_key=matched_fact.key if matched_fact else None,
-                notes=notes,
-            )
+            if status == EvidenceAlignmentStatus.RESTRICTED and matched_denied is not None:
+                ev_item = EvidenceMappingItem(
+                    requirement_id=req.requirement_id,
+                    requirement_type=req.criterion,
+                    description=req.raw_text,
+                    mandatory=is_mandatory,
+                    status=status,
+                    matched_fact_id=matched_denied.fact_id,
+                    matched_fact_version=matched_denied.fact_version,
+                    verification_status=matched_denied.verification_status,
+                    fact_namespace=matched_denied.namespace,
+                    fact_key=matched_denied.key,
+                    notes=notes,
+                )
+            else:
+                ev_item = EvidenceMappingItem(
+                    requirement_id=req.requirement_id,
+                    requirement_type=req.criterion,
+                    description=req.raw_text,
+                    mandatory=is_mandatory,
+                    status=status,
+                    matched_fact_id=matched_fact.fact_id if matched_fact else None,
+                    matched_fact_version=matched_fact.version if matched_fact else None,
+                    verification_status=matched_fact.verification_status if matched_fact else None,
+                    fact_namespace=matched_fact.namespace if matched_fact else None,
+                    fact_key=matched_fact.key if matched_fact else None,
+                    notes=notes,
+                )
             evidence_map.append(ev_item)
 
             # Categorize Gaps into 3 classes
@@ -181,19 +201,20 @@ class PreparationAnalyzer:
                         requirement_type=req.criterion,
                         category=GapCategory.MANDATORY_EVIDENCE_GAP,
                         description=f"Mandatory requirement '{req.raw_text}' is {status.value.lower()}.",
-                        severity="critical",
+                        severity="high",
                         mitigation_guidance=guidance,
-                        fact_id=matched_fact.fact_id if matched_fact else None,
+                        fact_id=matched_fact.fact_id if matched_fact else (matched_denied.fact_id if matched_denied else None),
                     )
                     gaps.append(gap)
                     mitigations.append(f"[MANDATORY_EVIDENCE_GAP] {req.raw_text}: {guidance}")
+
                 else:
                     if status == EvidenceAlignmentStatus.POTENTIAL:
-                        guidance = "Verify context fact to strengthen alignment with preferred criteria."
+                        guidance = "Verify preferred skill/experience fact to strengthen candidacy."
                     elif status == EvidenceAlignmentStatus.RESTRICTED:
-                        guidance = "Grant access to restricted fact if advantageous for application narrative."
+                        guidance = "Grant access to restricted fact to include preferred qualification."
                     else:
-                        guidance = "Emphasize transferable skills or address in cover letter narrative."
+                        guidance = "Optional qualification; can be addressed in narrative or left as gap."
 
                     gap = GapItem(
                         gap_id=f"gap-{uuid.uuid4().hex[:8]}",
@@ -203,24 +224,22 @@ class PreparationAnalyzer:
                         description=f"Preferred requirement '{req.raw_text}' is {status.value.lower()}.",
                         severity="moderate",
                         mitigation_guidance=guidance,
-                        fact_id=matched_fact.fact_id if matched_fact else None,
+                        fact_id=matched_fact.fact_id if matched_fact else (matched_denied.fact_id if matched_denied else None),
                     )
                     gaps.append(gap)
                     mitigations.append(f"[PREFERRED_EVIDENCE_GAP] {req.raw_text}: {guidance}")
 
-            # Formulate ClaimIntents for SUPPORTED and POTENTIAL items
-            if status in (EvidenceAlignmentStatus.SUPPORTED, EvidenceAlignmentStatus.POTENTIAL):
+            # Formulate ClaimIntents ONLY for SUPPORTED items
+            # CRITICAL GOVERNANCE INVARIANT:
+            # POTENTIAL evidence is explicitly unverified and MUST NOT become an assertable drafting seed.
+            if status == EvidenceAlignmentStatus.SUPPORTED and matched_fact is not None:
                 target_material = (
                     PreparationMaterialType.COVER_LETTER
                     if req.criterion in ("language", "degree") and not is_mandatory
                     else PreparationMaterialType.CV
                 )
-                supporting_ids = [matched_fact.fact_id] if matched_fact else []
-                angle = (
-                    f"Highlight verified {req.criterion} meeting '{req.raw_text}'"
-                    if status == EvidenceAlignmentStatus.SUPPORTED
-                    else f"Reference {req.criterion} experience for '{req.raw_text}' pending formal verification"
-                )
+                supporting_ids = [matched_fact.fact_id]
+                angle = f"Highlight verified {req.criterion} meeting '{req.raw_text}'"
                 intent = ClaimIntent(
                     intent_id=f"intent-{uuid.uuid4().hex[:8]}",
                     requirement_id=req.requirement_id,
@@ -230,19 +249,25 @@ class PreparationAnalyzer:
                     suggested_angle=angle,
                 )
                 claim_intents.append(intent)
+                strengths.append(f"Confirmed {req.criterion}: '{req.raw_text}'")
 
-                if status == EvidenceAlignmentStatus.SUPPORTED:
-                    strengths.append(f"Confirmed {req.criterion}: '{req.raw_text}'")
-
-        # 4. Formulate PreparationStrategy
-        recommended_materials = [
-            PreparationMaterialType.CV,
-            PreparationMaterialType.COVER_LETTER,
-        ]
-        materials_checklist = [
-            {"material_type": PreparationMaterialType.CV.value, "required": True, "status": "PENDING_DRAFT"},
-            {"material_type": PreparationMaterialType.COVER_LETTER.value, "required": True, "status": "PENDING_DRAFT"},
-        ]
+        # 4. Formulate PreparationStrategy with CaseType Truthfulness
+        case_type_str = case.case_type.value if hasattr(case.case_type, "value") else str(case.case_type)
+        if case_type_str.lower() in ("job_application", CaseType.JOB_APPLICATION.value):
+            recommended_materials = [
+                PreparationMaterialType.CV,
+                PreparationMaterialType.COVER_LETTER,
+            ]
+            materials_checklist = [
+                {"material_type": PreparationMaterialType.CV.value, "required": True, "status": "PENDING_DRAFT"},
+                {"material_type": PreparationMaterialType.COVER_LETTER.value, "required": True, "status": "PENDING_DRAFT"},
+            ]
+        else:
+            recommended_materials = []
+            materials_checklist = []
+            mitigations.append(
+                f"Material strategy for case type '{case_type_str}' is not supported in Phase 5.2. Preparation intelligence provided for discovery analysis only."
+            )
 
         strategy = PreparationStrategy(
             recommended_materials=recommended_materials,
@@ -252,12 +277,21 @@ class PreparationAnalyzer:
             materials_checklist=materials_checklist,
         )
 
-        # 5. Hashes and Metadata
-        input_hash = compute_prep_input_hash(opportunity, mission_goal, mission_constraints)
-        context_snapshot_hash = compute_prep_context_snapshot_hash(active_granted)
+        # 5. Hashes and Metadata with Case Inputs and Relevant Context Dependencies
+        input_hash = compute_prep_input_hash(case, opportunity, mission_goal, mission_constraints)
+
+        relevant_granted = [
+            f for f in active_granted
+            if is_fact_or_descriptor_relevant_to_requirements(f.namespace, f.key, normalized_reqs)
+        ]
+        relevant_denied = [
+            d for d in (denied_descriptors or [])
+            if is_fact_or_descriptor_relevant_to_requirements(d.namespace, d.key, normalized_reqs)
+        ]
+        context_snapshot_hash = compute_prep_context_snapshot_hash(relevant_granted, relevant_denied)
 
         eval_meta = opportunity.metadata.get("evaluation") or {}
-        source_eval_id = eval_meta.get("evaluation_id")
+        source_eval_id = eval_meta.get("evaluation_id") or opportunity.metadata.get("latest_evaluation_id")
 
         return PreparationIntelligenceReport(
             report_id=f"prep-{uuid.uuid4().hex[:12]}",

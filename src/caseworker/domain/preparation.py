@@ -11,6 +11,7 @@ from datetime import datetime
 from typing import Any
 import uuid
 
+from caseworker.domain.case import Case
 from caseworker.domain.context import ContextFact
 from caseworker.domain.enums import (
     EvidenceAlignmentStatus,
@@ -18,6 +19,7 @@ from caseworker.domain.enums import (
     PreparationMaterialType,
     VerificationStatus,
 )
+from caseworker.domain.normalized_requirement import NormalizedRequirement
 from caseworker.domain.opportunity import Opportunity
 from caseworker.domain.types import (
     canonical_json_dumps,
@@ -27,6 +29,19 @@ from caseworker.domain.types import (
     now_utc,
     to_iso_utc,
 )
+
+
+@dataclass(frozen=True)
+class SafeDeniedFactDescriptor:
+    """Safe descriptor of a denied ContextFact access decision without sensitive values."""
+
+    fact_id: str
+    fact_version: int | None
+    namespace: str
+    key: str
+    verification_status: VerificationStatus | str | None = None
+    reason_code: str = "DENIED"
+    reason: str = ""
 
 
 @dataclass
@@ -254,9 +269,35 @@ class PreparationIntelligenceReport:
             raise ValueError("Report created_at timestamp must be timezone-aware UTC.")
         object.__setattr__(self, "created_at", ensure_utc(self.created_at))
 
-    def is_stale(self, current_input_hash: str, current_context_hash: str) -> bool:
+    def is_stale(
+        self,
+        current_input_hash: str,
+        current_context_hash: str,
+        current_opportunity_evaluation_id: str | None = None,
+        current_analyzer_version: str | None = None,
+        current_schema_version: str | None = None,
+    ) -> bool:
         """Deterministically determine if report is stale compared to current input and context hashes."""
-        return self.input_hash != current_input_hash or self.context_snapshot_hash != current_context_hash
+        if self.input_hash != current_input_hash:
+            return True
+        if self.context_snapshot_hash != current_context_hash:
+            return True
+        if (
+            current_opportunity_evaluation_id is not None
+            and self.source_evaluation_id != current_opportunity_evaluation_id
+        ):
+            return True
+        if (
+            current_analyzer_version is not None
+            and self.analyzer_version != current_analyzer_version
+        ):
+            return True
+        if (
+            current_schema_version is not None
+            and self.schema_version != current_schema_version
+        ):
+            return True
+        return False
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -305,20 +346,78 @@ class PreparationIntelligenceReport:
 
 
 def compute_prep_input_hash(
+    case: Case,
     opportunity: Opportunity,
     mission_goal: str = "",
     mission_constraints: list[str] | None = None,
 ) -> str:
-    """Compute deterministic input hash for preparation intelligence."""
+    """Compute deterministic input hash for preparation intelligence including Case inputs."""
     if not opportunity.metadata.get("normalized_requirements") and opportunity.requirements:
         from caseworker.domain.normalized_requirement import parse_requirements
+
         normalized = parse_requirements(opportunity.opportunity_id, opportunity.requirements)
         opportunity.metadata["normalized_requirements"] = [r.to_dict() for r in normalized]
-    return opportunity.compute_input_hash(mission_goal, mission_constraints)
+    opp_hash = opportunity.compute_input_hash(mission_goal, mission_constraints)
+    case_payload = [
+        "prep_input_v1",
+        opp_hash,
+        case.case_type.value if hasattr(case.case_type, "value") else str(case.case_type),
+        case.goal,
+        sorted(list(case.constraints)),
+        sorted(list(case.success_criteria)),
+    ]
+    return compute_sha256(canonical_json_dumps(case_payload))
 
 
+def is_fact_or_descriptor_relevant_to_requirements(
+    namespace: str,
+    key: str,
+    normalized_reqs: list[NormalizedRequirement],
+) -> bool:
+    """Check if a fact namespace or key is relevant to any normalized requirement selector."""
+    from caseworker.domain.requirement_matcher import RequirementMatcher
 
-def compute_prep_context_snapshot_hash(granted_facts: list[ContextFact]) -> str:
-    """Compute deterministic context snapshot hash from granted context facts."""
-    components = sorted([(f.fact_id, f.version) for f in granted_facts])
+    ns_lower = (namespace or "").lower()
+    key_lower = (key or "").lower()
+    key_clean = key_lower.replace("_", " ").replace("-", " ").strip()
+
+    for req in normalized_reqs:
+        relevant_namespaces = RequirementMatcher.CRITERION_TO_NAMESPACES.get(req.criterion, set())
+        if ns_lower in relevant_namespaces:
+            return True
+
+        val_clean = str(req.value or "").lower().replace("_", " ").replace("-", " ").strip()
+        raw_clean = (req.raw_text or "").lower().replace("_", " ").replace("-", " ").strip()
+
+        if key_clean:
+            if key_clean in raw_clean or key_clean in val_clean:
+                return True
+            if val_clean and val_clean in key_clean:
+                return True
+            tokens = [t for t in key_clean.split() if len(t) >= 3]
+            if tokens and all(t in raw_clean for t in tokens):
+                return True
+
+    return False
+
+
+def compute_prep_context_snapshot_hash(
+    relevant_granted_facts: list[ContextFact],
+    relevant_denied_descriptors: list[SafeDeniedFactDescriptor] | None = None,
+) -> str:
+    """Compute deterministic context dependency hash from relevant granted facts and safe denied descriptors."""
+    components: list[tuple[str, int, str, str]] = []
+    for f in relevant_granted_facts:
+        v_status = (
+            f.verification_status.value
+            if hasattr(f.verification_status, "value")
+            else str(f.verification_status)
+        )
+        components.append((f.fact_id, f.version, "granted", v_status))
+
+    if relevant_denied_descriptors:
+        for d in relevant_denied_descriptors:
+            components.append((d.fact_id, d.fact_version or 0, "denied", d.reason_code))
+
+    components.sort()
     return compute_sha256(canonical_json_dumps(components))

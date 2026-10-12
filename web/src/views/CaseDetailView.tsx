@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
-import { ArrowLeft, AlertTriangle, CheckCircle2, Sparkles } from 'lucide-react';
+import { ArrowLeft, AlertTriangle, CheckCircle2, Search, ChevronDown } from 'lucide-react';
 import {
   useCase,
   useCaseActions,
@@ -14,7 +14,7 @@ import {
   usePreparationReport,
   useGeneratePreparation,
 } from '../hooks/useCaseworker';
-import { apiRequest } from '../api/client';
+import { apiRequest, PreconditionFailedError } from '../api/client';
 import type { Claim } from '../api/types';
 import { TextureBadge } from '../components/ui/TextureBadge';
 import { TactileButton } from '../components/ui/TactileButton';
@@ -162,10 +162,18 @@ export const CaseDetailView: React.FC = () => {
     if (!caseId) return;
     setConcurrencyNotice(null);
     try {
-      await generatePrep.mutateAsync({ caseId });
+      await generatePrep.mutateAsync({
+        caseId,
+        etag: caseData?.etag,
+      });
       refetchCase();
     } catch (err: any) {
-      setConcurrencyNotice(err.message || 'Preparation intelligence analysis failed');
+      if (err instanceof PreconditionFailedError || err?.status === 412) {
+        setConcurrencyNotice("Case was modified concurrently. Loaded latest version.");
+        refetchCase();
+      } else {
+        setConcurrencyNotice(err.message || 'Preparation intelligence analysis failed');
+      }
     }
   };
 
@@ -377,7 +385,7 @@ export const CaseDetailView: React.FC = () => {
                   loading={generatePrep.isPending}
                   onClick={handleGeneratePrep}
                 >
-                  <Sparkles className="w-3.5 h-3.5 mr-1.5 inline" />
+                  <Search className="w-3.5 h-3.5 mr-1.5 inline" />
                   Re-analyze Preparation
                 </TactileButton>
               ) : (
@@ -387,7 +395,7 @@ export const CaseDetailView: React.FC = () => {
                   loading={generatePrep.isPending}
                   onClick={handleGeneratePrep}
                 >
-                  <Sparkles className="w-3.5 h-3.5 mr-1.5 inline" />
+                  <Search className="w-3.5 h-3.5 mr-1.5 inline" />
                   Analyze Preparation →
                 </TactileButton>
               )}
@@ -415,7 +423,7 @@ export const CaseDetailView: React.FC = () => {
                     loading={generatePrep.isPending}
                     onClick={handleGeneratePrep}
                   >
-                    <Sparkles className="w-4 h-4 mr-2 inline" />
+                    <Search className="w-4 h-4 mr-2 inline" />
                     Analyze Preparation Intelligence →
                   </TactileButton>
                 </div>
@@ -442,17 +450,26 @@ export const CaseDetailView: React.FC = () => {
                   </div>
                 )}
 
-                {/* Report Metadata Bar */}
-                <div className="flex flex-wrap items-center gap-4 text-xs font-machine text-jv-muted p-3 border border-jv-rule bg-jv-surface/40">
-                  <span>REPORT: {prepReport.report_id.slice(0, 8)}</span>
-                  <span className="text-jv-rule">·</span>
-                  <span>ANALYZER: {prepReport.analyzer_version}</span>
-                  <span className="text-jv-rule">·</span>
-                  <span>INPUT: {prepReport.input_hash.slice(0, 8)}</span>
-                  <span className="text-jv-rule">·</span>
-                  <span>SNAPSHOT: {prepReport.context_snapshot_hash.slice(0, 8)}</span>
-                  <span className="text-jv-rule">·</span>
-                  <span>DATE: {new Date(prepReport.created_at).toLocaleDateString()}</span>
+                {/* Report Metadata & Technical Disclosure */}
+                <div className="border border-jv-rule bg-jv-surface/40 p-3">
+                  <div className="flex items-center justify-between text-xs font-machine text-jv-muted">
+                    <span>ANALYZED: {new Date(prepReport.created_at).toLocaleDateString()}</span>
+                    <details className="group cursor-pointer">
+                      <summary className="list-none text-[11px] uppercase tracking-wider text-jv-muted hover:text-jv-ink flex items-center gap-1 select-none">
+                        <ChevronDown className="w-3.5 h-3.5 transition-transform group-open:rotate-180 inline" />
+                        Inspect report technical metadata
+                      </summary>
+                      <div className="mt-2.5 pt-2.5 border-t border-jv-rule space-y-1 font-machine text-[11px] text-jv-muted">
+                        <div><span className="text-jv-ink font-semibold">REPORT ID:</span> {prepReport.report_id}</div>
+                        <div><span className="text-jv-ink font-semibold">ANALYZER:</span> {prepReport.analyzer_version} (schema: {prepReport.schema_version})</div>
+                        <div><span className="text-jv-ink font-semibold">INPUT HASH:</span> {prepReport.input_hash}</div>
+                        <div><span className="text-jv-ink font-semibold">CONTEXT SNAPSHOT:</span> {prepReport.context_snapshot_hash}</div>
+                        {prepReport.source_evaluation_id && (
+                          <div><span className="text-jv-ink font-semibold">SOURCE EVAL:</span> {prepReport.source_evaluation_id}</div>
+                        )}
+                      </div>
+                    </details>
+                  </div>
                 </div>
 
                 {/* Evidence Alignment Matrix (5 States) */}
@@ -470,31 +487,31 @@ export const CaseDetailView: React.FC = () => {
                   <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 text-center font-machine">
                     <div className="p-2.5 border border-jv-rule bg-jv-bg">
                       <div className="text-lg font-bold text-jv-ink">
-                        {(prepReport.evidence_map || []).filter((e) => e.status === 'SUPPORTED').length}
+                        {(prepReport.evidence_map || []).filter((e) => (e.status || '').toLowerCase() === 'supported').length}
                       </div>
                       <div className="text-[10px] text-jv-muted uppercase">SUPPORTED</div>
                     </div>
                     <div className="p-2.5 border border-jv-rule bg-jv-bg">
                       <div className="text-lg font-bold text-jv-ink">
-                        {(prepReport.evidence_map || []).filter((e) => e.status === 'POTENTIAL').length}
+                        {(prepReport.evidence_map || []).filter((e) => (e.status || '').toLowerCase() === 'potential').length}
                       </div>
                       <div className="text-[10px] text-jv-muted uppercase">POTENTIAL</div>
                     </div>
                     <div className="p-2.5 border border-jv-rule bg-jv-bg">
                       <div className="text-lg font-bold text-jv-ink">
-                        {(prepReport.evidence_map || []).filter((e) => e.status === 'RESTRICTED').length}
+                        {(prepReport.evidence_map || []).filter((e) => (e.status || '').toLowerCase() === 'restricted').length}
                       </div>
                       <div className="text-[10px] text-jv-muted uppercase">RESTRICTED</div>
                     </div>
                     <div className="p-2.5 border border-jv-rule bg-jv-bg">
                       <div className="text-lg font-bold text-jv-ink">
-                        {(prepReport.evidence_map || []).filter((e) => e.status === 'CONTRADICTED').length}
+                        {(prepReport.evidence_map || []).filter((e) => (e.status || '').toLowerCase() === 'contradicted').length}
                       </div>
                       <div className="text-[10px] text-jv-muted uppercase">CONTRADICTED</div>
                     </div>
                     <div className="p-2.5 border border-jv-rule bg-jv-bg">
                       <div className="text-lg font-bold text-jv-ink">
-                        {(prepReport.evidence_map || []).filter((e) => e.status === 'GAP').length}
+                        {(prepReport.evidence_map || []).filter((e) => (e.status || '').toLowerCase() === 'gap').length}
                       </div>
                       <div className="text-[10px] text-jv-muted uppercase">GAP</div>
                     </div>
@@ -554,8 +571,9 @@ export const CaseDetailView: React.FC = () => {
                   ) : (
                     <div className="divide-y divide-jv-rule border border-jv-rule">
                       {(prepReport.gaps || []).map((gap) => {
-                        const isConflict = gap.category === 'HARD_CONFLICT';
-                        const isMandatory = gap.category === 'MANDATORY_EVIDENCE_GAP';
+                        const catLower = (gap.category || '').toLowerCase();
+                        const isConflict = catLower === 'hard_conflict';
+                        const isMandatory = catLower === 'mandatory_evidence_gap';
                         return (
                           <div key={gap.gap_id} className="p-4 space-y-2 bg-jv-surface/20">
                             <div className="flex items-start justify-between gap-3">
@@ -570,7 +588,7 @@ export const CaseDetailView: React.FC = () => {
                                         : 'border-jv-rule text-jv-muted'
                                     }`}
                                   >
-                                    {gap.category.replace(/_/g, ' ')}
+                                    {gap.category.replace(/_/g, ' ').toUpperCase()}
                                   </span>
                                   <span className="text-jv-muted uppercase">SEVERITY: {gap.severity}</span>
                                 </div>

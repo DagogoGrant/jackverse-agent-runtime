@@ -1510,56 +1510,28 @@ class SQLitePreparationReportRepository(PreparationReportRepository):
     def save(self, report: PreparationIntelligenceReport) -> None:
         cur = self.conn.cursor()
         cur.execute(
-            "SELECT version FROM preparation_intelligence_reports WHERE report_id = ?",
+            "SELECT 1 FROM preparation_intelligence_reports WHERE report_id = ?",
             (report.report_id,),
         )
         row = cur.fetchone()
-        if row is None:
-            try:
-                cur.execute(
-                    """
-                    INSERT INTO preparation_intelligence_reports (
-                        report_id, case_id, opportunity_id, user_id,
-                        schema_version, analyzer_version,
-                        evidence_map_json, gaps_json, strategy_json,
-                        input_hash, context_snapshot_hash,
-                        source_evaluation_id, created_at, version
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    """,
-                    (
-                        report.report_id,
-                        report.case_id,
-                        report.opportunity_id,
-                        report.user_id,
-                        report.schema_version,
-                        report.analyzer_version,
-                        canonical_json_dumps([e.to_dict() for e in report.evidence_map]),
-                        canonical_json_dumps([g.to_dict() for g in report.gaps]),
-                        canonical_json_dumps(report.strategy.to_dict()),
-                        report.input_hash,
-                        report.context_snapshot_hash,
-                        report.source_evaluation_id,
-                        to_iso_utc(report.created_at),
-                        report.version,
-                    ),
-                )
-            except sqlite3.IntegrityError as e:
-                raise PersistenceError(
-                    f"Integrity violation saving PreparationIntelligenceReport '{report.report_id}': {e}"
-                ) from e
-        else:
-            expected_version = report.version - 1
+        if row is not None:
+            raise PersistenceError(
+                f"PreparationIntelligenceReport '{report.report_id}' is immutable and cannot be updated."
+            )
+
+        try:
             cur.execute(
                 """
-                UPDATE preparation_intelligence_reports SET
-                    case_id = ?, opportunity_id = ?, user_id = ?,
-                    schema_version = ?, analyzer_version = ?,
-                    evidence_map_json = ?, gaps_json = ?, strategy_json = ?,
-                    input_hash = ?, context_snapshot_hash = ?,
-                    source_evaluation_id = ?, created_at = ?, version = ?
-                WHERE report_id = ? AND version = ?
+                INSERT INTO preparation_intelligence_reports (
+                    report_id, case_id, opportunity_id, user_id,
+                    schema_version, analyzer_version,
+                    evidence_map_json, gaps_json, strategy_json,
+                    input_hash, context_snapshot_hash,
+                    source_evaluation_id, created_at, version
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
+                    report.report_id,
                     report.case_id,
                     report.opportunity_id,
                     report.user_id,
@@ -1573,12 +1545,12 @@ class SQLitePreparationReportRepository(PreparationReportRepository):
                     report.source_evaluation_id,
                     to_iso_utc(report.created_at),
                     report.version,
-                    report.report_id,
-                    expected_version,
                 ),
             )
-            if cur.rowcount == 0:
-                raise OptimisticLockError("PreparationIntelligenceReport", report.report_id, expected_version)
+        except sqlite3.IntegrityError as e:
+            raise PersistenceError(
+                f"Integrity violation saving PreparationIntelligenceReport '{report.report_id}': {e}"
+            ) from e
 
     def _row_to_report(self, row: tuple[Any, ...]) -> PreparationIntelligenceReport:
         evidence_raw = json.loads(row[6]) if row[6] else []

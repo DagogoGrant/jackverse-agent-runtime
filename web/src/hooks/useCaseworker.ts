@@ -310,12 +310,13 @@ export function usePreparationReport(caseId?: string) {
 export function useGeneratePreparation() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async ({ caseId }: { caseId: string }) => {
+    mutationFn: async ({ caseId, etag }: { caseId: string; etag?: string | null }) => {
       const res = await apiRequest<PreparationIntelligenceReport>(
         `/cases/${caseId}/preparation/intelligence`,
         {
           method: 'POST',
-        }
+        },
+        etag
       );
       return res.data;
     },

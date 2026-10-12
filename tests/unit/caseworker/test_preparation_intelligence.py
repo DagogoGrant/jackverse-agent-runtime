@@ -1,4 +1,4 @@
-"""Comprehensive unit tests for Phase 5.2.1 Preparation Intelligence."""
+"""Comprehensive unit tests for Phase 5.2.1 and Phase 5.2.1.1 Preparation Intelligence."""
 
 import json
 from pathlib import Path
@@ -25,11 +25,13 @@ from caseworker.domain.preparation import (
     GapItem,
     PreparationIntelligenceReport,
     PreparationStrategy,
+    SafeDeniedFactDescriptor,
     compute_prep_context_snapshot_hash,
     compute_prep_input_hash,
 )
 from caseworker.domain.preparation_analyzer import PreparationAnalyzer
 from caseworker.domain.vault_policy import AccessDecision
+from caseworker.domain.errors import PersistenceError
 from caseworker.persistence.sqlite import SQLiteCaseworkerStorage
 from caseworker.services.case_service import CaseService
 
@@ -153,37 +155,27 @@ class TestPreparationIntelligence(unittest.TestCase):
             allowed_purposes=["case_preparation"],
         )
 
-        # 4. RESTRICTED: Kubernetes fact exists in vault, but purpose 'case_preparation' is denied
-        fact_k8s = ContextFact(
+        # 4. RESTRICTED: Kubernetes fact exists in vault, but safe descriptor passed (not raw fact)
+        fact_k8s_desc = SafeDeniedFactDescriptor(
             fact_id="f-k8s",
-            user_id=self.user_id,
+            fact_version=1,
             namespace="skills",
             key="kubernetes",
-            value="Kubernetes production",
             verification_status=VerificationStatus.USER_VERIFIED,
-            allowed_purposes=["internal_audit"],  # Not authorized for case_preparation
+            reason_code="PURPOSE_NOT_AUTHORIZED",
+            reason="Purpose 'case_preparation' not authorized",
         )
 
         # 5. GAP: Docker (no fact in vault) and Security clearance (custom, no fact)
 
         granted_facts = [fact_py, fact_ger, fact_exp]
-        denied_facts = [fact_k8s]
-        denied_decisions = [
-            AccessDecision.deny(
-                fact_id=fact_k8s.fact_id,
-                reason="Purpose 'case_preparation' not authorized",
-                reason_code="PURPOSE_NOT_AUTHORIZED",
-                namespace="skills",
-                key="kubernetes",
-            )
-        ]
+        denied_descriptors = [fact_k8s_desc]
 
         report = PreparationAnalyzer.analyze(
             case=case,
             opportunity=opportunity,
             granted_facts=granted_facts,
-            denied_facts=denied_facts,
-            denied_decisions=denied_decisions,
+            denied_descriptors=denied_descriptors,
         )
 
         ev_by_req = {e.requirement_id: e for e in report.evidence_map}
@@ -208,23 +200,24 @@ class TestPreparationIntelligence(unittest.TestCase):
 
         # req-exp is POTENTIAL but MANDATORY -> MANDATORY_EVIDENCE_GAP
         self.assertEqual(gaps_by_req["req-exp"].category, GapCategory.MANDATORY_EVIDENCE_GAP)
-        self.assertEqual(gaps_by_req["req-exp"].severity, "critical")
+        self.assertEqual(gaps_by_req["req-exp"].severity, "high")
 
         # req-k8s is RESTRICTED and MANDATORY -> MANDATORY_EVIDENCE_GAP
         self.assertEqual(gaps_by_req["req-k8s"].category, GapCategory.MANDATORY_EVIDENCE_GAP)
-        self.assertEqual(gaps_by_req["req-k8s"].severity, "critical")
+        self.assertEqual(gaps_by_req["req-k8s"].severity, "high")
 
         # req-doc is GAP but PREFERRED -> PREFERRED_EVIDENCE_GAP
         self.assertEqual(gaps_by_req["req-doc"].category, GapCategory.PREFERRED_EVIDENCE_GAP)
         self.assertEqual(gaps_by_req["req-doc"].severity, "moderate")
 
-        # Verify Strategy Claim Intents formulated for supported and potential items
+        # Verify Strategy Claim Intents formulated ONLY for SUPPORTED items (Phase 5.2.1.1 invariant)
         intents_by_req = {ci.requirement_id: ci for ci in report.strategy.claim_intents}
         self.assertIn("req-py", intents_by_req)
         self.assertEqual(intents_by_req["req-py"].target_material, PreparationMaterialType.CV)
         self.assertEqual(intents_by_req["req-py"].supporting_fact_ids, ["f-py"])
 
-        self.assertIn("req-exp", intents_by_req)
+        # POTENTIAL evidence MUST NOT become an assertable claim intent
+        self.assertNotIn("req-exp", intents_by_req)
 
     def test_case_service_lifecycle_progression_and_audit_events(self) -> None:
         """Verify Case lifecycle advances NEW -> INTAKE -> INVESTIGATING -> PLANNING and audit events are emitted."""
@@ -278,7 +271,7 @@ class TestPreparationIntelligence(unittest.TestCase):
         self.assertEqual(case_before.status, CaseStatus.NEW)
 
         # Generate preparation intelligence
-        report = self.service.generate_preparation_intelligence(
+        report, updated_case = self.service.generate_preparation_intelligence(
             user_id=self.user_id,
             case_id=case.case_id,
         )
@@ -287,6 +280,7 @@ class TestPreparationIntelligence(unittest.TestCase):
         case_after = self.service.get_case(case.case_id)
         self.assertIsNotNone(case_after)
         self.assertEqual(case_after.status, CaseStatus.PLANNING)
+        self.assertEqual(updated_case.status, CaseStatus.PLANNING)
 
         # Verify report persistence
         with self.storage.unit_of_work() as uow:
@@ -304,14 +298,146 @@ class TestPreparationIntelligence(unittest.TestCase):
             self.assertIn("case.status_changed", event_types)
             self.assertIn("preparation.report_created", event_types)
 
-    def test_report_staleness_detection(self) -> None:
-        """Verify report staleness is detected when context facts or opportunity requirements change."""
+            # CRITICAL INVARIANT: preparation.report_created event uses own aggregate stream
+            prep_events = [e for e in events if e.event_type == "preparation.report_created"]
+            self.assertEqual(len(prep_events), 1)
+            self.assertEqual(prep_events[0].aggregate_type, "preparation_report")
+            self.assertEqual(prep_events[0].aggregate_id, report.report_id)
+            self.assertEqual(prep_events[0].aggregate_version, 1)
+            self.assertEqual(prep_events[0].payload["case_id"], case.case_id)
+
+    def test_reanalysis_from_planning_without_event_version_collision(self) -> None:
+        """Verify re-analysis from PLANNING succeeds without aggregate event collision and streams remain monotonic."""
+        with self.storage.unit_of_work() as uow:
+            case = Case(
+                user_id=self.user_id,
+                title="Principal Systems Engineer",
+                goal="Prepare Principal Systems application",
+                case_type=CaseType.JOB_APPLICATION,
+            )
+            uow.cases.save(case)
+
+            opp = Opportunity(
+                user_id=self.user_id,
+                title="Principal Systems Engineer",
+                organization="NVIDIA",
+                opportunity_type=OpportunityType.JOB,
+                location="Munich",
+                requirements=["C++ proficiency (Mandatory)"],
+                converted_case_id=case.case_id,
+                status=OpportunityStatus.SHORTLISTED,
+            )
+            uow.opportunities.save(opp)
+
+            fact = ContextFact(
+                fact_id="f-cpp",
+                user_id=self.user_id,
+                namespace="skills",
+                key="cpp",
+                value="Modern C++ 20",
+                verification_status=VerificationStatus.USER_VERIFIED,
+                allowed_purposes=["case_preparation"],
+            )
+            uow.context.save(fact)
+
+        # 1. Initial report generation
+        report1, case_v1 = self.service.generate_preparation_intelligence(
+            user_id=self.user_id,
+            case_id=case.case_id,
+        )
+        self.assertEqual(case_v1.status, CaseStatus.PLANNING)
+
+        # 2. Re-analysis from PLANNING
+        report2, case_v2 = self.service.generate_preparation_intelligence(
+            user_id=self.user_id,
+            case_id=case.case_id,
+            expected_case_version=case_v1.version,
+        )
+        self.assertNotEqual(report1.report_id, report2.report_id)
+        self.assertEqual(case_v2.status, CaseStatus.PLANNING)
+
+        # Verify event stream integrity and monotonicity
+        with self.storage.unit_of_work() as uow:
+            case_events = uow.events.get_events_for_aggregate("case", case.case_id)
+            versions = [e.aggregate_version for e in case_events]
+            # Ensure versions strictly monotonically increase without collisions
+            self.assertEqual(versions, sorted(versions))
+            self.assertEqual(len(versions), len(set(versions)))
+
+            # Verify report 1 and report 2 each have exactly 1 event on their own stream
+            r1_events = uow.events.get_events_for_aggregate("preparation_report", report1.report_id)
+            self.assertEqual(len(r1_events), 1)
+            self.assertEqual(r1_events[0].aggregate_version, 1)
+
+            r2_events = uow.events.get_events_for_aggregate("preparation_report", report2.report_id)
+            self.assertEqual(len(r2_events), 1)
+            self.assertEqual(r2_events[0].aggregate_version, 1)
+
+    def test_denied_sensitive_fact_values_cannot_leak(self) -> None:
+        """Verify denied sensitive fact values never leak into report notes, strategy, gaps, or claim intents."""
+        secret_value = "TOP_SECRET_CODE_NAME_VALKYRIE_99"
+        with self.storage.unit_of_work() as uow:
+            case = Case(
+                user_id=self.user_id,
+                title="Staff Security Role",
+                goal="Prepare security package",
+                case_type=CaseType.JOB_APPLICATION,
+            )
+            uow.cases.save(case)
+
+            opp = Opportunity(
+                user_id=self.user_id,
+                title="Staff Security Engineer",
+                organization="Defence Corp",
+                opportunity_type=OpportunityType.JOB,
+                location="Berlin",
+                requirements=["Security clearance (Mandatory)"],
+                converted_case_id=case.case_id,
+                status=OpportunityStatus.SHORTLISTED,
+            )
+            uow.opportunities.save(opp)
+
+            # Fact with secret value exists, but is NOT authorized for case_preparation
+            fact_secret = ContextFact(
+                fact_id="f-secret",
+                user_id=self.user_id,
+                namespace="security",
+                key="clearance",
+                value=secret_value,
+                verification_status=VerificationStatus.USER_VERIFIED,
+                allowed_purposes=["gov_audit"],  # Not authorized for case_preparation
+            )
+            uow.context.save(fact_secret)
+
+        report, _ = self.service.generate_preparation_intelligence(self.user_id, case.case_id)
+
+        # Inspect serialized report
+        report_json = json.dumps(report.to_dict())
+        self.assertNotIn(secret_value, report_json)
+
+        # Inspect all fields
+        for ev in report.evidence_map:
+            self.assertNotIn(secret_value, ev.notes)
+            self.assertNotIn(secret_value, ev.description)
+        for g in report.gaps:
+            self.assertNotIn(secret_value, g.description)
+            self.assertNotIn(secret_value, g.mitigation_guidance)
+        for s in report.strategy.strengths:
+            self.assertNotIn(secret_value, s)
+        for m in report.strategy.mitigations:
+            self.assertNotIn(secret_value, m)
+        for ci in report.strategy.claim_intents:
+            self.assertNotIn(secret_value, ci.suggested_angle)
+
+    def test_report_staleness_dependencies(self) -> None:
+        """Verify fine-grained staleness dependencies: irrelevant facts do not invalidate, relevant facts and inputs do."""
         with self.storage.unit_of_work() as uow:
             case = Case(
                 user_id=self.user_id,
                 title="Staff Architect",
                 goal="Prepare Staff Architect package",
                 case_type=CaseType.JOB_APPLICATION,
+                constraints=["Must be EU timezone"],
             )
             uow.cases.save(case)
 
@@ -324,10 +450,11 @@ class TestPreparationIntelligence(unittest.TestCase):
                 requirements=["Distributed Systems (Mandatory)"],
                 converted_case_id=case.case_id,
                 status=OpportunityStatus.SHORTLISTED,
+                metadata={"evaluation": {"evaluation_id": "eval-v1"}},
             )
             uow.opportunities.save(opp)
 
-            fact = ContextFact(
+            fact_relevant = ContextFact(
                 fact_id="f-dist",
                 user_id=self.user_id,
                 namespace="skills",
@@ -336,24 +463,153 @@ class TestPreparationIntelligence(unittest.TestCase):
                 verification_status=VerificationStatus.USER_VERIFIED,
                 allowed_purposes=["case_preparation"],
             )
-            uow.context.save(fact)
+            fact_unrelated = ContextFact(
+                fact_id="f-phone",
+                user_id=self.user_id,
+                namespace="contact",
+                key="phone_number",
+                value="+49123456789",
+                verification_status=VerificationStatus.USER_VERIFIED,
+                allowed_purposes=["case_preparation"],
+            )
+            uow.context.save(fact_relevant)
+            uow.context.save(fact_unrelated)
 
-        report = self.service.generate_preparation_intelligence(self.user_id, case.case_id)
+        report, _ = self.service.generate_preparation_intelligence(self.user_id, case.case_id)
 
-        # Initially, report is not stale
-        latest_report, is_stale = self.service.get_latest_preparation_report(self.user_id, case.case_id)
-        self.assertIsNotNone(latest_report)
+        # 1. Initially fresh
+        _, is_stale = self.service.get_latest_preparation_report(self.user_id, case.case_id)
         self.assertFalse(is_stale)
 
-        # Mutate context fact (version increments)
+        # 2. Mutating an UNRELATED fact (phone number) does NOT make report stale
         with self.storage.unit_of_work() as uow:
-            fact.version += 1
-            fact.value = "Updated distributed systems expertise"
-            uow.context.save(fact)
+            fact_unrelated.version += 1
+            fact_unrelated.value = "+49987654321"
+            uow.context.save(fact_unrelated)
 
-        # Now report must be flagged stale
-        _, is_stale_after = self.service.get_latest_preparation_report(self.user_id, case.case_id)
-        self.assertTrue(is_stale_after)
+        _, is_stale_phone = self.service.get_latest_preparation_report(self.user_id, case.case_id)
+        self.assertFalse(is_stale_phone)
+
+        # 3. Mutating a RELEVANT fact (distributed systems) DOES make report stale
+        with self.storage.unit_of_work() as uow:
+            fact_relevant.version += 1
+            fact_relevant.value = "Updated distributed systems expertise"
+            uow.context.save(fact_relevant)
+
+        _, is_stale_dist = self.service.get_latest_preparation_report(self.user_id, case.case_id)
+        self.assertTrue(is_stale_dist)
+
+        # Re-generate to reset freshness
+        report2, c2 = self.service.generate_preparation_intelligence(self.user_id, case.case_id)
+        _, is_fresh2 = self.service.get_latest_preparation_report(self.user_id, case.case_id)
+        self.assertFalse(is_fresh2)
+
+        # 4. Opportunity re-evaluation (evaluation_id change) makes report stale
+        with self.storage.unit_of_work() as uow:
+            opp_db = uow.opportunities.get_by_id(opp.opportunity_id)
+            opp_db.metadata["evaluation"] = {"evaluation_id": "eval-v2"}
+            opp_db.version += 1
+            uow.opportunities.save(opp_db)
+
+        _, is_stale_eval = self.service.get_latest_preparation_report(self.user_id, case.case_id)
+        self.assertTrue(is_stale_eval)
+
+        # Re-generate to reset freshness
+        report3, c3 = self.service.generate_preparation_intelligence(self.user_id, case.case_id)
+        _, is_fresh3 = self.service.get_latest_preparation_report(self.user_id, case.case_id)
+        self.assertFalse(is_fresh3)
+
+        # 5. Case constraint change makes report stale
+        with self.storage.unit_of_work() as uow:
+            case_db = uow.cases.get_by_id(case.case_id)
+            case_db.constraints.append("Must permit 100% remote work")
+            case_db.version += 1
+            uow.cases.save(case_db)
+
+        _, is_stale_constraints = self.service.get_latest_preparation_report(self.user_id, case.case_id)
+        self.assertTrue(is_stale_constraints)
+
+    def test_case_type_truthfulness_material_strategy(self) -> None:
+        """Verify JOB_APPLICATION recommends CV + Cover Letter, while other types return empty recommendations."""
+        # 1. Job application case
+        case_job = Case(
+            user_id=self.user_id,
+            title="Software Engineer",
+            goal="Secure SE role",
+            case_type=CaseType.JOB_APPLICATION,
+        )
+        opp_job = Opportunity(
+            user_id=self.user_id,
+            title="Software Engineer",
+            organization="Tech GmbH",
+            opportunity_type=OpportunityType.JOB,
+            location="Berlin",
+            requirements=["Python (Mandatory)"],
+        )
+        report_job = PreparationAnalyzer.analyze(case=case_job, opportunity=opp_job, granted_facts=[])
+        self.assertIn(PreparationMaterialType.CV, report_job.strategy.recommended_materials)
+        self.assertIn(PreparationMaterialType.COVER_LETTER, report_job.strategy.recommended_materials)
+        self.assertGreater(len(report_job.strategy.materials_checklist), 0)
+
+        # 2. Non-job case (e.g. Housing or General)
+        case_housing = Case(
+            user_id=self.user_id,
+            title="Apartment Search",
+            goal="Secure 2-room apartment",
+            case_type=CaseType.HOUSING_SEARCH,
+        )
+        opp_housing = Opportunity(
+            user_id=self.user_id,
+            title="2-Room Apartment",
+            organization="Property Co",
+            opportunity_type=OpportunityType.JOB,
+            location="Berlin",
+            requirements=["Proof of income (Mandatory)"],
+        )
+        report_housing = PreparationAnalyzer.analyze(case=case_housing, opportunity=opp_housing, granted_facts=[])
+        self.assertEqual(report_housing.strategy.recommended_materials, [])
+        self.assertEqual(report_housing.strategy.materials_checklist, [])
+        self.assertTrue(any("not supported in Phase 5.2" in m for m in report_housing.strategy.mitigations))
+
+    def test_immutable_preparation_report_repository(self) -> None:
+        """Verify PreparationReportRepository enforces insert-only semantics and rejects mutation of existing snapshots."""
+        with self.storage.unit_of_work() as uow:
+            case = Case(
+                case_id="case-immut",
+                user_id=self.user_id,
+                title="Immutability Test",
+                goal="Testing immutable reports",
+                case_type=CaseType.JOB_APPLICATION,
+            )
+            uow.cases.save(case)
+
+            opp = Opportunity(
+                opportunity_id="opp-immut",
+                user_id=self.user_id,
+                title="Immutability Role",
+                organization="Test Corp",
+                opportunity_type=OpportunityType.JOB,
+                location="Remote",
+                requirements=["Testing (Mandatory)"],
+                converted_case_id=case.case_id,
+            )
+            uow.opportunities.save(opp)
+
+            report = PreparationIntelligenceReport(
+                report_id="prep-immut-1",
+                case_id=case.case_id,
+                opportunity_id=opp.opportunity_id,
+                user_id=self.user_id,
+                schema_version="prep_intel_v1",
+                analyzer_version="prep_analyzer_v1",
+            )
+            uow.preparation_reports.save(report)
+
+        # Attempt to save again with same report_id must raise PersistenceError
+        with self.storage.unit_of_work() as uow:
+            with self.assertRaises(PersistenceError) as cm:
+                uow.preparation_reports.save(report)
+            self.assertIn("immutable and cannot be updated", str(cm.exception))
 
     def test_privacy_invariant_no_raw_values_stored(self) -> None:
         """Verify no raw context values appear in EvidenceMappingItem or serialized report."""
@@ -435,12 +691,28 @@ class TestPreparationIntelligenceAPI(unittest.TestCase):
         )
         self.assertEqual(get_before.status_code, 404)
 
-        # 2. POST generates report
-        post_res = self.client.post(
+        # 2. POST without If-Match returns 428 Precondition Required
+        post_missing_etag = self.client.post(
             f"/api/v1/cases/{case_id}/preparation/intelligence",
             headers=self.user_headers,
         )
+        self.assertEqual(post_missing_etag.status_code, 428)
+
+        # 3. POST with stale If-Match returns 412 Precondition Failed
+        post_stale_etag = self.client.post(
+            f"/api/v1/cases/{case_id}/preparation/intelligence",
+            headers={**self.user_headers, "If-Match": f'"case:{case_id}:v999"'},
+        )
+        self.assertEqual(post_stale_etag.status_code, 412)
+
+        # 4. POST with correct If-Match generates report, returns 201 and Case ETag
+        valid_etag = f'"case:{case_id}:v{case.version}"'
+        post_res = self.client.post(
+            f"/api/v1/cases/{case_id}/preparation/intelligence",
+            headers={**self.user_headers, "If-Match": valid_etag},
+        )
         self.assertEqual(post_res.status_code, 201)
+        self.assertIn("etag", post_res.headers)
         data = post_res.json()
         self.assertEqual(data["case_id"], case_id)
         self.assertEqual(data["opportunity_id"], opp.opportunity_id)
@@ -448,7 +720,7 @@ class TestPreparationIntelligenceAPI(unittest.TestCase):
         self.assertFalse(data["is_stale"])
         self.assertGreater(len(data["evidence_map"]), 0)
 
-        # 3. GET retrieves report
+        # 5. GET retrieves report
         get_after = self.client.get(
             f"/api/v1/cases/{case_id}/preparation/intelligence",
             headers=self.user_headers,
@@ -458,7 +730,7 @@ class TestPreparationIntelligenceAPI(unittest.TestCase):
         self.assertEqual(get_data["report_id"], data["report_id"])
         self.assertFalse(get_data["is_stale"])
 
-        # 4. Multi-tenant isolation: other user cannot see report
+        # 6. Multi-tenant isolation: other user cannot see report
         other_res = self.client.get(
             f"/api/v1/cases/{case_id}/preparation/intelligence",
             headers=self.other_user_headers,
@@ -468,4 +740,3 @@ class TestPreparationIntelligenceAPI(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-

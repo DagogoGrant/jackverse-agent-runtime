@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING
 
 from caseworker.domain.context_package import ContextPackageBuilder
 from caseworker.domain.enums import CaseStatus, CaseType
-from caseworker.domain.errors import DomainValidationError, EntityNotFoundError
+from caseworker.domain.errors import DomainValidationError, EntityNotFoundError, OptimisticLockError
 from caseworker.domain.events import (
     make_case_created_event,
     make_case_resolved_event,
@@ -17,10 +17,13 @@ from caseworker.domain.events import (
     make_preparation_report_created_event,
 )
 from caseworker.domain.case import Case
+from caseworker.domain.normalized_requirement import NormalizedRequirement, parse_requirements
 from caseworker.domain.preparation import (
     PreparationIntelligenceReport,
+    SafeDeniedFactDescriptor,
     compute_prep_context_snapshot_hash,
     compute_prep_input_hash,
+    is_fact_or_descriptor_relevant_to_requirements,
 )
 from caseworker.domain.preparation_analyzer import PreparationAnalyzer
 from caseworker.domain.vault_policy import ContextAccessPolicy
@@ -212,12 +215,16 @@ class CaseService:
         self,
         user_id: str,
         case_id: str,
-    ) -> PreparationIntelligenceReport:
+        expected_case_version: int | None = None,
+    ) -> tuple[PreparationIntelligenceReport, Case]:
         """Analyze preparation requirements, gate Context Vault access, advance Case to PLANNING, and store report."""
         with self.storage.unit_of_work() as uow:
             case = uow.cases.get_by_id(case_id)
             if case is None or case.user_id != user_id:
                 raise EntityNotFoundError("Case", case_id)
+
+            if expected_case_version is not None and case.version != expected_case_version:
+                raise OptimisticLockError("Case", case.case_id, expected_case_version)
 
             opportunity = uow.opportunities.get_by_converted_case_id(case_id)
             if opportunity is None:
@@ -243,7 +250,23 @@ class CaseService:
                 available_facts=all_facts,
             )
             granted_facts = package.facts
-            denied_facts = [f for f in all_facts if any(d.fact_id == f.fact_id for d in denied_decisions)]
+
+            # Build safe denied descriptors without exposing sensitive raw fact values
+            facts_by_id = {f.fact_id: f for f in all_facts}
+            safe_denied_descriptors: list[SafeDeniedFactDescriptor] = []
+            for d in denied_decisions:
+                f = facts_by_id.get(d.fact_id)
+                safe_denied_descriptors.append(
+                    SafeDeniedFactDescriptor(
+                        fact_id=d.fact_id,
+                        fact_version=f.version if f else None,
+                        namespace=d.namespace or (f.namespace if f else ""),
+                        key=d.key or (f.key if f else ""),
+                        verification_status=f.verification_status if f else None,
+                        reason_code=d.reason_code,
+                        reason=d.reason,
+                    )
+                )
 
             # Emit audited context access events
             vault_ver = uow.events.get_next_aggregate_version("context_vault", user_id)
@@ -318,8 +341,7 @@ class CaseService:
                 case=case,
                 opportunity=opportunity,
                 granted_facts=granted_facts,
-                denied_facts=denied_facts,
-                denied_decisions=denied_decisions,
+                denied_descriptors=safe_denied_descriptors,
                 mission_goal=mission_goal,
                 mission_constraints=mission_constraints,
                 previous_version=previous_version,
@@ -330,27 +352,29 @@ class CaseService:
             if case.status == CaseStatus.INVESTIGATING:
                 old_st = case.status.value
                 case.transition_to(CaseStatus.PLANNING, "Preparation intelligence report finalized")
+                uow.cases.save(case)
                 uow.events.append(
                     make_case_status_changed_event(
                         case.case_id, user_id, case.version, old_st, case.status.value, "Preparation intelligence report finalized"
                     )
                 )
-            uow.cases.save(case)
+            else:
+                uow.cases.save(case)
 
-            # Emit preparation report created event
+            # Emit preparation report created event (CRITICAL INVARIANT: own aggregate stream)
             report_event = make_preparation_report_created_event(
                 report_id=report.report_id,
                 case_id=case.case_id,
                 opportunity_id=opportunity.opportunity_id,
                 user_id=user_id,
-                aggregate_version=uow.events.get_next_aggregate_version("case", case.case_id),
+                aggregate_version=1,
                 input_hash=report.input_hash,
                 context_snapshot_hash=report.context_snapshot_hash,
                 schema_version=report.schema_version,
             )
             uow.events.append(report_event)
 
-        return report
+        return report, case
 
     def get_latest_preparation_report(
         self,
@@ -381,16 +405,57 @@ class CaseService:
 
             all_facts = uow.context.list_active(user_id=user_id)
             builder = ContextPackageBuilder(ContextAccessPolicy())
-            package, _, _ = builder.build_with_report(
+            package, granted_decisions, denied_decisions = builder.build_with_report(
                 user_id=user_id,
                 purpose="case_preparation",
                 available_facts=all_facts,
             )
             granted_facts = package.facts
 
-            current_input_hash = compute_prep_input_hash(opportunity, mission_goal, mission_constraints)
-            current_context_hash = compute_prep_context_snapshot_hash(granted_facts)
+            facts_by_id = {f.fact_id: f for f in all_facts}
+            safe_denied_descriptors: list[SafeDeniedFactDescriptor] = []
+            for d in denied_decisions:
+                f = facts_by_id.get(d.fact_id)
+                safe_denied_descriptors.append(
+                    SafeDeniedFactDescriptor(
+                        fact_id=d.fact_id,
+                        fact_version=f.version if f else None,
+                        namespace=d.namespace or (f.namespace if f else ""),
+                        key=d.key or (f.key if f else ""),
+                        verification_status=f.verification_status if f else None,
+                        reason_code=d.reason_code,
+                        reason=d.reason,
+                    )
+                )
 
-            is_stale = report.is_stale(current_input_hash, current_context_hash)
+            # Obtain normalized requirements for relevance filtering
+            raw_normalized = opportunity.metadata.get("normalized_requirements")
+            if raw_normalized:
+                normalized_reqs = [NormalizedRequirement.from_dict(d) for d in raw_normalized]
+            else:
+                normalized_reqs = parse_requirements(opportunity.opportunity_id, opportunity.requirements)
+
+            current_input_hash = compute_prep_input_hash(case, opportunity, mission_goal, mission_constraints)
+
+            relevant_granted = [
+                f for f in granted_facts
+                if is_fact_or_descriptor_relevant_to_requirements(f.namespace, f.key, normalized_reqs)
+            ]
+            relevant_denied = [
+                d for d in safe_denied_descriptors
+                if is_fact_or_descriptor_relevant_to_requirements(d.namespace, d.key, normalized_reqs)
+            ]
+            current_context_hash = compute_prep_context_snapshot_hash(relevant_granted, relevant_denied)
+
+            eval_meta = opportunity.metadata.get("evaluation") or {}
+            current_source_eval_id = eval_meta.get("evaluation_id") or opportunity.metadata.get("latest_evaluation_id")
+
+            is_stale = report.is_stale(
+                current_input_hash=current_input_hash,
+                current_context_hash=current_context_hash,
+                current_opportunity_evaluation_id=current_source_eval_id,
+                current_analyzer_version=PreparationAnalyzer.ANALYZER_VERSION,
+                current_schema_version=PreparationAnalyzer.SCHEMA_VERSION,
+            )
             return report, is_stale
 

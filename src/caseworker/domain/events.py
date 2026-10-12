@@ -584,15 +584,15 @@ def make_preparation_report_created_event(
     case_id: str,
     opportunity_id: str,
     user_id: str,
-    aggregate_version: int,
-    input_hash: str,
-    context_snapshot_hash: str,
+    aggregate_version: int = 1,
+    input_hash: str = "",
+    context_snapshot_hash: str = "",
     schema_version: str = "prep_intel_v1",
 ) -> DomainEvent:
     return DomainEvent(
         event_type="preparation.report_created",
-        aggregate_type="case",
-        aggregate_id=case_id,
+        aggregate_type="preparation_report",
+        aggregate_id=report_id,
         aggregate_version=aggregate_version,
         user_id=user_id,
         payload={

@@ -292,14 +292,24 @@ def _to_prep_report_response(
 )
 async def generate_preparation_intelligence(
     case_id: str,
+    request: Request,
+    response: Response,
     principal: Annotated[Principal, Depends(get_principal)],
     service: Annotated[CaseService, Depends(get_case_service)],
 ) -> PreparationIntelligenceReportResponse:
     """Analyze preparation intelligence for converted case, advance lifecycle, and return versioned report."""
-    report = service.generate_preparation_intelligence(
+    existing = service.get_case_for_user(principal.user_id, case_id)
+    if existing is None:
+        raise EntityNotFoundError("Case", case_id)
+
+    check_if_match(request, "case", existing.case_id, existing.version)
+
+    report, updated_case = service.generate_preparation_intelligence(
         user_id=principal.user_id,
         case_id=case_id,
+        expected_case_version=existing.version,
     )
+    set_etag_header(response, "case", updated_case.case_id, updated_case.version)
     return _to_prep_report_response(report, is_stale=False)
 
 
