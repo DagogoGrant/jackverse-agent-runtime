@@ -59,6 +59,11 @@ class Claim:
     claim_id: str = field(default_factory=lambda: str(uuid.uuid4()))
     case_id: str | None = None
     mission_id: str | None = None
+    source_report_id: str | None = None
+    source_claim_intent_id: str | None = None
+    assertion_schema: str | None = None
+    assertion_json: str | None = None
+    support_snapshot_hash: str | None = None
     status: ClaimStatus = ClaimStatus.PROPOSED
     supporting_fact_ids: list[str] = field(default_factory=list)
     created_at: datetime = field(default_factory=now_utc)
@@ -160,6 +165,11 @@ class Claim:
             "text": self.text,
             "case_id": self.case_id,
             "mission_id": self.mission_id,
+            "source_report_id": self.source_report_id,
+            "source_claim_intent_id": self.source_claim_intent_id,
+            "assertion_schema": self.assertion_schema,
+            "assertion_json": self.assertion_json,
+            "support_snapshot_hash": self.support_snapshot_hash,
             "status": self.status.value,
             "supporting_fact_ids": list(self.supporting_fact_ids),
             "created_at": to_iso_utc(self.created_at),
@@ -179,6 +189,11 @@ class Claim:
             text=data["text"],
             case_id=data.get("case_id"),
             mission_id=data.get("mission_id"),
+            source_report_id=data.get("source_report_id"),
+            source_claim_intent_id=data.get("source_claim_intent_id"),
+            assertion_schema=data.get("assertion_schema"),
+            assertion_json=data.get("assertion_json"),
+            support_snapshot_hash=data.get("support_snapshot_hash"),
             status=ClaimStatus(data["status"]),
             supporting_fact_ids=list(data.get("supporting_fact_ids") or []),
             created_at=from_iso_utc(data["created_at"]) or now_utc(),

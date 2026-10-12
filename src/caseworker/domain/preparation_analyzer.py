@@ -254,13 +254,24 @@ class PreparationAnalyzer:
         # 4. Formulate PreparationStrategy with CaseType Truthfulness
         case_type_str = case.case_type.value if hasattr(case.case_type, "value") else str(case.case_type)
         if case_type_str.lower() in ("job_application", CaseType.JOB_APPLICATION.value):
+            has_questions = bool(
+                opportunity.metadata.get("screening_questions")
+                or opportunity.metadata.get("questions")
+            )
+            third_mat = (
+                PreparationMaterialType.SCREENING_ANSWERS
+                if has_questions
+                else PreparationMaterialType.APPLICATION_ANSWER_BANK
+            )
             recommended_materials = [
                 PreparationMaterialType.CV,
                 PreparationMaterialType.COVER_LETTER,
+                third_mat,
             ]
             materials_checklist = [
                 {"material_type": PreparationMaterialType.CV.value, "required": True, "status": "PENDING_DRAFT"},
                 {"material_type": PreparationMaterialType.COVER_LETTER.value, "required": True, "status": "PENDING_DRAFT"},
+                {"material_type": third_mat.value, "required": True, "status": "PENDING_DRAFT"},
             ]
         else:
             recommended_materials = []

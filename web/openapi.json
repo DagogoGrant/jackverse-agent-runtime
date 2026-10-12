@@ -233,6 +233,133 @@
         "title": "ApproveActionRequest",
         "type": "object"
       },
+      "ArtifactBlockResponse": {
+        "description": "Semantic block within an artifact AST.",
+        "properties": {
+          "block_id": {
+            "title": "Block Id",
+            "type": "string"
+          },
+          "block_type": {
+            "title": "Block Type",
+            "type": "string"
+          },
+          "claim_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Claim Ids",
+            "type": "array"
+          },
+          "content": {
+            "title": "Content",
+            "type": "string"
+          },
+          "fact_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Fact Ids",
+            "type": "array"
+          },
+          "grounding_type": {
+            "title": "Grounding Type",
+            "type": "string"
+          },
+          "metadata": {
+            "additionalProperties": true,
+            "title": "Metadata",
+            "type": "object"
+          },
+          "opportunity_fields": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Opportunity Fields",
+            "type": "array"
+          }
+        },
+        "required": [
+          "block_id",
+          "block_type",
+          "content",
+          "grounding_type"
+        ],
+        "title": "ArtifactBlockResponse",
+        "type": "object"
+      },
+      "ArtifactProvenanceResponse": {
+        "description": "Block-level grounding provenance map for an artifact.",
+        "properties": {
+          "artifact_id": {
+            "title": "Artifact Id",
+            "type": "string"
+          },
+          "artifact_set_id": {
+            "title": "Artifact Set Id",
+            "type": "string"
+          },
+          "blocks": {
+            "items": {
+              "$ref": "#/components/schemas/ArtifactBlockResponse"
+            },
+            "title": "Blocks",
+            "type": "array"
+          },
+          "case_id": {
+            "title": "Case Id",
+            "type": "string"
+          },
+          "grounding_snapshot_hash": {
+            "title": "Grounding Snapshot Hash",
+            "type": "string"
+          },
+          "input_hash": {
+            "title": "Input Hash",
+            "type": "string"
+          },
+          "material_type": {
+            "title": "Material Type",
+            "type": "string"
+          },
+          "opportunity_id": {
+            "title": "Opportunity Id",
+            "type": "string"
+          },
+          "source_report_id": {
+            "title": "Source Report Id",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "artifact_id",
+          "artifact_set_id",
+          "case_id",
+          "opportunity_id",
+          "material_type",
+          "title",
+          "status",
+          "source_report_id",
+          "input_hash",
+          "grounding_snapshot_hash",
+          "version",
+          "blocks"
+        ],
+        "title": "ArtifactProvenanceResponse",
+        "type": "object"
+      },
       "CaseResponse": {
         "properties": {
           "case_id": {
@@ -2305,6 +2432,130 @@
         "title": "PreparationStrategyResponse",
         "type": "object"
       },
+      "PreparedArtifactListResponse": {
+        "description": "Collection of prepared artifacts for a case.",
+        "properties": {
+          "artifacts": {
+            "items": {
+              "$ref": "#/components/schemas/PreparedArtifactResponse"
+            },
+            "title": "Artifacts",
+            "type": "array"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "artifacts",
+          "total"
+        ],
+        "title": "PreparedArtifactListResponse",
+        "type": "object"
+      },
+      "PreparedArtifactResponse": {
+        "description": "Prepared application material response DTO.",
+        "properties": {
+          "artifact_id": {
+            "title": "Artifact Id",
+            "type": "string"
+          },
+          "artifact_set_id": {
+            "title": "Artifact Set Id",
+            "type": "string"
+          },
+          "blocks": {
+            "items": {
+              "$ref": "#/components/schemas/ArtifactBlockResponse"
+            },
+            "title": "Blocks",
+            "type": "array"
+          },
+          "case_id": {
+            "title": "Case Id",
+            "type": "string"
+          },
+          "created_at": {
+            "title": "Created At",
+            "type": "string"
+          },
+          "grounding_snapshot_hash": {
+            "title": "Grounding Snapshot Hash",
+            "type": "string"
+          },
+          "input_hash": {
+            "title": "Input Hash",
+            "type": "string"
+          },
+          "material_type": {
+            "title": "Material Type",
+            "type": "string"
+          },
+          "opportunity_id": {
+            "title": "Opportunity Id",
+            "type": "string"
+          },
+          "planner_version": {
+            "title": "Planner Version",
+            "type": "string"
+          },
+          "rendered_markdown": {
+            "title": "Rendered Markdown",
+            "type": "string"
+          },
+          "schema_version": {
+            "title": "Schema Version",
+            "type": "string"
+          },
+          "source_report_id": {
+            "title": "Source Report Id",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "updated_at": {
+            "title": "Updated At",
+            "type": "string"
+          },
+          "user_id": {
+            "title": "User Id",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "artifact_id",
+          "artifact_set_id",
+          "case_id",
+          "opportunity_id",
+          "user_id",
+          "material_type",
+          "title",
+          "schema_version",
+          "planner_version",
+          "status",
+          "blocks",
+          "source_report_id",
+          "input_hash",
+          "grounding_snapshot_hash",
+          "rendered_markdown",
+          "created_at",
+          "updated_at",
+          "version"
+        ],
+        "title": "PreparedArtifactResponse",
+        "type": "object"
+      },
       "ProfileReadinessResponse": {
         "properties": {
           "completeness_ratio": {
@@ -3656,6 +3907,254 @@
         "summary": "Propose Action",
         "tags": [
           "actions"
+        ]
+      }
+    },
+    "/api/v1/cases/{case_id}/preparation/artifacts": {
+      "get": {
+        "description": "List all prepared application artifacts for a case.",
+        "operationId": "list_preparation_artifacts_api_v1_cases__case_id__preparation_artifacts_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "case_id",
+            "required": true,
+            "schema": {
+              "title": "Case Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PreparedArtifactListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Preparation Artifacts",
+        "tags": [
+          "cases"
+        ]
+      },
+      "post": {
+        "description": "Draft claim-bound CV, Cover Letter, and Screening Answers / Answer Bank for case.",
+        "operationId": "draft_preparation_artifacts_api_v1_cases__case_id__preparation_artifacts_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "case_id",
+            "required": true,
+            "schema": {
+              "title": "Case Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PreparedArtifactListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Draft Preparation Artifacts",
+        "tags": [
+          "cases"
+        ]
+      }
+    },
+    "/api/v1/cases/{case_id}/preparation/artifacts/{artifact_id}": {
+      "get": {
+        "description": "Retrieve a single prepared artifact with full AST blocks.",
+        "operationId": "get_preparation_artifact_api_v1_cases__case_id__preparation_artifacts__artifact_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "case_id",
+            "required": true,
+            "schema": {
+              "title": "Case Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "artifact_id",
+            "required": true,
+            "schema": {
+              "title": "Artifact Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PreparedArtifactResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Preparation Artifact",
+        "tags": [
+          "cases"
+        ]
+      }
+    },
+    "/api/v1/cases/{case_id}/preparation/artifacts/{artifact_id}/export": {
+      "get": {
+        "description": "Export clean rendered publication text with zero synthetic citations.",
+        "operationId": "export_preparation_artifact_api_v1_cases__case_id__preparation_artifacts__artifact_id__export_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "case_id",
+            "required": true,
+            "schema": {
+              "title": "Case Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "artifact_id",
+            "required": true,
+            "schema": {
+              "title": "Artifact Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "format",
+            "required": false,
+            "schema": {
+              "default": "markdown",
+              "title": "Format",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Export Preparation Artifact",
+        "tags": [
+          "cases"
+        ]
+      }
+    },
+    "/api/v1/cases/{case_id}/preparation/artifacts/{artifact_id}/provenance": {
+      "get": {
+        "description": "Retrieve block-level grounding provenance map for inspection.",
+        "operationId": "get_artifact_provenance_api_v1_cases__case_id__preparation_artifacts__artifact_id__provenance_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "case_id",
+            "required": true,
+            "schema": {
+              "title": "Case Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "artifact_id",
+            "required": true,
+            "schema": {
+              "title": "Artifact Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ArtifactProvenanceResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Artifact Provenance",
+        "tags": [
+          "cases"
         ]
       }
     },

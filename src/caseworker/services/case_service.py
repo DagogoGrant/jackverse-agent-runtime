@@ -6,8 +6,13 @@ from datetime import datetime
 from typing import TYPE_CHECKING
 
 from caseworker.domain.context_package import ContextPackageBuilder
-from caseworker.domain.enums import CaseStatus, CaseType
-from caseworker.domain.errors import DomainValidationError, EntityNotFoundError, OptimisticLockError
+from caseworker.domain.enums import ArtifactStatus, CaseStatus, CaseType
+from caseworker.domain.errors import (
+    DomainValidationError,
+    EntityNotFoundError,
+    InvalidStateTransitionError,
+    OptimisticLockError,
+)
 from caseworker.domain.events import (
     make_case_created_event,
     make_case_resolved_event,
@@ -330,6 +335,19 @@ class CaseService:
                     make_case_status_changed_event(
                         case.case_id, user_id, case.version, old_st, case.status.value, "Re-analyzing preparation requirements"
                     )
+                )
+                # Mark existing drafts as SUPERSEDED upon re-analysis
+                uow.preparation_artifacts.update_status_for_case(
+                    case_id, ArtifactStatus.DRAFT, ArtifactStatus.SUPERSEDED
+                )
+            elif case.status == CaseStatus.INVESTIGATING:
+                pass
+            else:
+                raise InvalidStateTransitionError(
+                    "Case",
+                    case.status.value,
+                    "INVESTIGATING",
+                    f"Re-analysis is prohibited once case has advanced beyond PLANNING (current status: {case.status.value}).",
                 )
 
             # Check existing version

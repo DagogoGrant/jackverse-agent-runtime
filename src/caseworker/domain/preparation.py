@@ -283,6 +283,11 @@ class PreparationIntelligenceReport:
         if self.context_snapshot_hash != current_context_hash:
             return True
         if (
+            self.source_evaluation_id is not None
+            and current_opportunity_evaluation_id is None
+        ):
+            return True
+        if (
             current_opportunity_evaluation_id is not None
             and self.source_evaluation_id != current_opportunity_evaluation_id
         ):

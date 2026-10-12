@@ -20,6 +20,8 @@ import type {
   EvaluationSnapshotResponse,
   NormalizeOpportunityResponse,
   PreparationIntelligenceReport,
+  PreparedArtifactList,
+  ArtifactProvenance,
 } from '../api/types';
 
 // Invalidate on dev user switch
@@ -326,6 +328,63 @@ export function useGeneratePreparation() {
       queryClient.invalidateQueries({ queryKey: ['preparation', vars.caseId] });
       queryClient.invalidateQueries({ queryKey: ['events'] });
     },
+  });
+}
+
+export function useCaseArtifacts(caseId?: string) {
+  return useQuery({
+    queryKey: ['artifacts', caseId],
+    queryFn: async () => {
+      if (!caseId) return [];
+      try {
+        const res = await apiRequest<PreparedArtifactList>(
+          `/cases/${caseId}/preparation/artifacts`
+        );
+        return res.data.artifacts;
+      } catch (err: unknown) {
+        if (err instanceof ApiError && err.status === 404) {
+          return [];
+        }
+        throw err;
+      }
+    },
+    enabled: Boolean(caseId),
+  });
+}
+
+export function useDraftArtifacts() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ caseId, etag }: { caseId: string; etag?: string | null }) => {
+      const res = await apiRequest<PreparedArtifactList>(
+        `/cases/${caseId}/preparation/artifacts`,
+        {
+          method: 'POST',
+        },
+        etag
+      );
+      return res.data.artifacts;
+    },
+    onSuccess: (_, vars) => {
+      queryClient.invalidateQueries({ queryKey: ['cases'] });
+      queryClient.invalidateQueries({ queryKey: ['cases', vars.caseId] });
+      queryClient.invalidateQueries({ queryKey: ['artifacts', vars.caseId] });
+      queryClient.invalidateQueries({ queryKey: ['events'] });
+    },
+  });
+}
+
+export function useArtifactProvenance(caseId?: string, artifactId?: string) {
+  return useQuery({
+    queryKey: ['artifact-provenance', caseId, artifactId],
+    queryFn: async () => {
+      if (!caseId || !artifactId) return null;
+      const res = await apiRequest<ArtifactProvenance>(
+        `/cases/${caseId}/preparation/artifacts/${artifactId}/provenance`
+      );
+      return res.data;
+    },
+    enabled: Boolean(caseId && artifactId),
   });
 }
 

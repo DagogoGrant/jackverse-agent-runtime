@@ -21,6 +21,7 @@ from typing import Any
 
 from caseworker.domain.action import Action
 from caseworker.domain.approval import Approval
+from caseworker.domain.artifact import ArtifactBlock, PreparedArtifact
 from caseworker.domain.case import Case
 from caseworker.domain.claim import Claim
 from caseworker.domain.context import ContextFact
@@ -28,6 +29,7 @@ from caseworker.domain.enums import (
     ActionStatus,
     ActionType,
     ApprovalStatus,
+    ArtifactStatus,
     CaseStatus,
     CaseType,
     ClaimStatus,
@@ -35,6 +37,7 @@ from caseworker.domain.enums import (
     MissionStatus,
     OpportunityStatus,
     OpportunityType,
+    PreparationMaterialType,
     RiskLevel,
     SensitivityLevel,
     SourceType,
@@ -73,6 +76,7 @@ from caseworker.persistence.base import (
     EventStore,
     MissionRepository,
     OpportunityRepository,
+    PreparationArtifactRepository,
     PreparationReportRepository,
 )
 from caseworker.persistence.migration import SQLiteMigrator
@@ -1233,8 +1237,10 @@ class SQLiteClaimRepository(ClaimRepository):
                     INSERT INTO claims (
                         claim_id, user_id, case_id, mission_id, purpose, text,
                         status, supporting_fact_ids, created_at, updated_at,
-                        verified_at, rejection_reason, version
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        verified_at, rejection_reason, version,
+                        source_report_id, source_claim_intent_id, assertion_schema,
+                        assertion_json, support_snapshot_hash
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         claim.claim_id,
@@ -1250,6 +1256,11 @@ class SQLiteClaimRepository(ClaimRepository):
                         to_iso_utc(claim.verified_at),
                         claim.rejection_reason,
                         claim.version,
+                        claim.source_report_id,
+                        claim.source_claim_intent_id,
+                        claim.assertion_schema,
+                        claim.assertion_json,
+                        claim.support_snapshot_hash,
                     ),
                 )
             except sqlite3.IntegrityError as e:
@@ -1262,6 +1273,8 @@ class SQLiteClaimRepository(ClaimRepository):
                     user_id = ?, case_id = ?, mission_id = ?, purpose = ?,
                     text = ?, status = ?, supporting_fact_ids = ?,
                     updated_at = ?, verified_at = ?, rejection_reason = ?,
+                    source_report_id = ?, source_claim_intent_id = ?,
+                    assertion_schema = ?, assertion_json = ?, support_snapshot_hash = ?,
                     version = ?
                 WHERE claim_id = ? AND version = ?
                 """,
@@ -1276,6 +1289,11 @@ class SQLiteClaimRepository(ClaimRepository):
                     to_iso_utc(claim.updated_at),
                     to_iso_utc(claim.verified_at),
                     claim.rejection_reason,
+                    claim.source_report_id,
+                    claim.source_claim_intent_id,
+                    claim.assertion_schema,
+                    claim.assertion_json,
+                    claim.support_snapshot_hash,
                     claim.version,
                     claim.claim_id,
                     expected_version,
@@ -1294,11 +1312,16 @@ class SQLiteClaimRepository(ClaimRepository):
             text=row[5],
             status=ClaimStatus(row[6]),
             supporting_fact_ids=json.loads(row[7]),
-            created_at=from_iso_utc(row[8]),
-            updated_at=from_iso_utc(row[9]),
+            created_at=from_iso_utc(row[8]) or now_utc(),
+            updated_at=from_iso_utc(row[9]) or now_utc(),
             verified_at=from_iso_utc(row[10]),
             rejection_reason=row[11],
             version=row[12],
+            source_report_id=row[13] if len(row) > 13 else None,
+            source_claim_intent_id=row[14] if len(row) > 14 else None,
+            assertion_schema=row[15] if len(row) > 15 else None,
+            assertion_json=row[16] if len(row) > 16 else None,
+            support_snapshot_hash=row[17] if len(row) > 17 else None,
         )
 
     def get_by_id(self, claim_id: str) -> Claim | None:
@@ -1307,7 +1330,9 @@ class SQLiteClaimRepository(ClaimRepository):
             """
             SELECT claim_id, user_id, case_id, mission_id, purpose, text,
                    status, supporting_fact_ids, created_at, updated_at,
-                   verified_at, rejection_reason, version
+                   verified_at, rejection_reason, version,
+                   source_report_id, source_claim_intent_id, assertion_schema,
+                   assertion_json, support_snapshot_hash
             FROM claims WHERE claim_id = ?
             """,
             (claim_id,),
@@ -1326,7 +1351,9 @@ class SQLiteClaimRepository(ClaimRepository):
         query = """
             SELECT claim_id, user_id, case_id, mission_id, purpose, text,
                    status, supporting_fact_ids, created_at, updated_at,
-                   verified_at, rejection_reason, version
+                   verified_at, rejection_reason, version,
+                   source_report_id, source_claim_intent_id, assertion_schema,
+                   assertion_json, support_snapshot_hash
             FROM claims WHERE user_id = ?
         """
         params: list[Any] = [user_id]
@@ -1350,7 +1377,9 @@ class SQLiteClaimRepository(ClaimRepository):
             """
             SELECT claim_id, user_id, case_id, mission_id, purpose, text,
                    status, supporting_fact_ids, created_at, updated_at,
-                   verified_at, rejection_reason, version
+                   verified_at, rejection_reason, version,
+                   source_report_id, source_claim_intent_id, assertion_schema,
+                   assertion_json, support_snapshot_hash
             FROM claims WHERE case_id = ?
             ORDER BY created_at DESC
             """,
@@ -1364,7 +1393,9 @@ class SQLiteClaimRepository(ClaimRepository):
             """
             SELECT claim_id, user_id, case_id, mission_id, purpose, text,
                    status, supporting_fact_ids, created_at, updated_at,
-                   verified_at, rejection_reason, version
+                   verified_at, rejection_reason, version,
+                   source_report_id, source_claim_intent_id, assertion_schema,
+                   assertion_json, support_snapshot_hash
             FROM claims WHERE user_id = ? AND purpose = ?
             ORDER BY created_at DESC
             """,
@@ -1627,6 +1658,173 @@ class SQLitePreparationReportRepository(PreparationReportRepository):
         return [self._row_to_report(r) for r in cur.fetchall()]
 
 
+class SQLitePreparationArtifactRepository(PreparationArtifactRepository):
+    def __init__(self, conn: sqlite3.Connection) -> None:
+        self.conn = conn
+
+    def save(self, artifact: PreparedArtifact) -> None:
+        cur = self.conn.cursor()
+        cur.execute("SELECT version FROM preparation_artifacts WHERE artifact_id = ?", (artifact.artifact_id,))
+        row = cur.fetchone()
+        blocks_json = json.dumps([b.to_dict() for b in artifact.blocks])
+        if row is None:
+            try:
+                cur.execute(
+                    """
+                    INSERT INTO preparation_artifacts (
+                        artifact_id, artifact_set_id, case_id, opportunity_id,
+                        user_id, material_type, schema_version, planner_version,
+                        status, title, blocks_json, source_report_id,
+                        input_hash, grounding_snapshot_hash, created_at,
+                        updated_at, version
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        artifact.artifact_id,
+                        artifact.artifact_set_id,
+                        artifact.case_id,
+                        artifact.opportunity_id,
+                        artifact.user_id,
+                        artifact.material_type.value,
+                        artifact.schema_version,
+                        artifact.planner_version,
+                        artifact.status.value,
+                        artifact.title,
+                        blocks_json,
+                        artifact.source_report_id,
+                        artifact.input_hash,
+                        artifact.grounding_snapshot_hash,
+                        to_iso_utc(artifact.created_at),
+                        to_iso_utc(artifact.updated_at),
+                        artifact.version,
+                    ),
+                )
+            except sqlite3.IntegrityError as e:
+                raise PersistenceError(f"Failed to insert PreparedArtifact '{artifact.artifact_id}': {e}") from e
+        else:
+            expected_version = artifact.version - 1
+            cur.execute(
+                """
+                UPDATE preparation_artifacts SET
+                    artifact_set_id = ?, case_id = ?, opportunity_id = ?,
+                    user_id = ?, material_type = ?, schema_version = ?,
+                    planner_version = ?, status = ?, title = ?,
+                    blocks_json = ?, source_report_id = ?, input_hash = ?,
+                    grounding_snapshot_hash = ?, updated_at = ?, version = ?
+                WHERE artifact_id = ? AND version = ?
+                """,
+                (
+                    artifact.artifact_set_id,
+                    artifact.case_id,
+                    artifact.opportunity_id,
+                    artifact.user_id,
+                    artifact.material_type.value,
+                    artifact.schema_version,
+                    artifact.planner_version,
+                    artifact.status.value,
+                    artifact.title,
+                    blocks_json,
+                    artifact.source_report_id,
+                    artifact.input_hash,
+                    artifact.grounding_snapshot_hash,
+                    to_iso_utc(artifact.updated_at),
+                    artifact.version,
+                    artifact.artifact_id,
+                    expected_version,
+                ),
+            )
+            if cur.rowcount == 0:
+                raise OptimisticLockError("PreparedArtifact", artifact.artifact_id, expected_version)
+
+    def _row_to_artifact(self, row: tuple[Any, ...]) -> PreparedArtifact:
+        raw_blocks = json.loads(row[10])
+        blocks = [ArtifactBlock.from_dict(b) for b in raw_blocks]
+        return PreparedArtifact(
+            artifact_id=row[0],
+            artifact_set_id=row[1],
+            case_id=row[2],
+            opportunity_id=row[3],
+            user_id=row[4],
+            material_type=PreparationMaterialType(row[5]),
+            schema_version=row[6],
+            planner_version=row[7],
+            status=ArtifactStatus(row[8]),
+            title=row[9],
+            blocks=blocks,
+            source_report_id=row[11],
+            input_hash=row[12],
+            grounding_snapshot_hash=row[13],
+            created_at=from_iso_utc(row[14]) or now_utc(),
+            updated_at=from_iso_utc(row[15]) or now_utc(),
+            version=row[16],
+        )
+
+    def get_by_id(self, artifact_id: str) -> PreparedArtifact | None:
+        cur = self.conn.cursor()
+        cur.execute(
+            """
+            SELECT artifact_id, artifact_set_id, case_id, opportunity_id,
+                   user_id, material_type, schema_version, planner_version,
+                   status, title, blocks_json, source_report_id,
+                   input_hash, grounding_snapshot_hash, created_at,
+                   updated_at, version
+            FROM preparation_artifacts WHERE artifact_id = ?
+            """,
+            (artifact_id,),
+        )
+        row = cur.fetchone()
+        return self._row_to_artifact(row) if row else None
+
+    def list_by_case(self, case_id: str) -> list[PreparedArtifact]:
+        cur = self.conn.cursor()
+        cur.execute(
+            """
+            SELECT artifact_id, artifact_set_id, case_id, opportunity_id,
+                   user_id, material_type, schema_version, planner_version,
+                   status, title, blocks_json, source_report_id,
+                   input_hash, grounding_snapshot_hash, created_at,
+                   updated_at, version
+            FROM preparation_artifacts WHERE case_id = ?
+            ORDER BY created_at ASC, material_type ASC
+            """,
+            (case_id,),
+        )
+        return [self._row_to_artifact(r) for r in cur.fetchall()]
+
+    def list_by_set(self, set_id: str) -> list[PreparedArtifact]:
+        cur = self.conn.cursor()
+        cur.execute(
+            """
+            SELECT artifact_id, artifact_set_id, case_id, opportunity_id,
+                   user_id, material_type, schema_version, planner_version,
+                   status, title, blocks_json, source_report_id,
+                   input_hash, grounding_snapshot_hash, created_at,
+                   updated_at, version
+            FROM preparation_artifacts WHERE artifact_set_id = ?
+            ORDER BY created_at ASC, material_type ASC
+            """,
+            (set_id,),
+        )
+        return [self._row_to_artifact(r) for r in cur.fetchall()]
+
+    def update_status_for_case(self, case_id: str, old_status: ArtifactStatus, new_status: ArtifactStatus) -> int:
+        cur = self.conn.cursor()
+        cur.execute(
+            """
+            UPDATE preparation_artifacts
+            SET status = ?, updated_at = ?, version = version + 1
+            WHERE case_id = ? AND status = ?
+            """,
+            (
+                new_status.value,
+                to_iso_utc(now_utc()),
+                case_id,
+                old_status.value,
+            ),
+        )
+        return cur.rowcount
+
+
 class SQLiteCaseworkerUnitOfWork(CaseworkerUnitOfWork):
     """Transaction / Unit-of-Work boundary using SQLite."""
 
@@ -1642,6 +1840,7 @@ class SQLiteCaseworkerUnitOfWork(CaseworkerUnitOfWork):
         self.context = SQLiteContextRepository(conn)
         self.claims = SQLiteClaimRepository(conn)
         self.preparation_reports = SQLitePreparationReportRepository(conn)
+        self.preparation_artifacts = SQLitePreparationArtifactRepository(conn)
         self.events = SQLiteEventStore(conn)
         self._in_transaction = False
 

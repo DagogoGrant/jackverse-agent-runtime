@@ -97,6 +97,14 @@ export type GapItem = Schemas['GapItemResponse'];
 export type ClaimIntent = Schemas['ClaimIntentResponse'];
 
 // ----------------------------------------------------------------------------
+// Prepared Application Artifacts (Phase 5.2.2)
+// ----------------------------------------------------------------------------
+export type PreparedArtifact = Schemas['PreparedArtifactResponse'];
+export type PreparedArtifactList = Schemas['PreparedArtifactListResponse'];
+export type ArtifactBlock = Schemas['ArtifactBlockResponse'];
+export type ArtifactProvenance = Schemas['ArtifactProvenanceResponse'];
+
+// ----------------------------------------------------------------------------
 // Activity & Domain Events
 // ----------------------------------------------------------------------------
 export type DomainEvent = Schemas['DomainEventResponse'];

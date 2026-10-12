@@ -44,6 +44,12 @@ from caseworker.api.schemas.opportunity import (
     OpportunityResponse,
     TransitionOpportunityRequest,
 )
+from caseworker.api.schemas.artifact import (
+    ArtifactBlockResponse,
+    ArtifactProvenanceResponse,
+    PreparedArtifactListResponse,
+    PreparedArtifactResponse,
+)
 from caseworker.api.schemas.preparation import (
     ClaimIntentResponse,
     EvidenceMappingItemResponse,
@@ -57,6 +63,8 @@ __all__ = [
     "ApprovalDecisionResponse",
     "ApprovalResponse",
     "ApproveActionRequest",
+    "ArtifactBlockResponse",
+    "ArtifactProvenanceResponse",
     "CaseResponse",
     "ClaimIntentResponse",
     "ClaimResponse",
@@ -76,6 +84,8 @@ __all__ = [
     "PaginatedResponse",
     "PreparationIntelligenceReportResponse",
     "PreparationStrategyResponse",
+    "PreparedArtifactListResponse",
+    "PreparedArtifactResponse",
     "ProposeActionRequest",
     "ProposeClaimRequest",
     "RecordFactRequest",

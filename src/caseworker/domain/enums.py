@@ -268,7 +268,40 @@ class PreparationMaterialType(StrEnum):
     CV = "cv"
     COVER_LETTER = "cover_letter"
     SCREENING_ANSWERS = "screening_answers"
+    APPLICATION_ANSWER_BANK = "application_answer_bank"
+    ANSWER_BANK = "application_answer_bank"
     PORTFOLIO_EXCERPT = "portfolio_excerpt"
     STATEMENT_OF_PURPOSE = "statement_of_purpose"
     CUSTOM = "custom"
+
+
+class ArtifactGroundingType(StrEnum):
+    """Grounding category for an artifact content block."""
+
+    STRUCTURAL = "structural"
+    OPPORTUNITY = "opportunity"
+    CONTEXT_FACT = "context_fact"
+    CLAIM = "claim"
+
+
+class ArtifactStatus(StrEnum):
+    """Lifecycle status of a prepared artifact or artifact set."""
+
+    DRAFT = "draft"
+    STALE = "stale"
+    SUPERSEDED = "superseded"
+    FROZEN = "frozen"
+
+
+class AssertionKind(StrEnum):
+    """Structured proposition kind for deterministic claim synthesis."""
+
+    SKILL_POSSESSION = "skill_possession"
+    EMPLOYMENT_ROLE = "employment_role"
+    EMPLOYMENT_DURATION = "employment_duration"
+    EDUCATION_CREDENTIAL = "education_credential"
+    QUANTIFIED_ACHIEVEMENT = "quantified_achievement"
+    PROJECT_EXPERIENCE = "project_experience"
+    WORK_AUTHORIZATION = "work_authorization"
+    LANGUAGE_PROFICIENCY = "language_proficiency"
 

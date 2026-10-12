@@ -7,12 +7,19 @@ from fastapi import APIRouter, Depends, Request, Response, status
 
 from caseworker.api.dependencies import (
     PaginationParams,
+    get_artifact_service,
     get_case_service,
     get_mission_service,
     get_principal,
 )
 from caseworker.api.etag import check_if_match, set_etag_header
 from caseworker.api.identity import Principal
+from caseworker.api.schemas.artifact import (
+    ArtifactBlockResponse,
+    ArtifactProvenanceResponse,
+    PreparedArtifactListResponse,
+    PreparedArtifactResponse,
+)
 from caseworker.api.schemas.case import (
     CaseResponse,
     CreateCaseRequest,
@@ -27,11 +34,13 @@ from caseworker.api.schemas.preparation import (
     PreparationIntelligenceReportResponse,
     PreparationStrategyResponse,
 )
+from caseworker.domain.artifact import PreparedArtifact
 from caseworker.domain.case import Case
 from caseworker.domain.enums import CaseStatus
 from caseworker.domain.errors import EntityNotFoundError
 from caseworker.domain.preparation import PreparationIntelligenceReport
 from caseworker.domain.types import to_iso_utc
+from caseworker.services.artifact_service import ArtifactPreparationService
 from caseworker.services.case_service import CaseService
 from caseworker.services.mission_service import MissionService
 
@@ -330,4 +339,160 @@ async def get_latest_preparation_intelligence(
     if report is None:
         raise EntityNotFoundError("PreparationIntelligenceReport", case_id)
     return _to_prep_report_response(report, is_stale=is_stale)
+
+
+def _to_artifact_response(a: PreparedArtifact) -> PreparedArtifactResponse:
+    return PreparedArtifactResponse(
+        artifact_id=a.artifact_id,
+        artifact_set_id=a.artifact_set_id,
+        case_id=a.case_id,
+        opportunity_id=a.opportunity_id,
+        user_id=a.user_id,
+        material_type=a.material_type.value,
+        title=a.title,
+        schema_version=a.schema_version,
+        planner_version=a.planner_version,
+        status=a.status.value,
+        blocks=[
+            ArtifactBlockResponse(
+                block_id=b.block_id,
+                block_type=b.block_type,
+                content=b.content,
+                grounding_type=b.grounding_type.value,
+                claim_ids=list(b.claim_ids),
+                fact_ids=list(b.fact_ids),
+                opportunity_fields=list(b.opportunity_fields),
+                metadata=dict(b.metadata),
+            )
+            for b in a.blocks
+        ],
+        source_report_id=a.source_report_id,
+        input_hash=a.input_hash,
+        grounding_snapshot_hash=a.grounding_snapshot_hash,
+        rendered_markdown=a.render_markdown(),
+        created_at=to_iso_utc(a.created_at),
+        updated_at=to_iso_utc(a.updated_at),
+        version=a.version,
+    )
+
+
+@router.post(
+    "/api/v1/cases/{case_id}/preparation/artifacts",
+    response_model=PreparedArtifactListResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def draft_preparation_artifacts(
+    case_id: str,
+    request: Request,
+    response: Response,
+    principal: Annotated[Principal, Depends(get_principal)],
+    case_service: Annotated[CaseService, Depends(get_case_service)],
+    artifact_service: Annotated[ArtifactPreparationService, Depends(get_artifact_service)],
+) -> PreparedArtifactListResponse:
+    """Draft claim-bound CV, Cover Letter, and Screening Answers / Answer Bank for case."""
+    existing = case_service.get_case_for_user(principal.user_id, case_id)
+    if existing is None:
+        raise EntityNotFoundError("Case", case_id)
+
+    check_if_match(request, "case", existing.case_id, existing.version)
+
+    artifacts, updated_case = artifact_service.draft_job_application_artifacts(
+        user_id=principal.user_id,
+        case_id=case_id,
+        expected_case_version=existing.version,
+    )
+    set_etag_header(response, "case", updated_case.case_id, updated_case.version)
+    dtos = [_to_artifact_response(a) for a in artifacts]
+    return PreparedArtifactListResponse(artifacts=dtos, total=len(dtos))
+
+
+@router.get(
+    "/api/v1/cases/{case_id}/preparation/artifacts",
+    response_model=PreparedArtifactListResponse,
+)
+async def list_preparation_artifacts(
+    case_id: str,
+    principal: Annotated[Principal, Depends(get_principal)],
+    artifact_service: Annotated[ArtifactPreparationService, Depends(get_artifact_service)],
+) -> PreparedArtifactListResponse:
+    """List all prepared application artifacts for a case."""
+    artifacts = artifact_service.get_case_artifacts(
+        user_id=principal.user_id,
+        case_id=case_id,
+    )
+    dtos = [_to_artifact_response(a) for a in artifacts]
+    return PreparedArtifactListResponse(artifacts=dtos, total=len(dtos))
+
+
+@router.get(
+    "/api/v1/cases/{case_id}/preparation/artifacts/{artifact_id}",
+    response_model=PreparedArtifactResponse,
+)
+async def get_preparation_artifact(
+    case_id: str,
+    artifact_id: str,
+    principal: Annotated[Principal, Depends(get_principal)],
+    artifact_service: Annotated[ArtifactPreparationService, Depends(get_artifact_service)],
+) -> PreparedArtifactResponse:
+    """Retrieve a single prepared artifact with full AST blocks."""
+    artifact = artifact_service.get_artifact(
+        user_id=principal.user_id,
+        case_id=case_id,
+        artifact_id=artifact_id,
+    )
+    return _to_artifact_response(artifact)
+
+
+@router.get(
+    "/api/v1/cases/{case_id}/preparation/artifacts/{artifact_id}/export",
+)
+async def export_preparation_artifact(
+    case_id: str,
+    artifact_id: str,
+    principal: Annotated[Principal, Depends(get_principal)],
+    artifact_service: Annotated[ArtifactPreparationService, Depends(get_artifact_service)],
+    format: str = "markdown",
+) -> Response:
+    """Export clean rendered publication text with zero synthetic citations."""
+    rendered = artifact_service.export_artifact(
+        user_id=principal.user_id,
+        case_id=case_id,
+        artifact_id=artifact_id,
+        format_type=format,
+    )
+    return Response(content=rendered, media_type="text/plain; charset=utf-8")
+
+
+@router.get(
+    "/api/v1/cases/{case_id}/preparation/artifacts/{artifact_id}/provenance",
+    response_model=ArtifactProvenanceResponse,
+)
+async def get_artifact_provenance(
+    case_id: str,
+    artifact_id: str,
+    principal: Annotated[Principal, Depends(get_principal)],
+    artifact_service: Annotated[ArtifactPreparationService, Depends(get_artifact_service)],
+) -> ArtifactProvenanceResponse:
+    """Retrieve block-level grounding provenance map for inspection."""
+    artifact = artifact_service.get_artifact(
+        user_id=principal.user_id,
+        case_id=case_id,
+        artifact_id=artifact_id,
+    )
+    prov = artifact.render_provenance_map()
+    return ArtifactProvenanceResponse(
+        artifact_id=prov["artifact_id"],
+        artifact_set_id=prov["artifact_set_id"],
+        case_id=prov["case_id"],
+        opportunity_id=prov["opportunity_id"],
+        material_type=prov["material_type"],
+        title=prov["title"],
+        status=prov["status"],
+        source_report_id=prov["source_report_id"],
+        input_hash=prov["input_hash"],
+        grounding_snapshot_hash=prov["grounding_snapshot_hash"],
+        version=prov["version"],
+        blocks=[ArtifactBlockResponse(**b) for b in prov["blocks"]],
+    )
+
 

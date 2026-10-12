@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
-import { ArrowLeft, AlertTriangle, CheckCircle2, Search, ChevronDown } from 'lucide-react';
+import { ArrowLeft, AlertTriangle, CheckCircle2, Search, ChevronDown, FileText, Copy, Check, ShieldCheck, X } from 'lucide-react';
 import {
   useCase,
   useCaseActions,
@@ -13,6 +13,8 @@ import {
   useRequestActionApproval,
   usePreparationReport,
   useGeneratePreparation,
+  useCaseArtifacts,
+  useDraftArtifacts,
 } from '../hooks/useCaseworker';
 import { apiRequest, PreconditionFailedError } from '../api/client';
 import type { Claim } from '../api/types';
@@ -28,6 +30,7 @@ export const CaseDetailView: React.FC = () => {
   const { data: actions, isLoading: actionsLoading } = useCaseActions(caseId);
   const { data: claims, isLoading: claimsLoading } = useClaims({ case_id: caseId });
   const { data: prepReport, isLoading: prepLoading } = usePreparationReport(caseId);
+  const { data: artifacts } = useCaseArtifacts(caseId);
   const { data: eventsData } = useEvents();
 
   const transitionCase = useTransitionCase();
@@ -36,10 +39,55 @@ export const CaseDetailView: React.FC = () => {
   const evaluateClaim = useEvaluateClaim();
   const requestApproval = useRequestActionApproval();
   const generatePrep = useGeneratePreparation();
+  const draftArtifacts = useDraftArtifacts();
 
   const [concurrencyNotice, setConcurrencyNotice] = useState<string | null>(null);
   const [resolveOutcome, setResolveOutcome] = useState('');
   const [showResolveForm, setShowResolveForm] = useState(false);
+
+  // Artifact selection & provenance drawer
+  const [selectedArtifactId, setSelectedArtifactId] = useState<string | null>(null);
+  const [showProvenanceDrawer, setShowProvenanceDrawer] = useState(false);
+  const [copiedFormat, setCopiedFormat] = useState<string | null>(null);
+
+  const handleCopyMarkdown = (content: string) => {
+    navigator.clipboard.writeText(content);
+    setCopiedFormat('markdown');
+    setTimeout(() => setCopiedFormat(null), 2000);
+  };
+
+  const handleCopyPlainText = (content: string) => {
+    const plain = content
+      .replace(/^#{1,6}\s+/gm, '')
+      .replace(/\*\*([^*]+)\*\*/g, '$1')
+      .replace(/\*([^*]+)\*/g, '$1')
+      .replace(/`([^`]+)`/g, '$1');
+    navigator.clipboard.writeText(plain.trim());
+    setCopiedFormat('plain');
+    setTimeout(() => setCopiedFormat(null), 2000);
+  };
+
+  const handleDraftArtifacts = async () => {
+    if (!caseId || !caseData) return;
+    setConcurrencyNotice(null);
+    try {
+      await draftArtifacts.mutateAsync({
+        caseId,
+        etag: caseData.etag,
+      });
+    } catch (err: unknown) {
+      if (err instanceof PreconditionFailedError) {
+        setConcurrencyNotice(
+          'Case was modified concurrently. Reloading current dossier state…'
+        );
+        await refetchCase();
+      } else {
+        setConcurrencyNotice(
+          err instanceof Error ? err.message : 'Drafting application materials failed.'
+        );
+      }
+    }
+  };
 
   // Quick claim creation
   const [showClaimForm, setShowClaimForm] = useState(false);
@@ -690,20 +738,37 @@ export const CaseDetailView: React.FC = () => {
                     )}
                   </div>
 
-                  {/* Materials Checklist */}
-                  <div className="space-y-3 pt-2">
-                    <div className="flex items-center justify-between">
-                      <div className="font-machine text-xs text-jv-muted uppercase tracking-wider">
-                        Materials Checklist
+                  {/* Materials Checklist & Pursuit Suite */}
+                  <div className="space-y-4 pt-2">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                      <div>
+                        <div className="font-machine text-xs text-jv-muted uppercase tracking-wider">
+                          Materials Checklist & Pursuit Suite
+                        </div>
+                        <div className="font-interface text-xs text-jv-muted">
+                          Structured, claim-bound materials compiled deterministically from verified vault facts.
+                        </div>
                       </div>
-                      <span className="font-machine text-[10px] text-jv-muted">
-                        PHASE 5.2.1 // DRAFTING COMMENCES IN 5.2.2
-                      </span>
+                      {caseData?.caseItem?.status?.toLowerCase() === 'planning' && !prepReport.is_stale && (
+                        <TactileButton
+                          variant="primary"
+                          size="sm"
+                          loading={draftArtifacts.isPending}
+                          onClick={handleDraftArtifacts}
+                        >
+                          <FileText className="w-3.5 h-3.5 mr-1.5 inline" />
+                          {artifacts && artifacts.length > 0 ? 'Re-draft Suite →' : 'Draft Application Suite →'}
+                        </TactileButton>
+                      )}
                     </div>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                       {(prepReport.strategy?.materials_checklist || []).map((mat: any, idx: number) => {
                         const type = mat.material_type || mat.type || 'DOCUMENT';
-                        const status = mat.status || 'PENDING_DRAFT';
+                        const isDrafted = artifacts?.some(
+                          (a) => a.material_type === type && (a.status === 'draft' || a.status === 'frozen')
+                        );
+                        const displayStatus = isDrafted ? 'DRAFTED' : mat.status || 'PENDING_DRAFT';
                         const count = mat.claim_intents_count ?? 0;
                         return (
                           <div key={idx} className="p-3 border border-jv-rule bg-jv-bg flex items-center justify-between">
@@ -715,12 +780,210 @@ export const CaseDetailView: React.FC = () => {
                                 {count} claim intent{count === 1 ? '' : 's'} assigned
                               </div>
                             </div>
-                            <TextureBadge status={String(status)} />
+                            <TextureBadge status={String(displayStatus)} />
                           </div>
                         );
                       })}
                     </div>
                   </div>
+
+                  {/* Prepared Application Materials Suite (Phase 5.2.2 Multi-Tab Reader) */}
+                  {artifacts && artifacts.length > 0 && (
+                    <div className="mt-8 pt-6 border-t border-jv-rule space-y-4">
+                      <div className="flex flex-col sm:flex-row sm:items-baseline justify-between gap-2">
+                        <div>
+                          <div className="font-machine text-xs text-jv-accent uppercase tracking-wider">
+                            PHASE 5.2.2 // APPLICATION MATERIALS SUITE
+                          </div>
+                          <h3 className="font-display text-2xl text-jv-ink mt-0.5">
+                            Prepared Application Materials
+                          </h3>
+                        </div>
+                        <span className="font-machine text-xs text-jv-muted">
+                          {artifacts.length} ARTIFACTS DRAFTED · ZERO SYNTHETIC CITATIONS
+                        </span>
+                      </div>
+
+                      {/* Multi-Tab Selector */}
+                      <div className="flex flex-wrap gap-2 border-b border-jv-rule pb-2">
+                        {artifacts.map((art) => {
+                          const isSelected = (selectedArtifactId || artifacts[0]?.artifact_id) === art.artifact_id;
+                          return (
+                            <button
+                              key={art.artifact_id}
+                              type="button"
+                              onClick={() => {
+                                setSelectedArtifactId(art.artifact_id);
+                                setShowProvenanceDrawer(false);
+                              }}
+                              className={`px-3 py-1.5 font-machine text-xs uppercase transition-colors border ${
+                                isSelected
+                                  ? 'border-jv-ink bg-jv-ink text-jv-bg font-semibold'
+                                  : 'border-jv-rule bg-jv-surface/40 text-jv-muted hover:text-jv-ink hover:border-jv-ink'
+                              }`}
+                            >
+                              {art.material_type.replace(/_/g, ' ')}
+                            </button>
+                          );
+                        })}
+                      </div>
+
+                      {/* Selected Artifact Reader */}
+                      {(() => {
+                        const activeArt = artifacts.find(
+                          (a) => a.artifact_id === (selectedArtifactId || artifacts[0]?.artifact_id)
+                        ) || artifacts[0];
+                        if (!activeArt) return null;
+
+                        return (
+                          <div className="space-y-4">
+                            {/* Artifact Header Toolbar */}
+                            <div className="p-4 border border-jv-rule bg-jv-surface/30 flex flex-col md:flex-row md:items-center justify-between gap-3">
+                              <div className="space-y-1">
+                                <div className="flex items-center gap-2">
+                                  <h4 className="font-interface font-medium text-base text-jv-ink">
+                                    {activeArt.title}
+                                  </h4>
+                                  <TextureBadge status={activeArt.status} />
+                                </div>
+                                <div className="font-machine text-[11px] text-jv-muted flex items-center gap-3">
+                                  <span>MATERIAL: {activeArt.material_type.toUpperCase()}</span>
+                                  <span>VERSION: v{activeArt.version}</span>
+                                  <span>BLOCKS: {activeArt.blocks?.length || 0}</span>
+                                </div>
+                              </div>
+
+                              <div className="flex flex-wrap items-center gap-2">
+                                <TactileButton
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => handleCopyMarkdown(activeArt.rendered_markdown)}
+                                >
+                                  {copiedFormat === 'markdown' ? (
+                                    <>
+                                      <Check className="w-3.5 h-3.5 mr-1 text-jv-accent inline" />
+                                      Copied MD!
+                                    </>
+                                  ) : (
+                                    <>
+                                      <Copy className="w-3.5 h-3.5 mr-1 inline" />
+                                      Copy Markdown
+                                    </>
+                                  )}
+                                </TactileButton>
+
+                                <TactileButton
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => handleCopyPlainText(activeArt.rendered_markdown)}
+                                >
+                                  {copiedFormat === 'plain' ? (
+                                    <>
+                                      <Check className="w-3.5 h-3.5 mr-1 text-jv-accent inline" />
+                                      Copied Text!
+                                    </>
+                                  ) : (
+                                    <>
+                                      <Copy className="w-3.5 h-3.5 mr-1 inline" />
+                                      Copy Plain Text
+                                    </>
+                                  )}
+                                </TactileButton>
+
+                                <TactileButton
+                                  variant={showProvenanceDrawer ? 'primary' : 'outline'}
+                                  size="sm"
+                                  onClick={() => setShowProvenanceDrawer(!showProvenanceDrawer)}
+                                >
+                                  <ShieldCheck className="w-3.5 h-3.5 mr-1 inline" />
+                                  {showProvenanceDrawer ? 'Hide Provenance' : 'Inspect Provenance'}
+                                </TactileButton>
+                              </div>
+                            </div>
+
+                            {/* Provenance Inspector Drawer */}
+                            {showProvenanceDrawer && (
+                              <div className="border border-jv-accent/40 bg-jv-surface/80 p-5 space-y-4 font-machine text-xs">
+                                <div className="flex items-center justify-between border-b border-jv-rule pb-2">
+                                  <div className="flex items-center gap-2">
+                                    <ShieldCheck className="w-4 h-4 text-jv-accent" />
+                                    <span className="font-semibold text-jv-ink uppercase">
+                                      Grounding Provenance Map // {activeArt.title}
+                                    </span>
+                                  </div>
+                                  <button
+                                    type="button"
+                                    onClick={() => setShowProvenanceDrawer(false)}
+                                    className="text-jv-muted hover:text-jv-ink"
+                                  >
+                                    <X className="w-4 h-4" />
+                                  </button>
+                                </div>
+
+                                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-[11px] text-jv-muted bg-jv-bg p-3 border border-jv-rule">
+                                  <div><span className="text-jv-ink font-semibold">PLANNER:</span> {activeArt.planner_version}</div>
+                                  <div><span className="text-jv-ink font-semibold">INPUT HASH:</span> {activeArt.input_hash.substring(0, 16)}…</div>
+                                  <div><span className="text-jv-ink font-semibold">SNAPSHOT HASH:</span> {activeArt.grounding_snapshot_hash.substring(0, 16)}…</div>
+                                </div>
+
+                                <div className="space-y-2">
+                                  <div className="text-jv-muted uppercase text-[11px]">
+                                    AST Semantic Block Breakdown ({activeArt.blocks?.length || 0} nodes):
+                                  </div>
+                                  <div className="divide-y divide-jv-rule border border-jv-rule max-h-96 overflow-y-auto bg-jv-bg">
+                                    {activeArt.blocks?.map((blk, bIdx) => (
+                                      <div key={blk.block_id || bIdx} className="p-3 space-y-1.5">
+                                        <div className="flex items-center justify-between gap-2">
+                                          <div className="flex items-center gap-2">
+                                            <span className="text-[10px] text-jv-muted uppercase font-mono">
+                                              #{bIdx + 1} [{blk.block_type}]
+                                            </span>
+                                            <span
+                                              className={`text-[9px] px-1.5 py-0.5 border uppercase font-mono ${
+                                                blk.grounding_type === 'claim'
+                                                  ? 'border-jv-ink bg-jv-ink text-jv-bg font-bold'
+                                                  : blk.grounding_type === 'opportunity'
+                                                  ? 'border-jv-accent text-jv-accent'
+                                                  : blk.grounding_type === 'context_fact'
+                                                  ? 'border-jv-rule text-jv-ink'
+                                                  : 'border-jv-rule text-jv-muted'
+                                              }`}
+                                            >
+                                              {blk.grounding_type}
+                                            </span>
+                                          </div>
+                                          {blk.claim_ids && blk.claim_ids.length > 0 && (
+                                            <span className="text-[10px] text-jv-muted">
+                                              CLAIMS: {blk.claim_ids.join(', ')}
+                                            </span>
+                                          )}
+                                          {blk.fact_ids && blk.fact_ids.length > 0 && (
+                                            <span className="text-[10px] text-jv-muted">
+                                              FACTS: {blk.fact_ids.join(', ')}
+                                            </span>
+                                          )}
+                                        </div>
+                                        <p className="font-interface text-xs text-jv-ink-soft line-clamp-2">
+                                          {blk.content}
+                                        </p>
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+                              </div>
+                            )}
+
+                            {/* Clean Rendered Document Text Reader */}
+                            <div className="border border-jv-rule bg-jv-bg p-8 shadow-sm">
+                              <pre className="font-interface text-sm text-jv-ink whitespace-pre-wrap leading-relaxed select-text font-normal">
+                                {activeArt.rendered_markdown}
+                              </pre>
+                            </div>
+                          </div>
+                        );
+                      })()}
+                    </div>
+                  )}
                 </div>
               </div>
             )}

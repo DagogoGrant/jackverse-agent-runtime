@@ -2,6 +2,13 @@
 
 from caseworker.domain.action import Action
 from caseworker.domain.approval import Approval
+from caseworker.domain.artifact import ArtifactBlock, ArtifactSet, PreparedArtifact
+from caseworker.domain.artifact_planner import JobApplicationArtifactPlanner, PLANNER_VERSION
+from caseworker.domain.assertion import (
+    CanonicalClaimRenderer,
+    ClaimAssertionSpec,
+    ClaimAssertionValidator,
+)
 from caseworker.domain.case import Case
 from caseworker.domain.claim import Claim
 from caseworker.domain.claim_policy import ClaimVerificationPolicy
@@ -19,6 +26,9 @@ from caseworker.domain.enums import (
     ActionStatus,
     ActionType,
     ApprovalStatus,
+    ArtifactGroundingType,
+    ArtifactStatus,
+    AssertionKind,
     CaseStatus,
     CaseType,
     ClaimStatus,
@@ -66,6 +76,7 @@ from caseworker.domain.events import (
     make_mission_status_changed_event,
     make_opportunity_discovered_event,
     make_opportunity_status_changed_event,
+    make_preparation_artifact_prepared_event,
     make_preparation_report_created_event,
 )
 from caseworker.domain.mission import Mission
@@ -155,7 +166,10 @@ __all__ = [
     "EvidenceAlignmentStatus",
     "GapCategory",
     "PreparationMaterialType",
-    # Preparation Intelligence
+    "ArtifactGroundingType",
+    "ArtifactStatus",
+    "AssertionKind",
+    # Preparation Intelligence & Artifacts
     "EvidenceMappingItem",
     "GapItem",
     "ClaimIntent",
@@ -167,6 +181,15 @@ __all__ = [
     "RequirementMatcher",
     "extract_cefr_level",
     "is_fact_verified",
+    "ArtifactBlock",
+    "PreparedArtifact",
+    "ArtifactSet",
+    "ClaimAssertionSpec",
+    "ClaimAssertionValidator",
+    "CanonicalClaimRenderer",
+    "JobApplicationArtifactPlanner",
+    "PLANNER_VERSION",
+    "make_preparation_artifact_prepared_event",
     # Errors
     "CaseworkerError",
     "EntityNotFoundError",

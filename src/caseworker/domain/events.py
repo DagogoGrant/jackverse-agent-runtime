@@ -605,3 +605,32 @@ def make_preparation_report_created_event(
         },
     )
 
+
+def make_preparation_artifact_prepared_event(
+    artifact_id: str,
+    set_id: str,
+    case_id: str,
+    material_type: str,
+    user_id: str,
+    aggregate_version: int = 1,
+    source_report_id: str = "",
+    input_hash: str = "",
+    grounding_snapshot_hash: str = "",
+) -> DomainEvent:
+    return DomainEvent(
+        event_type="preparation.artifact_prepared",
+        aggregate_type="preparation_artifact",
+        aggregate_id=artifact_id,
+        aggregate_version=aggregate_version,
+        user_id=user_id,
+        payload={
+            "artifact_id": artifact_id,
+            "set_id": set_id,
+            "case_id": case_id,
+            "material_type": material_type,
+            "source_report_id": source_report_id,
+            "input_hash": input_hash,
+            "grounding_snapshot_hash": grounding_snapshot_hash,
+        },
+    )
+

@@ -14,7 +14,7 @@ class TestSQLiteMigration(unittest.TestCase):
         cur = conn.cursor()
         cur.execute("PRAGMA user_version;")
         version = cur.fetchone()[0]
-        self.assertEqual(version, 6)
+        self.assertEqual(version, 7)
 
         # Verify all tables exist
         cur.execute("SELECT name FROM sqlite_master WHERE type='table';")
@@ -30,6 +30,7 @@ class TestSQLiteMigration(unittest.TestCase):
             "claims",
             "domain_events",
             "preparation_intelligence_reports",
+            "preparation_artifacts",
         }
         for table in expected_tables:
             self.assertIn(table, tables, f"Expected table '{table}' missing after migration.")
@@ -46,6 +47,23 @@ class TestSQLiteMigration(unittest.TestCase):
         self.assertIn("converted_case_id", opp_columns)
         self.assertIn("fingerprint_v2", opp_columns)
         self.assertIn("external_posting_id", opp_columns)
+
+        # Verify v7 columns exist on claims
+        cur.execute("PRAGMA table_info(claims);")
+        claim_columns = {row[1] for row in cur.fetchall()}
+        self.assertIn("source_report_id", claim_columns)
+        self.assertIn("source_claim_intent_id", claim_columns)
+        self.assertIn("assertion_schema", claim_columns)
+        self.assertIn("assertion_json", claim_columns)
+        self.assertIn("support_snapshot_hash", claim_columns)
+
+        # Verify preparation_artifacts columns
+        cur.execute("PRAGMA table_info(preparation_artifacts);")
+        art_columns = {row[1] for row in cur.fetchall()}
+        self.assertIn("artifact_id", art_columns)
+        self.assertIn("artifact_set_id", art_columns)
+        self.assertIn("blocks_json", art_columns)
+        self.assertIn("source_report_id", art_columns)
 
         conn.close()
 
@@ -110,7 +128,7 @@ class TestSQLiteMigration(unittest.TestCase):
         SQLiteMigrator.migrate(conn)
 
         cur.execute("PRAGMA user_version;")
-        self.assertEqual(cur.fetchone()[0], 6)
+        self.assertEqual(cur.fetchone()[0], SQLiteMigrator.LATEST_SCHEMA_VERSION)
 
         # 3. Verify new columns exist in context_facts and missions
         cur.execute("PRAGMA table_info(context_facts);")
@@ -180,7 +198,7 @@ class TestSQLiteMigration(unittest.TestCase):
         SQLiteMigrator.migrate(conn)
 
         cur.execute("PRAGMA user_version;")
-        self.assertEqual(cur.fetchone()[0], 6)
+        self.assertEqual(cur.fetchone()[0], SQLiteMigrator.LATEST_SCHEMA_VERSION)
 
         # 3. Verify columns added
         cur.execute("PRAGMA table_info(missions);")
@@ -245,7 +263,7 @@ class TestSQLiteMigration(unittest.TestCase):
         SQLiteMigrator.migrate(conn)
 
         cur.execute("PRAGMA user_version;")
-        self.assertEqual(cur.fetchone()[0], 6)
+        self.assertEqual(cur.fetchone()[0], SQLiteMigrator.LATEST_SCHEMA_VERSION)
 
         # 3. Verify columns added
         cur.execute("PRAGMA table_info(opportunities);")
@@ -316,7 +334,7 @@ class TestSQLiteMigration(unittest.TestCase):
         SQLiteMigrator.migrate(conn)
 
         cur.execute("PRAGMA user_version;")
-        self.assertEqual(cur.fetchone()[0], 6)
+        self.assertEqual(cur.fetchone()[0], SQLiteMigrator.LATEST_SCHEMA_VERSION)
 
         # 3. Verify columns added
         cur.execute("PRAGMA table_info(opportunities);")
@@ -389,7 +407,7 @@ class TestSQLiteMigration(unittest.TestCase):
         SQLiteMigrator.migrate(conn)
 
         cur.execute("PRAGMA user_version;")
-        self.assertEqual(cur.fetchone()[0], 6)
+        self.assertEqual(cur.fetchone()[0], 7)
 
         # Verify table exists
         cur.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='preparation_intelligence_reports';")
@@ -482,7 +500,66 @@ class TestSQLiteMigration(unittest.TestCase):
 
         cur = conn.cursor()
         cur.execute("PRAGMA user_version;")
-        self.assertEqual(cur.fetchone()[0], 6)
+        self.assertEqual(cur.fetchone()[0], 7)
+        conn.close()
+
+    def test_migration_from_v6_schema_preserves_claims_and_creates_artifacts(self) -> None:
+        conn = sqlite3.connect(":memory:")
+        # 1. Migrate up to v6 manually
+        from caseworker.persistence.migration import (
+            MIGRATION_V1_DDL,
+            MIGRATION_V2_TABLES_DDL,
+            MIGRATION_V6_TABLES_DDL,
+        )
+        conn.executescript(MIGRATION_V1_DDL)
+        conn.executescript(MIGRATION_V2_TABLES_DDL)
+        conn.executescript(MIGRATION_V6_TABLES_DDL)
+        conn.execute("PRAGMA user_version = 6;")
+
+        # Insert a v6 claim
+        cur = conn.cursor()
+        cur.execute(
+            """
+            INSERT INTO claims (
+                claim_id, user_id, purpose, text, status, supporting_fact_ids,
+                created_at, updated_at, version
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                "claim-legacy-1",
+                "user-1",
+                "job_application",
+                "Proven proficiency in TypeScript",
+                "supported",
+                "[]",
+                "2026-10-12T00:00:00Z",
+                "2026-10-12T00:00:00Z",
+                1,
+            ),
+        )
+
+        # 2. Run migrator to upgrade to v7
+        new_version = SQLiteMigrator.migrate(conn)
+        self.assertEqual(new_version, 7)
+
+        # 3. Verify legacy claim is intact and has NULL for new columns
+        cur.execute(
+            """
+            SELECT claim_id, text, status, source_report_id, assertion_schema
+            FROM claims WHERE claim_id = 'claim-legacy-1'
+            """
+        )
+        row = cur.fetchone()
+        self.assertIsNotNone(row)
+        self.assertEqual(row[0], "claim-legacy-1")
+        self.assertEqual(row[1], "Proven proficiency in TypeScript")
+        self.assertEqual(row[2], "supported")
+        self.assertIsNone(row[3])
+        self.assertIsNone(row[4])
+
+        # 4. Verify preparation_artifacts table exists and can be written to
+        cur.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='preparation_artifacts';")
+        self.assertIsNotNone(cur.fetchone())
         conn.close()
 
 

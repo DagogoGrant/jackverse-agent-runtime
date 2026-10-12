@@ -192,6 +192,90 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/cases/{case_id}/preparation/artifacts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Preparation Artifacts
+         * @description List all prepared application artifacts for a case.
+         */
+        get: operations["list_preparation_artifacts_api_v1_cases__case_id__preparation_artifacts_get"];
+        put?: never;
+        /**
+         * Draft Preparation Artifacts
+         * @description Draft claim-bound CV, Cover Letter, and Screening Answers / Answer Bank for case.
+         */
+        post: operations["draft_preparation_artifacts_api_v1_cases__case_id__preparation_artifacts_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/cases/{case_id}/preparation/artifacts/{artifact_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Preparation Artifact
+         * @description Retrieve a single prepared artifact with full AST blocks.
+         */
+        get: operations["get_preparation_artifact_api_v1_cases__case_id__preparation_artifacts__artifact_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/cases/{case_id}/preparation/artifacts/{artifact_id}/export": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Export Preparation Artifact
+         * @description Export clean rendered publication text with zero synthetic citations.
+         */
+        get: operations["export_preparation_artifact_api_v1_cases__case_id__preparation_artifacts__artifact_id__export_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/cases/{case_id}/preparation/artifacts/{artifact_id}/provenance": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Artifact Provenance
+         * @description Retrieve block-level grounding provenance map for inspection.
+         */
+        get: operations["get_artifact_provenance_api_v1_cases__case_id__preparation_artifacts__artifact_id__provenance_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/cases/{case_id}/preparation/intelligence": {
         parameters: {
             query?: never;
@@ -1052,6 +1136,60 @@ export interface components {
              * @description Optional rationale for human approval.
              */
             reason?: string | null;
+        };
+        /**
+         * ArtifactBlockResponse
+         * @description Semantic block within an artifact AST.
+         */
+        ArtifactBlockResponse: {
+            /** Block Id */
+            block_id: string;
+            /** Block Type */
+            block_type: string;
+            /** Claim Ids */
+            claim_ids?: string[];
+            /** Content */
+            content: string;
+            /** Fact Ids */
+            fact_ids?: string[];
+            /** Grounding Type */
+            grounding_type: string;
+            /** Metadata */
+            metadata?: {
+                [key: string]: unknown;
+            };
+            /** Opportunity Fields */
+            opportunity_fields?: string[];
+        };
+        /**
+         * ArtifactProvenanceResponse
+         * @description Block-level grounding provenance map for an artifact.
+         */
+        ArtifactProvenanceResponse: {
+            /** Artifact Id */
+            artifact_id: string;
+            /** Artifact Set Id */
+            artifact_set_id: string;
+            /** Blocks */
+            blocks: components["schemas"]["ArtifactBlockResponse"][];
+            /** Case Id */
+            case_id: string;
+            /** Grounding Snapshot Hash */
+            grounding_snapshot_hash: string;
+            /** Input Hash */
+            input_hash: string;
+            /** Material Type */
+            material_type: string;
+            /** Opportunity Id */
+            opportunity_id: string;
+            /** Source Report Id */
+            source_report_id: string;
+            /** Status */
+            status: string;
+            /** Title */
+            title: string;
+            /** Version */
+            version: number;
         };
         /** CaseResponse */
         CaseResponse: {
@@ -1925,6 +2063,58 @@ export interface components {
             /** Strengths */
             strengths?: string[];
         };
+        /**
+         * PreparedArtifactListResponse
+         * @description Collection of prepared artifacts for a case.
+         */
+        PreparedArtifactListResponse: {
+            /** Artifacts */
+            artifacts: components["schemas"]["PreparedArtifactResponse"][];
+            /** Total */
+            total: number;
+        };
+        /**
+         * PreparedArtifactResponse
+         * @description Prepared application material response DTO.
+         */
+        PreparedArtifactResponse: {
+            /** Artifact Id */
+            artifact_id: string;
+            /** Artifact Set Id */
+            artifact_set_id: string;
+            /** Blocks */
+            blocks: components["schemas"]["ArtifactBlockResponse"][];
+            /** Case Id */
+            case_id: string;
+            /** Created At */
+            created_at: string;
+            /** Grounding Snapshot Hash */
+            grounding_snapshot_hash: string;
+            /** Input Hash */
+            input_hash: string;
+            /** Material Type */
+            material_type: string;
+            /** Opportunity Id */
+            opportunity_id: string;
+            /** Planner Version */
+            planner_version: string;
+            /** Rendered Markdown */
+            rendered_markdown: string;
+            /** Schema Version */
+            schema_version: string;
+            /** Source Report Id */
+            source_report_id: string;
+            /** Status */
+            status: string;
+            /** Title */
+            title: string;
+            /** Updated At */
+            updated_at: string;
+            /** User Id */
+            user_id: string;
+            /** Version */
+            version: number;
+        };
         /** ProfileReadinessResponse */
         ProfileReadinessResponse: {
             /** Completeness Ratio */
@@ -2657,6 +2847,166 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ActionResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_preparation_artifacts_api_v1_cases__case_id__preparation_artifacts_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                case_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PreparedArtifactListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    draft_preparation_artifacts_api_v1_cases__case_id__preparation_artifacts_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                case_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PreparedArtifactListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_preparation_artifact_api_v1_cases__case_id__preparation_artifacts__artifact_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                case_id: string;
+                artifact_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PreparedArtifactResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    export_preparation_artifact_api_v1_cases__case_id__preparation_artifacts__artifact_id__export_get: {
+        parameters: {
+            query?: {
+                format?: string;
+            };
+            header?: never;
+            path: {
+                case_id: string;
+                artifact_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_artifact_provenance_api_v1_cases__case_id__preparation_artifacts__artifact_id__provenance_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                case_id: string;
+                artifact_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ArtifactProvenanceResponse"];
                 };
             };
             /** @description Validation Error */

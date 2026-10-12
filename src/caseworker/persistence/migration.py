@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import sqlite3
 
-LATEST_SCHEMA_VERSION = 6
+LATEST_SCHEMA_VERSION = 7
 
 MIGRATION_V1_DDL = """
 CREATE TABLE IF NOT EXISTS missions (
@@ -212,9 +212,40 @@ CREATE INDEX IF NOT EXISTS idx_prep_reports_case ON preparation_intelligence_rep
 CREATE INDEX IF NOT EXISTS idx_prep_reports_user ON preparation_intelligence_reports(user_id);
 """
 
+MIGRATION_V7_TABLES_DDL = """
+CREATE TABLE IF NOT EXISTS preparation_artifacts (
+    artifact_id TEXT PRIMARY KEY,
+    artifact_set_id TEXT NOT NULL,
+    case_id TEXT NOT NULL,
+    opportunity_id TEXT NOT NULL,
+    user_id TEXT NOT NULL,
+    material_type TEXT NOT NULL,
+    schema_version TEXT NOT NULL,
+    planner_version TEXT NOT NULL,
+    status TEXT NOT NULL,
+    title TEXT NOT NULL,
+    blocks_json TEXT NOT NULL,
+    source_report_id TEXT NOT NULL,
+    input_hash TEXT NOT NULL,
+    grounding_snapshot_hash TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    version INTEGER NOT NULL DEFAULT 1,
+    FOREIGN KEY (case_id) REFERENCES cases(case_id) ON DELETE CASCADE,
+    FOREIGN KEY (opportunity_id) REFERENCES opportunities(opportunity_id) ON DELETE CASCADE,
+    FOREIGN KEY (source_report_id) REFERENCES preparation_intelligence_reports(report_id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_prep_artifacts_set ON preparation_artifacts(artifact_set_id);
+CREATE INDEX IF NOT EXISTS idx_prep_artifacts_case ON preparation_artifacts(case_id, material_type);
+CREATE INDEX IF NOT EXISTS idx_prep_artifacts_user ON preparation_artifacts(user_id);
+"""
+
 
 class SQLiteMigrator:
     """Manages transactional database schema upgrades for Caseworker persistence."""
+
+    LATEST_SCHEMA_VERSION = LATEST_SCHEMA_VERSION
 
     @staticmethod
     def get_current_version(conn: sqlite3.Connection) -> int:
@@ -344,6 +375,34 @@ class SQLiteMigrator:
             conn.executescript(MIGRATION_V6_TABLES_DDL)
             conn.execute("PRAGMA user_version = 6;")
             current_version = 6
+
+        # Migrate 6 -> 7 (Phase 5.2.2: Claim-Bound Artifact Preparation)
+        if current_version < 7:
+            conn.executescript(MIGRATION_V7_TABLES_DDL)
+
+            cur = conn.cursor()
+            cur.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='claims';")
+            if cur.fetchone():
+                cur.execute("PRAGMA table_info(claims);")
+                columns = {row[1] for row in cur.fetchall()}
+
+                if "source_report_id" not in columns:
+                    conn.execute("ALTER TABLE claims ADD COLUMN source_report_id TEXT;")
+                if "source_claim_intent_id" not in columns:
+                    conn.execute("ALTER TABLE claims ADD COLUMN source_claim_intent_id TEXT;")
+                if "assertion_schema" not in columns:
+                    conn.execute("ALTER TABLE claims ADD COLUMN assertion_schema TEXT;")
+                if "assertion_json" not in columns:
+                    conn.execute("ALTER TABLE claims ADD COLUMN assertion_json TEXT;")
+                if "support_snapshot_hash" not in columns:
+                    conn.execute("ALTER TABLE claims ADD COLUMN support_snapshot_hash TEXT;")
+
+                conn.execute(
+                    "CREATE INDEX IF NOT EXISTS idx_claims_case_intent ON claims(case_id, source_claim_intent_id);"
+                )
+
+            conn.execute("PRAGMA user_version = 7;")
+            current_version = 7
 
         return current_version
 

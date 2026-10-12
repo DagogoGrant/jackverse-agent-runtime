@@ -8,10 +8,11 @@ from typing import Protocol, runtime_checkable
 
 from caseworker.domain.action import Action
 from caseworker.domain.approval import Approval
+from caseworker.domain.artifact import PreparedArtifact
 from caseworker.domain.case import Case
 from caseworker.domain.claim import Claim
 from caseworker.domain.context import ContextFact
-from caseworker.domain.enums import CaseStatus, ClaimStatus, MissionStatus, OpportunityStatus
+from caseworker.domain.enums import ArtifactStatus, CaseStatus, ClaimStatus, MissionStatus, OpportunityStatus
 from caseworker.domain.events import DomainEvent
 from caseworker.domain.mission import Mission
 from caseworker.domain.opportunity import Opportunity
@@ -289,6 +290,31 @@ class PreparationReportRepository(Protocol):
 
 
 @runtime_checkable
+class PreparationArtifactRepository(Protocol):
+    """Repository interface for PreparedArtifact entities."""
+
+    def save(self, artifact: PreparedArtifact) -> None:
+        """Save a new prepared artifact or update an existing one."""
+        ...
+
+    def get_by_id(self, artifact_id: str) -> PreparedArtifact | None:
+        """Retrieve a prepared artifact by its ID."""
+        ...
+
+    def list_by_case(self, case_id: str) -> list[PreparedArtifact]:
+        """List all prepared artifacts for a case."""
+        ...
+
+    def list_by_set(self, set_id: str) -> list[PreparedArtifact]:
+        """List all prepared artifacts in an artifact set."""
+        ...
+
+    def update_status_for_case(self, case_id: str, old_status: ArtifactStatus, new_status: ArtifactStatus) -> int:
+        """Batch update artifact statuses for a case (e.g. marking old drafts SUPERSEDED)."""
+        ...
+
+
+@runtime_checkable
 class CaseworkerUnitOfWork(Protocol):
     """Transaction / Unit-of-Work boundary ensuring atomic domain state and event persistence."""
 
@@ -301,6 +327,7 @@ class CaseworkerUnitOfWork(Protocol):
     context: ContextRepository
     claims: ClaimRepository
     preparation_reports: PreparationReportRepository
+    preparation_artifacts: PreparationArtifactRepository
     events: EventStore
 
     def commit(self) -> None:

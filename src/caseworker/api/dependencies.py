@@ -14,6 +14,7 @@ from caseworker.api.identity import (
 from caseworker.persistence.sqlite import SQLiteCaseworkerStorage
 from caseworker.services.action_service import ActionService
 from caseworker.services.approval_service import ApprovalService
+from caseworker.services.artifact_service import ArtifactPreparationService
 from caseworker.services.case_service import CaseService
 from caseworker.services.claim_service import ClaimLedgerService as ClaimService
 from caseworker.services.mission_service import MissionService
@@ -89,6 +90,12 @@ def get_approval_service(
     storage: Annotated[SQLiteCaseworkerStorage, Depends(get_storage)],
 ) -> ApprovalService:
     return ApprovalService(storage)
+
+
+def get_artifact_service(
+    storage: Annotated[SQLiteCaseworkerStorage, Depends(get_storage)],
+) -> ArtifactPreparationService:
+    return ArtifactPreparationService(storage)
 
 
 class PaginationParams:
