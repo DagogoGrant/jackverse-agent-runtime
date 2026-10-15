@@ -1142,6 +1142,8 @@ export interface components {
          * @description Semantic block within an artifact AST.
          */
         ArtifactBlockResponse: {
+            /** Answer Status */
+            answer_status?: string | null;
             /** Block Id */
             block_id: string;
             /** Block Type */
@@ -1178,6 +1180,11 @@ export interface components {
             grounding_snapshot_hash: string;
             /** Input Hash */
             input_hash: string;
+            /**
+             * Is Stale
+             * @default false
+             */
+            is_stale: boolean;
             /** Material Type */
             material_type: string;
             /** Opportunity Id */
@@ -2092,6 +2099,11 @@ export interface components {
             grounding_snapshot_hash: string;
             /** Input Hash */
             input_hash: string;
+            /**
+             * Is Stale
+             * @default false
+             */
+            is_stale: boolean;
             /** Material Type */
             material_type: string;
             /** Opportunity Id */

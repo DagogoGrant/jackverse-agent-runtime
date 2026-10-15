@@ -4,12 +4,22 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any
+from typing import TYPE_CHECKING, Any
 import uuid
 
 from caseworker.domain.enums import ClaimStatus
 from caseworker.domain.errors import DomainValidationError, InvalidStateTransitionError
-from caseworker.domain.types import ensure_utc, from_iso_utc, now_utc, to_iso_utc
+from caseworker.domain.types import (
+    canonical_json_dumps,
+    compute_sha256,
+    ensure_utc,
+    from_iso_utc,
+    now_utc,
+    to_iso_utc,
+)
+
+if TYPE_CHECKING:
+    from caseworker.domain.context import ContextFact
 
 
 _VALID_CLAIM_TRANSITIONS: dict[ClaimStatus, set[ClaimStatus]] = {
@@ -202,3 +212,25 @@ class Claim:
             rejection_reason=data.get("rejection_reason"),
             version=int(data.get("version", 1)),
         )
+
+
+def compute_support_snapshot_hash(matching_facts: list[Any]) -> str:
+    """Compute privacy-safe hash of supporting fact dependencies.
+
+    Zero raw private fact values in hash; hashes only:
+    (fact_id, version, verification_status, active, sorted(allowed_purposes)).
+    """
+    safe_tuples = [
+        (
+            getattr(f, "fact_id", ""),
+            getattr(f, "version", 1),
+            getattr(f.verification_status, "value", str(f.verification_status))
+            if hasattr(f, "verification_status") and f.verification_status is not None
+            else None,
+            getattr(f, "superseded_by_fact_id", None) is None,
+            sorted(list(getattr(f, "allowed_purposes", []) or [])),
+        )
+        for f in sorted(matching_facts, key=lambda x: getattr(x, "fact_id", ""))
+    ]
+    return compute_sha256(canonical_json_dumps(safe_tuples))
+

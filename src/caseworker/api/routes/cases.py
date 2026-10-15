@@ -341,7 +341,7 @@ async def get_latest_preparation_intelligence(
     return _to_prep_report_response(report, is_stale=is_stale)
 
 
-def _to_artifact_response(a: PreparedArtifact) -> PreparedArtifactResponse:
+def _to_artifact_response(a: PreparedArtifact, is_stale: bool = False) -> PreparedArtifactResponse:
     return PreparedArtifactResponse(
         artifact_id=a.artifact_id,
         artifact_set_id=a.artifact_set_id,
@@ -353,6 +353,7 @@ def _to_artifact_response(a: PreparedArtifact) -> PreparedArtifactResponse:
         schema_version=a.schema_version,
         planner_version=a.planner_version,
         status=a.status.value,
+        is_stale=is_stale,
         blocks=[
             ArtifactBlockResponse(
                 block_id=b.block_id,
@@ -363,6 +364,7 @@ def _to_artifact_response(a: PreparedArtifact) -> PreparedArtifactResponse:
                 fact_ids=list(b.fact_ids),
                 opportunity_fields=list(b.opportunity_fields),
                 metadata=dict(b.metadata),
+                answer_status=b.answer_status,
             )
             for b in a.blocks
         ],
@@ -402,7 +404,7 @@ async def draft_preparation_artifacts(
         expected_case_version=existing.version,
     )
     set_etag_header(response, "case", updated_case.case_id, updated_case.version)
-    dtos = [_to_artifact_response(a) for a in artifacts]
+    dtos = [_to_artifact_response(a, is_stale=False) for a in artifacts]
     return PreparedArtifactListResponse(artifacts=dtos, total=len(dtos))
 
 
@@ -420,7 +422,10 @@ async def list_preparation_artifacts(
         user_id=principal.user_id,
         case_id=case_id,
     )
-    dtos = [_to_artifact_response(a) for a in artifacts]
+    dtos = []
+    for a in artifacts:
+        stale_bool, _ = artifact_service.is_artifact_stale(principal.user_id, case_id, a)
+        dtos.append(_to_artifact_response(a, is_stale=stale_bool))
     return PreparedArtifactListResponse(artifacts=dtos, total=len(dtos))
 
 
@@ -440,7 +445,8 @@ async def get_preparation_artifact(
         case_id=case_id,
         artifact_id=artifact_id,
     )
-    return _to_artifact_response(artifact)
+    is_stale, _ = artifact_service.is_artifact_stale(principal.user_id, case_id, artifact)
+    return _to_artifact_response(artifact, is_stale=is_stale)
 
 
 @router.get(
@@ -479,6 +485,7 @@ async def get_artifact_provenance(
         case_id=case_id,
         artifact_id=artifact_id,
     )
+    is_stale, _ = artifact_service.is_artifact_stale(principal.user_id, case_id, artifact)
     prov = artifact.render_provenance_map()
     return ArtifactProvenanceResponse(
         artifact_id=prov["artifact_id"],
@@ -493,6 +500,9 @@ async def get_artifact_provenance(
         grounding_snapshot_hash=prov["grounding_snapshot_hash"],
         version=prov["version"],
         blocks=[ArtifactBlockResponse(**b) for b in prov["blocks"]],
+        is_stale=is_stale,
     )
+
+
 
 

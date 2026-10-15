@@ -8,9 +8,23 @@ import re
 from typing import Any
 import uuid
 
-from caseworker.domain.enums import ArtifactGroundingType, ArtifactStatus, PreparationMaterialType
+from caseworker.domain.enums import (
+    ArtifactGroundingType,
+    ArtifactStatus,
+    ClaimStatus,
+    PreparationMaterialType,
+)
 from caseworker.domain.errors import DomainValidationError
-from caseworker.domain.types import ensure_utc, from_iso_utc, now_utc, to_iso_utc
+from caseworker.domain.requirement_matcher import is_fact_verified
+from caseworker.domain.types import (
+    canonical_json_dumps,
+    compute_sha256,
+    ensure_utc,
+    from_iso_utc,
+    now_utc,
+    to_iso_utc,
+)
+
 
 
 @dataclass
@@ -45,6 +59,17 @@ class ArtifactBlock:
             if not self.opportunity_fields:
                 raise DomainValidationError("OPPORTUNITY grounded block must reference at least one opportunity_field.")
 
+    @property
+    def answer_status(self) -> str | None:
+        """Structured Q&A status: 'ANSWERED' or 'NEEDS_USER_INPUT'."""
+        return self.metadata.get("answer_status")
+
+    @property
+    def answer(self) -> str | None:
+        """Structured Q&A answer text, or None if awaiting user input."""
+        return self.metadata.get("answer")
+
+
     def to_dict(self) -> dict[str, Any]:
         return {
             "block_id": self.block_id,
@@ -55,6 +80,7 @@ class ArtifactBlock:
             "fact_ids": list(self.fact_ids),
             "opportunity_fields": list(self.opportunity_fields),
             "metadata": dict(self.metadata),
+            "answer_status": self.answer_status,
         }
 
     @classmethod
@@ -140,9 +166,13 @@ class PreparedArtifact:
             elif btype == "qna_item":
                 in_bullet_list = False
                 question = block.metadata.get("question")
-                answer = block.metadata.get("answer") or content
+                answer_status = block.metadata.get("answer_status")
+                answer = block.metadata.get("answer")
                 if question:
-                    lines.append(f"\n### Q: {question}\n\n{answer}\n")
+                    if answer_status == "NEEDS_USER_INPUT" or not answer:
+                        lines.append(f"\n### Q: {question}\n")
+                    else:
+                        lines.append(f"\n### Q: {question}\n\n{answer}\n")
                 else:
                     lines.append(f"\n{content}\n")
             elif btype == "contact_info":
@@ -294,3 +324,107 @@ class ArtifactSet:
             artifacts=artifacts,
             created_at=from_iso_utc(data["created_at"]) or now_utc(),
         )
+
+
+def compute_artifact_grounding_hash(
+    claims: list[Any],
+    direct_facts: list[Any] | None = None,
+) -> str:
+    """Compute privacy-safe hash of all artifact grounding dependencies.
+
+    Zero raw private values in hash.
+    Hashes only:
+    - claims: (claim_id, version, status, support_snapshot_hash)
+    - direct_facts: (fact_id, version, verification_status, active, "job_application" in allowed_purposes)
+    """
+    safe_claims = [
+        (
+            getattr(c, "claim_id", ""),
+            getattr(c, "version", 1),
+            getattr(c.status, "value", str(c.status)) if hasattr(c, "status") and c.status is not None else None,
+            getattr(c, "support_snapshot_hash", None),
+        )
+        for c in sorted(claims, key=lambda x: getattr(x, "claim_id", ""))
+    ]
+    safe_facts = [
+        (
+            getattr(f, "fact_id", ""),
+            getattr(f, "version", 1),
+            getattr(f.verification_status, "value", str(f.verification_status))
+            if hasattr(f, "verification_status") and f.verification_status is not None
+            else None,
+            getattr(f, "superseded_by_fact_id", None) is None,
+            "job_application" in (getattr(f, "allowed_purposes", []) or []),
+        )
+        for f in sorted(direct_facts or [], key=lambda x: getattr(x, "fact_id", ""))
+    ]
+    return compute_sha256(canonical_json_dumps({"claims": safe_claims, "facts": safe_facts}))
+
+
+def compute_artifact_staleness(
+    artifact: PreparedArtifact,
+    latest_report: Any | None,
+    is_report_stale: bool,
+    claims_by_id: dict[str, Any],
+    facts_by_id: dict[str, Any],
+    current_planner_version: str = "job_app_planner_v1",
+    current_schema_version: str = "prep_artifact_v1",
+) -> tuple[bool, str | None]:
+    """Dynamically determine whether an artifact is stale without mutating state."""
+    if artifact.status in (ArtifactStatus.STALE, ArtifactStatus.SUPERSEDED):
+        return True, f"Artifact status is {artifact.status.value}."
+
+    if latest_report is None or artifact.source_report_id != getattr(latest_report, "report_id", None):
+        return True, "Source preparation report is missing or newer report exists."
+
+    if is_report_stale:
+        return True, "Source preparation intelligence report is stale."
+
+    if artifact.planner_version != current_planner_version:
+        return True, f"Planner version mismatch ({artifact.planner_version} vs {current_planner_version})."
+
+    if artifact.schema_version != current_schema_version:
+        return True, f"Schema version mismatch ({artifact.schema_version} vs {current_schema_version})."
+
+    referenced_claims: list[Any] = []
+    referenced_claim_ids: set[str] = set()
+    referenced_fact_ids: set[str] = set()
+
+    for block in artifact.blocks:
+        for cid in block.claim_ids:
+            referenced_claim_ids.add(cid)
+        for fid in block.fact_ids:
+            referenced_fact_ids.add(fid)
+
+    for cid in referenced_claim_ids:
+        claim = claims_by_id.get(cid)
+        if claim is None:
+            return True, f"Referenced claim '{cid}' is missing."
+        status_val = getattr(claim.status, "value", str(claim.status))
+        if status_val != ClaimStatus.SUPPORTED.value:
+            return True, f"Referenced claim '{cid}' is no longer SUPPORTED (status: {status_val})."
+        referenced_claims.append(claim)
+        for fid in getattr(claim, "supporting_fact_ids", []):
+            fact = facts_by_id.get(fid)
+            if fact is None or getattr(fact, "superseded_by_fact_id", None) is not None:
+                return True, f"Supporting fact '{fid}' of claim '{cid}' is missing or superseded."
+            if "job_application" not in (getattr(fact, "allowed_purposes", []) or []):
+                return True, f"Supporting fact '{fid}' lacks purpose 'job_application'."
+
+    direct_facts: list[Any] = []
+    for fid in referenced_fact_ids:
+        fact = facts_by_id.get(fid)
+        if fact is None or getattr(fact, "superseded_by_fact_id", None) is not None:
+            return True, f"Direct fact '{fid}' is missing or superseded."
+        if not is_fact_verified(getattr(fact, "verification_status", None)):
+            return True, f"Direct fact '{fid}' is not verified."
+        if "job_application" not in (getattr(fact, "allowed_purposes", []) or []):
+            return True, f"Direct fact '{fid}' lacks purpose 'job_application'."
+        direct_facts.append(fact)
+
+    expected_grounding_hash = compute_artifact_grounding_hash(referenced_claims, direct_facts)
+    if artifact.grounding_snapshot_hash and artifact.grounding_snapshot_hash != expected_grounding_hash:
+        return True, "Grounding dependency snapshot hash changed."
+
+    return False, None
+

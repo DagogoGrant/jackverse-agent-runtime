@@ -91,6 +91,9 @@ class ClaimAssertionValidator:
             combined_clean = combined_text.replace("_", " ").replace("-", " ")
             if skill_clean not in combined_clean:
                 return False, f"Skill '{skill}' is not substantiated by referenced fact(s)."
+            if fields.get("production_experience"):
+                if "production" not in combined_clean:
+                    return False, f"Production experience with '{skill}' is not substantiated by referenced fact(s)."
 
         elif kind == AssertionKind.EMPLOYMENT_ROLE:
             role = str(fields.get("role") or "").strip().lower()
@@ -111,14 +114,33 @@ class ClaimAssertionValidator:
                 return False, "EMPLOYMENT_DURATION requires positive numeric 'duration_years'."
             found_duration = False
             for f in referenced_facts:
-                match = re.search(r"(\d+)", str(f.value))
-                if match:
-                    val_num = int(match.group(1))
-                    if val_num >= years:
-                        found_duration = True
-                        break
+                f_val_str = str(f.value).lower()
+                matches = re.findall(r"(\d+(?:\.\d+)?)\s*(?:years?|yrs?|y\b)", f_val_str)
+                if matches:
+                    for m in matches:
+                        if float(m) >= float(years):
+                            found_duration = True
+                            break
+                elif isinstance(f.value, dict) and "years" in f.value:
+                    try:
+                        if float(f.value["years"]) >= float(years):
+                            found_duration = True
+                            break
+                    except (ValueError, TypeError):
+                        pass
+                if found_duration:
+                    break
             if not found_duration:
                 return False, f"Experience duration of {years} years is not substantiated by referenced fact(s)."
+
+            if fields.get("field"):
+                field_str = str(fields.get("field") or "").strip().lower()
+                if field_str and field_str not in combined_text:
+                    return False, f"Experience field '{field_str}' is not substantiated by referenced fact(s)."
+            if fields.get("is_professional"):
+                prof_terms = ["professional", "work", "industry", "engineer", "employment", "software", "developer"]
+                if not any(term in combined_text for term in prof_terms):
+                    return False, "Professional context for experience duration is not substantiated by referenced fact(s)."
 
         elif kind == AssertionKind.EDUCATION_CREDENTIAL:
             degree = str(fields.get("degree") or "").strip().lower()
@@ -128,6 +150,12 @@ class ClaimAssertionValidator:
             combined_clean = combined_text.replace(".", "").lower()
             if degree_clean not in combined_clean:
                 return False, f"Education degree '{degree}' is not substantiated by referenced fact(s)."
+
+            field_study = str(fields.get("field_of_study") or "").strip().lower()
+            if field_study:
+                field_clean = field_study.replace(".", "").lower()
+                if field_clean not in combined_clean:
+                    return False, f"Field of study '{field_study}' is not substantiated by referenced fact(s)."
 
         elif kind == AssertionKind.LANGUAGE_PROFICIENCY:
             language = str(fields.get("language") or "").strip().lower()
@@ -150,18 +178,81 @@ class ClaimAssertionValidator:
             status_val = str(fields.get("status") or "").strip().lower()
             if not status_val:
                 return False, "WORK_AUTHORIZATION requires non-empty 'status' field."
-            auth_terms = ["authorized", "citizen", "permanent resident", "work permit", "eu citizen", "unrestricted"]
+            auth_terms = [
+                "authorized",
+                "citizen",
+                "permanent resident",
+                "work permit",
+                "eu citizen",
+                "unrestricted",
+                "work authorization",
+                "right to work",
+            ]
             if not any(term in combined_text for term in auth_terms):
                 return False, f"Work authorization '{status_val}' is not substantiated by referenced fact(s)."
+
+            jurisdiction = str(fields.get("jurisdiction") or "").strip().lower()
+            if jurisdiction:
+                jurisdiction_clean = jurisdiction.replace("_", " ")
+                if jurisdiction_clean not in combined_text and jurisdiction not in combined_text:
+                    return False, f"Work authorization jurisdiction '{jurisdiction}' is not substantiated by referenced fact(s)."
+
+            if fields.get("no_sponsorship_required") or fields.get("sponsorship_required") is False:
+                sponsorship_proof_terms = [
+                    "no sponsorship",
+                    "without sponsorship",
+                    "no visa sponsorship",
+                    "without visa sponsorship",
+                    "not require sponsorship",
+                    "citizen",
+                    "permanent resident",
+                    "green card",
+                    "unrestricted",
+                ]
+                if not any(term in combined_text for term in sponsorship_proof_terms):
+                    return False, "Lack of employer sponsorship requirement is not substantiated by referenced fact(s)."
 
         elif kind == AssertionKind.QUANTIFIED_ACHIEVEMENT:
             metric = fields.get("metric")
             metric_unit = str(fields.get("metric_unit") or "").strip().lower()
             if metric is None or not metric_unit:
                 return False, "QUANTIFIED_ACHIEVEMENT requires 'metric' and 'metric_unit'."
-            metric_str = str(metric)
+            metric_str = str(metric).lower()
             if metric_str not in combined_text or metric_unit not in combined_text:
                 return False, f"Metric '{metric} {metric_unit}' is not found in referenced fact(s)."
+
+            direction = str(fields.get("direction") or "").strip().lower()
+            if direction:
+                adverse_indicators = [
+                    "error rate",
+                    "errors",
+                    "latency",
+                    "downtime",
+                    "failures",
+                    "incidents",
+                    "bugs",
+                    "cost",
+                ]
+                is_adverse_metric = any(term in combined_text for term in adverse_indicators)
+                if "increase" in combined_text and is_adverse_metric:
+                    if direction in ("improvement", "reduction", "decrease", "savings", "efficiency"):
+                        return False, f"Adverse metric increase in referenced fact(s) cannot be substantiated as '{direction}'."
+
+                if direction not in ("measurable outcome", "outcome"):
+                    direction_terms = {
+                        "reduction": ["reduc", "decreas", "cut", "drop", "lower"],
+                        "decrease": ["decreas", "reduc", "cut", "drop", "lower"],
+                        "improvement": ["improv", "boost", "enhanc", "gain", "faster", "accelerat"],
+                        "increase": ["increas", "grow", "boost", "gain", "scal", "expand"],
+                        "savings": ["sav", "reduc", "cut", "cost"],
+                    }
+                    expected_stems = direction_terms.get(direction, [direction])
+                    if not any(stem in combined_text for stem in expected_stems):
+                        return False, f"Metric direction '{direction}' is not substantiated by referenced fact(s)."
+
+            domain = str(fields.get("domain") or "").strip().lower()
+            if domain and domain not in combined_text:
+                return False, f"Metric domain '{domain}' is not substantiated by referenced fact(s)."
 
         elif kind == AssertionKind.PROJECT_EXPERIENCE:
             project = str(fields.get("project_name") or fields.get("domain") or "").strip().lower()
@@ -169,6 +260,16 @@ class ClaimAssertionValidator:
                 return False, "PROJECT_EXPERIENCE requires 'project_name' or 'domain'."
             if project not in combined_text:
                 return False, f"Project '{project}' is not found in referenced fact(s)."
+
+            if fields.get("production_environment"):
+                if "production" not in combined_text:
+                    return False, "Production environment for project is not substantiated by referenced fact(s)."
+            if fields.get("is_resilient"):
+                if "resilient" not in combined_text and "resilience" not in combined_text:
+                    return False, "Resilience qualification for project is not substantiated by referenced fact(s)."
+            if fields.get("architecture"):
+                if not any(term in combined_text for term in ("architect", "architecture")):
+                    return False, "Architecture qualification for project is not substantiated by referenced fact(s)."
 
         return True, None
 
@@ -184,7 +285,9 @@ class CanonicalClaimRenderer:
 
         if kind == AssertionKind.SKILL_POSSESSION:
             skill = str(fields.get("skill") or "").strip()
-            return f"Demonstrated production expertise in {skill}."
+            if fields.get("production_experience"):
+                return f"Production experience with {skill}."
+            return f"Experience with {skill}."
 
         if kind == AssertionKind.EMPLOYMENT_ROLE:
             role = str(fields.get("role") or "").strip()
@@ -195,14 +298,22 @@ class CanonicalClaimRenderer:
 
         if kind == AssertionKind.EMPLOYMENT_DURATION:
             years = fields.get("duration_years")
-            return f"Possesses {years}+ years of professional engineering experience."
+            field_name = str(fields.get("field") or "").strip()
+            is_prof = bool(fields.get("is_professional"))
+            if field_name and is_prof:
+                return f"Possesses {years}+ years of professional experience in {field_name}."
+            elif field_name:
+                return f"Possesses {years}+ years of experience in {field_name}."
+            elif is_prof:
+                return f"Possesses {years}+ years of professional experience."
+            return f"Possesses {years}+ years of experience."
 
         if kind == AssertionKind.EDUCATION_CREDENTIAL:
             degree = str(fields.get("degree") or "").strip()
             field_study = str(fields.get("field_of_study") or "").strip()
             if field_study:
-                return f"Holds a verified {degree} in {field_study}."
-            return f"Holds a verified {degree} credential."
+                return f"Holds a {degree} in {field_study}."
+            return f"Holds a {degree}."
 
         if kind == AssertionKind.LANGUAGE_PROFICIENCY:
             lang = str(fields.get("language") or "").strip().title()
@@ -213,17 +324,32 @@ class CanonicalClaimRenderer:
 
         if kind == AssertionKind.WORK_AUTHORIZATION:
             jurisdiction = str(fields.get("jurisdiction") or "").strip()
-            if jurisdiction:
+            no_sponsorship = bool(fields.get("no_sponsorship_required")) or fields.get("sponsorship_required") is False
+            if jurisdiction and no_sponsorship:
                 return f"Authorized to work in {jurisdiction} without employer sponsorship."
-            return "Fully authorized to work without employer visa sponsorship."
+            elif jurisdiction:
+                return f"Authorized to work in {jurisdiction}."
+            elif no_sponsorship:
+                return f"Authorized to work without employer sponsorship."
+            return "Authorized to work."
 
         if kind == AssertionKind.QUANTIFIED_ACHIEVEMENT:
             metric = fields.get("metric")
             unit = str(fields.get("metric_unit") or "").strip()
-            return f"Delivered {metric} {unit} measurable improvement in production system metrics."
+            direction = str(fields.get("direction") or "").strip()
+            domain = str(fields.get("domain") or "").strip()
+            if domain and direction:
+                return f"Achieved {metric} {unit} {direction} in {domain}."
+            elif direction:
+                return f"Achieved {metric} {unit} {direction}."
+            elif domain:
+                return f"Delivered {metric} {unit} measurable outcome in {domain}."
+            return f"Delivered {metric} {unit} measurable outcome."
 
         if kind == AssertionKind.PROJECT_EXPERIENCE:
             project = str(fields.get("project_name") or fields.get("domain") or "").strip()
-            return f"Engineered resilient {project} architectures in production environments."
+            if fields.get("production_environment"):
+                return f"Engineered {project} in production environments."
+            return f"Engineered {project}."
 
-        return f"Verified personal qualification: {json.dumps(fields)}."
+        return f"Personal qualification in {json.dumps(fields)}."

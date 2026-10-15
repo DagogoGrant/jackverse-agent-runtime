@@ -80,7 +80,7 @@ class TestClaimAssertionSpec(unittest.TestCase):
             user_id="user-1",
             namespace="authorization",
             key="work_permit",
-            value="Authorized citizen without sponsorship required",
+            value="Authorized citizen in United States without sponsorship required",
             source_type="user_input",
             source_reference="passport",
             confidence=1.0,
@@ -102,7 +102,7 @@ class TestClaimAssertionSpec(unittest.TestCase):
         self.assertIsNone(err)
 
         rendered = CanonicalClaimRenderer.render(spec)
-        self.assertEqual(rendered, "Demonstrated production expertise in Python.")
+        self.assertEqual(rendered, "Experience with Python.")
         self.assertNotIn("[claim:", rendered)
 
     def test_skill_possession_rejection_when_unsubstantiated(self) -> None:
@@ -162,7 +162,7 @@ class TestClaimAssertionSpec(unittest.TestCase):
         valid, err = ClaimAssertionValidator.validate(spec_dur, [dur_fact])
         self.assertTrue(valid, msg=err)
         rendered = CanonicalClaimRenderer.render(spec_dur)
-        self.assertEqual(rendered, "Possesses 5+ years of professional engineering experience.")
+        self.assertEqual(rendered, "Possesses 5+ years of experience.")
 
     def test_education_credential_validation_and_rendering(self) -> None:
         spec = ClaimAssertionSpec(
@@ -174,7 +174,7 @@ class TestClaimAssertionSpec(unittest.TestCase):
         self.assertTrue(valid, msg=err)
 
         rendered = CanonicalClaimRenderer.render(spec)
-        self.assertEqual(rendered, "Holds a verified B.S. in Computer Science.")
+        self.assertEqual(rendered, "Holds a B.S. in Computer Science.")
 
     def test_language_proficiency_cefr_validation(self) -> None:
         # Fact says C1 certified
@@ -200,7 +200,7 @@ class TestClaimAssertionSpec(unittest.TestCase):
         spec = ClaimAssertionSpec(
             kind=AssertionKind.WORK_AUTHORIZATION,
             fact_ids=["fact-auth-1"],
-            fields={"status": "Authorized citizen", "jurisdiction": "United States"},
+            fields={"status": "Authorized citizen", "jurisdiction": "United States", "sponsorship_required": False},
         )
         valid, err = ClaimAssertionValidator.validate(spec, [self.auth_fact])
         self.assertTrue(valid, msg=err)
@@ -231,7 +231,7 @@ class TestClaimAssertionSpec(unittest.TestCase):
         valid, err = ClaimAssertionValidator.validate(spec, [achieve_fact])
         self.assertTrue(valid, msg=err)
         rendered = CanonicalClaimRenderer.render(spec)
-        self.assertEqual(rendered, "Delivered 45 % measurable improvement in production system metrics.")
+        self.assertEqual(rendered, "Delivered 45 % measurable outcome.")
 
     def test_serialization_roundtrip(self) -> None:
         spec = ClaimAssertionSpec(

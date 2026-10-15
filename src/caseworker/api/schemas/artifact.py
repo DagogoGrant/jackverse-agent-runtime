@@ -17,6 +17,7 @@ class ArtifactBlockResponse(BaseModel):
     fact_ids: list[str] = Field(default_factory=list)
     opportunity_fields: list[str] = Field(default_factory=list)
     metadata: dict[str, Any] = Field(default_factory=dict)
+    answer_status: str | None = None
 
 
 class PreparedArtifactResponse(BaseModel):
@@ -40,6 +41,7 @@ class PreparedArtifactResponse(BaseModel):
     created_at: str
     updated_at: str
     version: int
+    is_stale: bool = False
 
 
 class PreparedArtifactListResponse(BaseModel):
@@ -64,3 +66,5 @@ class ArtifactProvenanceResponse(BaseModel):
     grounding_snapshot_hash: str
     version: int
     blocks: list[ArtifactBlockResponse]
+    is_stale: bool = False
+

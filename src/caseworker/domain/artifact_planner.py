@@ -15,7 +15,11 @@ import re
 from typing import Any
 import uuid
 
-from caseworker.domain.artifact import ArtifactBlock, PreparedArtifact
+from caseworker.domain.artifact import (
+    ArtifactBlock,
+    PreparedArtifact,
+    compute_artifact_grounding_hash,
+)
 from caseworker.domain.case import Case
 from caseworker.domain.claim import Claim
 from caseworker.domain.context import ContextFact
@@ -31,6 +35,7 @@ from caseworker.domain.enums import (
 from caseworker.domain.errors import DomainValidationError
 from caseworker.domain.opportunity import Opportunity
 from caseworker.domain.preparation import PreparationIntelligenceReport
+from caseworker.domain.requirement_matcher import is_fact_verified
 from caseworker.domain.types import compute_sha256, now_utc
 
 PLANNER_VERSION = "job_app_planner_v1"
@@ -60,8 +65,8 @@ class JobApplicationArtifactPlanner:
         claims_by_id = {c.claim_id: c for c in supported_claims}
         facts_by_id = {f.fact_id: f for f in context_facts}
 
-        # Extract user profile info
-        applicant_name = self._extract_applicant_name(context_facts, case.user_id)
+        # Extract verified user profile info
+        applicant_name, name_fact_ids = self._extract_applicant_name(context_facts)
         contact_info_text, contact_fact_ids = self._extract_contact_info(context_facts)
 
         # 1. Compile Tailored CV
@@ -71,6 +76,7 @@ class JobApplicationArtifactPlanner:
             report=report,
             supported_claims=supported_claims,
             applicant_name=applicant_name,
+            name_fact_ids=name_fact_ids,
             contact_info_text=contact_info_text,
             contact_fact_ids=contact_fact_ids,
             artifact_set_id=artifact_set_id,
@@ -85,7 +91,7 @@ class JobApplicationArtifactPlanner:
             report=report,
             supported_claims=supported_claims,
             applicant_name=applicant_name,
-            contact_fact_ids=contact_fact_ids,
+            name_fact_ids=name_fact_ids,
             artifact_set_id=artifact_set_id,
             input_hash=input_hash,
             grounding_snapshot_hash=grounding_snapshot_hash,
@@ -119,7 +125,18 @@ class JobApplicationArtifactPlanner:
 
         # Verify claim-bounding invariants across all compiled artifacts
         for artifact in artifacts:
-            self._verify_artifact_invariants(artifact, claims_by_id)
+            art_claim_ids = {cid for b in artifact.blocks for cid in b.claim_ids}
+            art_fact_ids = {fid for b in artifact.blocks for fid in b.fact_ids}
+            art_claims = [claims_by_id[cid] for cid in art_claim_ids if cid in claims_by_id]
+            art_facts = [facts_by_id[fid] for fid in art_fact_ids if fid in facts_by_id]
+            artifact.grounding_snapshot_hash = compute_artifact_grounding_hash(art_claims, art_facts)
+
+            self._verify_artifact_invariants(
+                artifact=artifact,
+                supported_claims_by_id=claims_by_id,
+                context_facts_by_id=facts_by_id,
+                opportunity=opportunity,
+            )
 
         return artifacts
 
@@ -148,21 +165,36 @@ class JobApplicationArtifactPlanner:
                     f"Claim '{claim.claim_id}' must have status SUPPORTED, got '{claim.status.value}'."
                 )
 
-    def _extract_applicant_name(self, facts: list[ContextFact], default_id: str) -> str:
+    def _extract_applicant_name(self, facts: list[ContextFact]) -> tuple[str | None, list[str]]:
+        """Extract applicant name requiring USER_VERIFIED or SOURCE_VERIFIED status and job_application purpose."""
         for f in facts:
-            if f.namespace.lower() == "profile" and f.key.lower() in ("name", "full_name", "candidate_name"):
-                return str(f.value).strip()
-        return f"User {default_id[:8]}"
+            if (
+                f.namespace.lower() == "profile"
+                and f.key.lower() in ("name", "full_name", "candidate_name")
+                and is_fact_verified(f.verification_status)
+                and "job_application" in (f.allowed_purposes or [])
+                and f.superseded_by_fact_id is None
+            ):
+                return str(f.value).strip(), [f.fact_id]
+        return None, []
 
-    def _extract_contact_info(self, facts: list[ContextFact]) -> tuple[str, list[str]]:
+    def _extract_contact_info(self, facts: list[ContextFact]) -> tuple[str | None, list[str]]:
+        """Extract contact info requiring USER_VERIFIED or SOURCE_VERIFIED status and job_application purpose."""
         contact_parts: list[str] = []
         fact_ids: list[str] = []
         for f in facts:
-            if f.namespace.lower() == "profile" and f.key.lower() in ("email", "phone", "location", "linkedin", "github"):
+            if (
+                f.namespace.lower() == "profile"
+                and f.key.lower() in ("email", "phone", "location", "linkedin", "github")
+                and is_fact_verified(f.verification_status)
+                and "job_application" in (f.allowed_purposes or [])
+                and f.superseded_by_fact_id is None
+            ):
                 contact_parts.append(f"{f.key.title()}: {f.value}")
                 fact_ids.append(f.fact_id)
-        contact_text = " | ".join(contact_parts) if contact_parts else "Contact information on file"
-        return contact_text, fact_ids
+        if not contact_parts:
+            return None, []
+        return " | ".join(contact_parts), fact_ids
 
     def _extract_screening_questions(self, opportunity: Opportunity) -> list[str]:
         q_meta = opportunity.metadata.get("screening_questions") or opportunity.metadata.get("questions")
@@ -176,8 +208,9 @@ class JobApplicationArtifactPlanner:
         opportunity: Opportunity,
         report: PreparationIntelligenceReport,
         supported_claims: list[Claim],
-        applicant_name: str,
-        contact_info_text: str,
+        applicant_name: str | None,
+        name_fact_ids: list[str],
+        contact_info_text: str | None,
         contact_fact_ids: list[str],
         artifact_set_id: str,
         input_hash: str,
@@ -185,14 +218,24 @@ class JobApplicationArtifactPlanner:
     ) -> PreparedArtifact:
         blocks: list[ArtifactBlock] = []
 
-        # Header
-        blocks.append(
-            ArtifactBlock(
-                block_type="header",
-                content=applicant_name,
-                grounding_type=ArtifactGroundingType.STRUCTURAL,
+        # Header: Verified identity or clean structural header (never 'User <id>')
+        if applicant_name and name_fact_ids:
+            blocks.append(
+                ArtifactBlock(
+                    block_type="header",
+                    content=applicant_name,
+                    grounding_type=ArtifactGroundingType.CONTEXT_FACT,
+                    fact_ids=name_fact_ids,
+                )
             )
-        )
+        else:
+            blocks.append(
+                ArtifactBlock(
+                    block_type="header",
+                    content="Curriculum Vitae",
+                    grounding_type=ArtifactGroundingType.STRUCTURAL,
+                )
+            )
 
         # Target Opportunity Position
         blocks.append(
@@ -204,8 +247,8 @@ class JobApplicationArtifactPlanner:
             )
         )
 
-        # Contact Info
-        if contact_fact_ids:
+        # Contact Info (only if verified)
+        if contact_info_text and contact_fact_ids:
             blocks.append(
                 ArtifactBlock(
                     block_type="contact_info",
@@ -224,7 +267,7 @@ class JobApplicationArtifactPlanner:
             )
         )
 
-        # Build summary from top 1-2 claims
+        # Build summary strictly from top 1-2 claims
         summary_claims = supported_claims[:2]
         summary_text = " ".join(c.text for c in summary_claims)
         blocks.append(
@@ -245,7 +288,7 @@ class JobApplicationArtifactPlanner:
             )
         )
 
-        # Bullets from all supported claims
+        # Bullets from all supported claims strictly from canonical claim text
         for claim in supported_claims:
             blocks.append(
                 ArtifactBlock(
@@ -278,15 +321,14 @@ class JobApplicationArtifactPlanner:
         opportunity: Opportunity,
         report: PreparationIntelligenceReport,
         supported_claims: list[Claim],
-        applicant_name: str,
-        contact_fact_ids: list[str],
+        applicant_name: str | None,
+        name_fact_ids: list[str],
         artifact_set_id: str,
         input_hash: str,
         grounding_snapshot_hash: str,
     ) -> PreparedArtifact:
         blocks: list[ArtifactBlock] = []
 
-        # Recipient & Organization
         org = opportunity.organization or "Hiring Team"
         blocks.append(
             ArtifactBlock(
@@ -307,12 +349,11 @@ class JobApplicationArtifactPlanner:
             )
         )
 
-        # Opening paragraph
+        # Opening paragraph: assembled strictly from canonical claim text + opportunity fields
         lead_claim = supported_claims[0]
         opening_text = (
-            f"I am writing to express my enthusiastic interest in the {opportunity.title} role at {org}. "
-            f"{lead_claim.text} I am confident my technical qualifications and rigorous problem-solving approach "
-            f"align directly with {org}'s engineering objectives."
+            f"I am writing to express my interest in the {opportunity.title} position at {org}. "
+            f"{lead_claim.text}"
         )
         blocks.append(
             ArtifactBlock(
@@ -324,13 +365,10 @@ class JobApplicationArtifactPlanner:
             )
         )
 
-        # Body paragraph(s) from remaining claims
+        # Body paragraph(s) from remaining claims: strictly assembled from canonical text
         if len(supported_claims) > 1:
             body_claims = supported_claims[1:4]
-            body_text = (
-                f"Throughout my professional background, I have consistently demonstrated verified competencies. "
-                + " ".join(c.text for c in body_claims)
-            )
+            body_text = " ".join(c.text for c in body_claims)
             blocks.append(
                 ArtifactBlock(
                     block_type="paragraph",
@@ -340,27 +378,37 @@ class JobApplicationArtifactPlanner:
                 )
             )
 
-        # Closing paragraph
+        # Closing paragraph: Allowlisted non-factual connective template
+        closing_text = (
+            f"Thank you for your consideration. I look forward to discussing how my experience aligns with the needs of {org}."
+        )
         blocks.append(
             ArtifactBlock(
                 block_type="paragraph",
-                content=(
-                    f"I would welcome the opportunity to discuss in detail how my background and verified experience "
-                    f"can add immediate value to {org}. Thank you for your consideration."
-                ),
+                content=closing_text,
                 grounding_type=ArtifactGroundingType.STRUCTURAL,
                 opportunity_fields=["organization"],
             )
         )
 
-        # Sign-off
-        blocks.append(
-            ArtifactBlock(
-                block_type="footer",
-                content=f"Sincerely,\n{applicant_name}",
-                grounding_type=ArtifactGroundingType.STRUCTURAL,
+        # Sign-off: Grounded if name verified, structural otherwise
+        if applicant_name and name_fact_ids:
+            blocks.append(
+                ArtifactBlock(
+                    block_type="footer",
+                    content=f"Sincerely,\n{applicant_name}",
+                    grounding_type=ArtifactGroundingType.CONTEXT_FACT,
+                    fact_ids=name_fact_ids,
+                )
             )
-        )
+        else:
+            blocks.append(
+                ArtifactBlock(
+                    block_type="footer",
+                    content="Sincerely,",
+                    grounding_type=ArtifactGroundingType.STRUCTURAL,
+                )
+            )
 
         title = f"Tailored Cover Letter - {opportunity.organization} - {opportunity.title}".strip(" -")
         return PreparedArtifact(
@@ -377,6 +425,102 @@ class JobApplicationArtifactPlanner:
             planner_version=self.planner_version,
             schema_version=ARTIFACT_SCHEMA_VERSION,
         )
+
+    def _get_claim_kind(self, claim: Claim) -> AssertionKind | None:
+        if claim.assertion_json:
+            try:
+                import json
+                data = json.loads(claim.assertion_json)
+                k = data.get("kind")
+                if k:
+                    return AssertionKind(k)
+            except Exception:
+                pass
+        return None
+
+    def _get_claim_skill(self, claim: Claim) -> str | None:
+        if claim.assertion_json:
+            try:
+                import json
+                data = json.loads(claim.assertion_json)
+                fields = data.get("fields", {})
+                return fields.get("skill") or fields.get("project_name") or fields.get("role")
+            except Exception:
+                pass
+        return None
+
+    def _match_claim_for_question(self, question: str, supported_claims: list[Claim]) -> Claim | None:
+        """Deterministically match a screening question to a relevant supported claim."""
+        q_lower = question.lower()
+
+        # 1. Work authorization / visa / sponsorship
+        auth_keywords = [
+            "visa",
+            "sponsor",
+            "sponsorship",
+            "authorized",
+            "authorization",
+            "permit",
+            "citizen",
+            "citizenship",
+            "work eligibility",
+            "eligible to work",
+            "right to work",
+        ]
+        if any(kw in q_lower for kw in auth_keywords):
+            for c in supported_claims:
+                spec_kind = self._get_claim_kind(c)
+                if spec_kind == AssertionKind.WORK_AUTHORIZATION or "authorized to work" in c.text.lower():
+                    return c
+
+        # 2. Language proficiency
+        lang_keywords = ["language", "english", "german", "french", "spanish", "fluent", "proficiency", "cefr"]
+        if any(kw in q_lower for kw in lang_keywords):
+            for c in supported_claims:
+                spec_kind = self._get_claim_kind(c)
+                if spec_kind == AssertionKind.LANGUAGE_PROFICIENCY or "proficient in" in c.text.lower():
+                    for specific_lang in ["english", "german", "french", "spanish"]:
+                        if specific_lang in q_lower:
+                            if specific_lang in c.text.lower():
+                                return c
+                    return c
+
+        # 3. Employment duration / years of experience
+        duration_keywords = [
+            "years of experience",
+            "how many years",
+            "years have you",
+            "experience duration",
+            "duration of experience",
+            "years' experience",
+            "years of professional",
+        ]
+        if any(kw in q_lower for kw in duration_keywords):
+            for c in supported_claims:
+                spec_kind = self._get_claim_kind(c)
+                if (
+                    spec_kind == AssertionKind.EMPLOYMENT_DURATION
+                    or "years of experience" in c.text.lower()
+                    or "years of professional" in c.text.lower()
+                ):
+                    return c
+
+        # 4. Specific technical skill / domain
+        for c in supported_claims:
+            skill_name = self._get_claim_skill(c)
+            if skill_name and skill_name.lower() in q_lower:
+                return c
+
+        for c in supported_claims:
+            words = [
+                w
+                for w in re.findall(r"\b[a-zA-Z]{4,}\b", c.text.lower())
+                if w not in ("experience", "possesses", "engineered", "demonstrated", "served")
+            ]
+            if any(w in q_lower for w in words):
+                return c
+
+        return None
 
     def _compile_screening_answers(
         self,
@@ -400,23 +544,38 @@ class JobApplicationArtifactPlanner:
             )
         )
 
-        for i, q in enumerate(questions):
-            claim_idx = i % len(supported_claims)
-            matching_claim = supported_claims[claim_idx]
-            answer_text = (
-                f"In response to this requirement: {matching_claim.text} "
-                f"This background directly supports the technical expectations of {opportunity.organization}."
-            )
-            blocks.append(
-                ArtifactBlock(
-                    block_type="qna_item",
-                    content=f"Q: {q}\n\nA: {answer_text}",
-                    grounding_type=ArtifactGroundingType.CLAIM,
-                    claim_ids=[matching_claim.claim_id],
-                    opportunity_fields=["organization"],
-                    metadata={"question": q, "answer": answer_text},
+        for q in questions:
+            matching_claim = self._match_claim_for_question(q, supported_claims)
+            if matching_claim is not None:
+                blocks.append(
+                    ArtifactBlock(
+                        block_type="qna_item",
+                        content=f"Q: {q}\n\nA: {matching_claim.text}",
+                        grounding_type=ArtifactGroundingType.CLAIM,
+                        claim_ids=[matching_claim.claim_id],
+                        opportunity_fields=["organization"],
+                        metadata={
+                            "question": q,
+                            "answer_status": "ANSWERED",
+                            "answer": matching_claim.text,
+                        },
+                    )
                 )
-            )
+            else:
+                blocks.append(
+                    ArtifactBlock(
+                        block_type="qna_item",
+                        content=f"Q: {q}",
+                        grounding_type=ArtifactGroundingType.STRUCTURAL,
+                        claim_ids=[],
+                        opportunity_fields=["organization"],
+                        metadata={
+                            "question": q,
+                            "answer_status": "NEEDS_USER_INPUT",
+                            "answer": None,
+                        },
+                    )
+                )
 
         title = f"Screening Answers - {opportunity.organization} - {opportunity.title}".strip(" -")
         return PreparedArtifact(
@@ -462,8 +621,8 @@ class JobApplicationArtifactPlanner:
             ArtifactBlock(
                 block_type="paragraph",
                 content=(
-                    f"Preparation Answer Bank: Verified narrative responses for common application questions, "
-                    f"tailored for {org} and grounded strictly in verified vault claims."
+                    f"Preparation Answer Bank: Structured responses for common application questions, "
+                    f"tailored for {org} and grounded in verified vault claims."
                 ),
                 grounding_type=ArtifactGroundingType.STRUCTURAL,
                 opportunity_fields=["organization"],
@@ -471,57 +630,114 @@ class JobApplicationArtifactPlanner:
         )
 
         lead_claim = supported_claims[0]
-        achievement_claim = supported_claims[1] if len(supported_claims) > 1 else lead_claim
-        skill_claim = supported_claims[2] if len(supported_claims) > 2 else lead_claim
+        achievement_claim = next(
+            (
+                c
+                for c in supported_claims
+                if self._get_claim_kind(c) in (AssertionKind.QUANTIFIED_ACHIEVEMENT, AssertionKind.PROJECT_EXPERIENCE)
+            ),
+            None,
+        )
+        skill_claims = [c for c in supported_claims if self._get_claim_kind(c) == AssertionKind.SKILL_POSSESSION]
+        auth_claim = next(
+            (
+                c
+                for c in supported_claims
+                if self._get_claim_kind(c) == AssertionKind.WORK_AUTHORIZATION
+                or "authorized to work" in c.text.lower()
+            ),
+            None,
+        )
 
-        standard_qnas = [
-            (
-                f"Why are you interested in this role at {org}?",
-                (
-                    f"I am targeting this {role} position because my verified background directly aligns with your requirements. "
-                    f"{lead_claim.text} I look forward to applying these competencies to solve engineering challenges at {org}."
-                ),
-                [lead_claim.claim_id],
-                ["organization", "title"],
-            ),
-            (
-                "Describe a significant technical accomplishment or complex challenge you solved.",
-                (
-                    f"In my previous work, {achievement_claim.text} "
-                    f"This experience solidified my approach to building robust, verifiable software systems."
-                ),
-                [achievement_claim.claim_id],
-                [],
-            ),
-            (
-                "What are your core technical competencies and areas of expertise?",
-                (
-                    f"My primary areas of verified technical capability include: {skill_claim.text} "
-                    f"I continuously apply these skills adhering to sound software engineering best practices."
-                ),
-                [skill_claim.claim_id],
-                [],
-            ),
-            (
-                "What is your work authorization status and current availability?",
-                (
-                    f"I am available to transition into the {role} position at {org} following standard notice periods, "
-                    f"and all requisite qualifications and credentials are fully verified."
-                ),
-                [lead_claim.claim_id],
-                ["organization", "title"],
-            ),
-        ]
+        # Question 1: Role interest
+        q1 = f"Why are you interested in this role at {org}?"
+        a1 = f"I am targeting the {role} position at {org} based on my qualifications: {lead_claim.text}"
+        blocks.append(
+            ArtifactBlock(
+                block_type="qna_item",
+                content=f"Q: {q1}\n\nA: {a1}",
+                grounding_type=ArtifactGroundingType.CLAIM,
+                claim_ids=[lead_claim.claim_id],
+                opportunity_fields=["organization", "title"],
+                metadata={"question": q1, "answer_status": "ANSWERED", "answer": a1},
+            )
+        )
 
-        for q, a, claim_ids, opp_fields in standard_qnas:
+        # Question 2: Technical accomplishment
+        q2 = "Describe a significant technical accomplishment or complex challenge you solved."
+        if achievement_claim is not None:
+            a2 = achievement_claim.text
             blocks.append(
                 ArtifactBlock(
                     block_type="qna_item",
-                    content=f"Q: {q}\n\nA: {a}",
+                    content=f"Q: {q2}\n\nA: {a2}",
                     grounding_type=ArtifactGroundingType.CLAIM,
-                    claim_ids=claim_ids,
-                    opportunity_fields=opp_fields,
-                    metadata={"question": q, "answer": a},
+                    claim_ids=[achievement_claim.claim_id],
+                    opportunity_fields=[],
+                    metadata={"question": q2, "answer_status": "ANSWERED", "answer": a2},
+                )
+            )
+        else:
+            blocks.append(
+                ArtifactBlock(
+                    block_type="qna_item",
+                    content=f"Q: {q2}",
+                    grounding_type=ArtifactGroundingType.STRUCTURAL,
+                    claim_ids=[],
+                    opportunity_fields=[],
+                    metadata={"question": q2, "answer_status": "NEEDS_USER_INPUT", "answer": None},
+                )
+            )
+
+        # Question 3: Core competencies
+        q3 = "What are your core technical competencies and areas of expertise?"
+        if skill_claims:
+            a3 = " ".join(c.text for c in skill_claims[:3])
+            blocks.append(
+                ArtifactBlock(
+                    block_type="qna_item",
+                    content=f"Q: {q3}\n\nA: {a3}",
+                    grounding_type=ArtifactGroundingType.CLAIM,
+                    claim_ids=[c.claim_id for c in skill_claims[:3]],
+                    opportunity_fields=[],
+                    metadata={"question": q3, "answer_status": "ANSWERED", "answer": a3},
+                )
+            )
+        else:
+            blocks.append(
+                ArtifactBlock(
+                    block_type="qna_item",
+                    content=f"Q: {q3}",
+                    grounding_type=ArtifactGroundingType.STRUCTURAL,
+                    claim_ids=[],
+                    opportunity_fields=[],
+                    metadata={"question": q3, "answer_status": "NEEDS_USER_INPUT", "answer": None},
+                )
+            )
+
+        # Question 4: Work authorization
+        q4 = "What is your work authorization status?"
+        if auth_claim is not None:
+            a4 = auth_claim.text
+            blocks.append(
+                ArtifactBlock(
+                    block_type="qna_item",
+                    content=f"Q: {q4}\n\nA: {a4}",
+                    grounding_type=ArtifactGroundingType.CLAIM,
+                    claim_ids=[auth_claim.claim_id],
+                    opportunity_fields=[],
+                    metadata={"question": q4, "answer_status": "ANSWERED", "answer": a4},
+                )
+            )
+        else:
+            blocks.append(
+                ArtifactBlock(
+                    block_type="qna_item",
+                    content=f"Q: {q4}",
+                    grounding_type=ArtifactGroundingType.STRUCTURAL,
+                    claim_ids=[],
+                    opportunity_fields=[],
+                    metadata={"question": q4, "answer_status": "NEEDS_USER_INPUT", "answer": None},
                 )
             )
 
@@ -545,8 +761,10 @@ class JobApplicationArtifactPlanner:
         self,
         artifact: PreparedArtifact,
         supported_claims_by_id: dict[str, Claim],
+        context_facts_by_id: dict[str, ContextFact] | None = None,
+        opportunity: Opportunity | None = None,
     ) -> None:
-        """Enforce Phase 5.2.2 strict claim-bound invariants."""
+        """Enforce Phase 5.2.2.1 strict claim-bound invariants."""
         # 1. Check for synthetic citation markers
         forbidden_patterns = [
             r"\[claim:[^\]]+\]",
@@ -561,9 +779,19 @@ class JobApplicationArtifactPlanner:
                     f"Artifact '{artifact.artifact_id}' contains synthetic citation markers matching '{pat}'."
                 )
 
-        # 2. Check block-level claim grounding
+        # 2. Check block-level grounding rules
         for block in artifact.blocks:
-            if block.grounding_type == ArtifactGroundingType.CLAIM:
+            if block.grounding_type == ArtifactGroundingType.STRUCTURAL:
+                if block.claim_ids:
+                    raise DomainValidationError(
+                        f"Structural block '{block.block_id}' must not have claim_ids."
+                    )
+                if block.fact_ids:
+                    raise DomainValidationError(
+                        f"Structural block '{block.block_id}' must not have fact_ids."
+                    )
+
+            elif block.grounding_type == ArtifactGroundingType.CLAIM:
                 if not block.claim_ids:
                     raise DomainValidationError(
                         f"Block '{block.block_id}' is CLAIM grounded but has no claim_ids."
@@ -578,3 +806,37 @@ class JobApplicationArtifactPlanner:
                         raise DomainValidationError(
                             f"Block '{block.block_id}' references claim '{cid}' with status '{claim.status.value}' (expected SUPPORTED)."
                         )
+
+            elif block.grounding_type == ArtifactGroundingType.CONTEXT_FACT:
+                if not block.fact_ids:
+                    raise DomainValidationError(
+                        f"Block '{block.block_id}' is CONTEXT_FACT grounded but has no fact_ids."
+                    )
+                if context_facts_by_id:
+                    for fid in block.fact_ids:
+                        if fid not in context_facts_by_id:
+                            raise DomainValidationError(
+                                f"Block '{block.block_id}' references unknown fact '{fid}'."
+                            )
+                        fact = context_facts_by_id[fid]
+                        if not is_fact_verified(fact.verification_status):
+                            raise DomainValidationError(
+                                f"Block '{block.block_id}' references unverified fact '{fid}'."
+                            )
+                        if "job_application" not in (fact.allowed_purposes or []):
+                            raise DomainValidationError(
+                                f"Block '{block.block_id}' references fact '{fid}' not authorized for job_application."
+                            )
+
+            elif block.grounding_type == ArtifactGroundingType.OPPORTUNITY:
+                if not block.opportunity_fields:
+                    raise DomainValidationError(
+                        f"Block '{block.block_id}' is OPPORTUNITY grounded but has no opportunity_fields."
+                    )
+                if opportunity:
+                    for field_name in block.opportunity_fields:
+                        val = getattr(opportunity, field_name, None)
+                        if not val and field_name not in opportunity.metadata:
+                            raise DomainValidationError(
+                                f"Block '{block.block_id}' references missing opportunity field '{field_name}'."
+                            )

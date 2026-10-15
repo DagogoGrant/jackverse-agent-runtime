@@ -236,6 +236,17 @@
       "ArtifactBlockResponse": {
         "description": "Semantic block within an artifact AST.",
         "properties": {
+          "answer_status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Answer Status"
+          },
           "block_id": {
             "title": "Block Id",
             "type": "string"
@@ -317,6 +328,11 @@
           "input_hash": {
             "title": "Input Hash",
             "type": "string"
+          },
+          "is_stale": {
+            "default": false,
+            "title": "Is Stale",
+            "type": "boolean"
           },
           "material_type": {
             "title": "Material Type",
@@ -2487,6 +2503,11 @@
           "input_hash": {
             "title": "Input Hash",
             "type": "string"
+          },
+          "is_stale": {
+            "default": false,
+            "title": "Is Stale",
+            "type": "boolean"
           },
           "material_type": {
             "title": "Material Type",
