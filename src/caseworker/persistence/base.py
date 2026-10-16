@@ -14,7 +14,7 @@ from caseworker.domain.claim import Claim
 from caseworker.domain.context import ContextFact
 from caseworker.domain.enums import ArtifactStatus, CaseStatus, ClaimStatus, MissionStatus, OpportunityStatus
 from caseworker.domain.events import DomainEvent
-from caseworker.domain.execution_plan import ExternalExecutionPlan
+from caseworker.domain.execution_plan import ExecutionUploadAsset, ExternalExecutionPlan
 from caseworker.domain.mission import Mission
 from caseworker.domain.opportunity import Opportunity
 from caseworker.domain.package import PreparationPackage
@@ -374,6 +374,27 @@ class ExternalExecutionPlanRepository(Protocol):
 
 
 @runtime_checkable
+class ExecutionUploadAssetRepository(Protocol):
+    """Repository interface for ExecutionUploadAsset entities."""
+
+    def save(self, asset: ExecutionUploadAsset) -> None:
+        """Save a new upload asset or update an existing one."""
+        ...
+
+    def get_by_id(self, asset_id: str) -> ExecutionUploadAsset | None:
+        """Retrieve an upload asset by its unique asset_id."""
+        ...
+
+    def list_by_plan(self, plan_id: str) -> list[ExecutionUploadAsset]:
+        """List all upload assets linked to a specific execution plan."""
+        ...
+
+    def list_by_case(self, case_id: str) -> list[ExecutionUploadAsset]:
+        """List all upload assets linked to a specific case."""
+        ...
+
+
+@runtime_checkable
 class CaseworkerUnitOfWork(Protocol):
     """Transaction / Unit-of-Work boundary ensuring atomic domain state and event persistence."""
 
@@ -389,6 +410,7 @@ class CaseworkerUnitOfWork(Protocol):
     preparation_artifacts: PreparationArtifactRepository
     preparation_packages: PreparationPackageRepository
     execution_plans: ExternalExecutionPlanRepository
+    upload_assets: ExecutionUploadAssetRepository
     events: EventStore
 
     def commit(self) -> None:

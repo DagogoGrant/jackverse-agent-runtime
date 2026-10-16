@@ -62,6 +62,7 @@ from caseworker.domain.execution_plan import (
     assert_safe_channel_metadata,
     compute_execution_input_hash,
     compute_execution_plan_fingerprint,
+    compute_execution_plan_staleness,
 )
 from caseworker.domain.execution_planner import ExecutionPlanCompiler
 from caseworker.domain.opportunity import Opportunity
@@ -880,6 +881,239 @@ class TestExecutionPlanServiceAndIntegration(unittest.TestCase):
             loaded_plan.version += 1
             with self.assertRaises(DomainValidationError):
                 uow.execution_plans.save(loaded_plan)
+
+    def test_clarification1_schema_persistence_and_fingerprint_binding(self) -> None:
+        """Clarification 1: Target schema hash, input hash, planning findings, and provenance persisted and bound in fingerprint."""
+        plan = self.service.create_execution_plan(
+            user_id=self.user_id,
+            case_id=self.case.case_id,
+            target_schema=self.schema,
+        )
+        with self.storage.unit_of_work() as uow:
+            loaded = uow.execution_plans.get_by_id(plan.plan_id)
+            self.assertIsNotNone(loaded)
+            self.assertEqual(loaded.target_schema_hash, self.schema.schema_hash)
+            self.assertEqual(loaded.destination_provenance, DestinationProvenance.OPPORTUNITY_APPLICATION_URL.value)
+            self.assertTrue(len(loaded.execution_input_hash) > 0)
+            self.assertTrue(len(loaded.findings) > 0)
+            self.assertEqual(loaded.planning_findings, loaded.findings)
+
+        # Modifying the schema produces a different schema hash and fingerprint
+        modified_schema = TargetInteractionSchema(
+            schema_id="ats_workable_mod",
+            destination_type="ats_form",
+            fields=list(self.schema.fields) + [
+                TargetSchemaField(target_field_id="portfolio_url", label="Portfolio", required=False)
+            ],
+            upload_slots=list(self.schema.upload_slots),
+            screening_questions=list(self.schema.screening_questions),
+            final_submit_control=self.schema.final_submit_control,
+        )
+        self.assertNotEqual(self.schema.schema_hash, modified_schema.schema_hash)
+
+        plan_mod = self.service.create_execution_plan(
+            user_id=self.user_id,
+            case_id=self.case.case_id,
+            target_schema=modified_schema,
+        )
+        self.assertNotEqual(plan.execution_plan_fingerprint, plan_mod.execution_plan_fingerprint)
+
+    def test_clarification2_durable_upload_assets_repository(self) -> None:
+        """Clarification 2: Dedicated execution_upload_assets table with BLOB bytes and preconditions."""
+        plan = self.service.create_execution_plan(
+            user_id=self.user_id,
+            case_id=self.case.case_id,
+            target_schema=self.schema,
+        )
+        self.assertEqual(plan.status, ExternalExecutionPlanStatus.READY_FOR_AUTHORIZATION)
+        self.assertEqual(len(plan.upload_mappings), 1)
+        upload = plan.upload_mappings[0]
+
+        # Verify persisted BLOB via uow.upload_assets
+        with self.storage.unit_of_work() as uow:
+            asset = uow.upload_assets.get_by_id(upload.asset_id)
+            self.assertIsNotNone(asset)
+            self.assertIsInstance(asset.content_bytes, bytes)
+            self.assertEqual(asset.byte_size, len(asset.content_bytes))
+            self.assertEqual(asset.content_sha256, upload.content_sha256)
+            self.assertEqual(asset.plan_id, plan.plan_id)
+            self.assertEqual(asset.case_id, plan.case_id)
+            self.assertEqual(asset.user_id, plan.user_id)
+
+            # Test list_by_plan and list_by_case
+            by_plan = uow.upload_assets.list_by_plan(plan.plan_id)
+            self.assertEqual(len(by_plan), 1)
+            self.assertEqual(by_plan[0].asset_id, upload.asset_id)
+
+            by_case = uow.upload_assets.list_by_case(plan.case_id)
+            self.assertEqual(len(by_case), 1)
+            self.assertEqual(by_case[0].asset_id, upload.asset_id)
+
+    def test_clarification3_plan_staleness_computation_and_side_effect_free(self) -> None:
+        """Clarification 3: Plan staleness detection across dependencies, side-effect free on GET."""
+        plan = self.service.create_execution_plan(
+            user_id=self.user_id,
+            case_id=self.case.case_id,
+            target_schema=self.schema,
+        )
+        # Newly created plan is not stale
+        fetched = self.service.get_latest_execution_plan(self.user_id, self.case.case_id)
+        self.assertIsNotNone(fetched)
+        self.assertFalse(fetched.is_stale)
+        self.assertEqual(fetched.staleness_reasons, [])
+
+        # Now mutate a dependent ContextFact version (e.g. name updated)
+        with self.storage.unit_of_work() as uow:
+            fact = uow.context.get_by_id(self.fact_name.fact_id)
+            self.assertIsNotNone(fact)
+            updated_fact = ContextFact(
+                fact_id=fact.fact_id,
+                user_id=fact.user_id,
+                namespace=fact.namespace,
+                key=fact.key,
+                value="Grant Dagogo-Jack PhD",
+                source_type=fact.source_type,
+                source_reference=fact.source_reference,
+                confidence=fact.confidence,
+                verification_status=fact.verification_status,
+                sensitivity=fact.sensitivity,
+                allowed_purposes=fact.allowed_purposes,
+                created_at=fact.created_at,
+                updated_at=now_utc(),
+                version=fact.version + 1,
+            )
+            uow.context.save(updated_fact)
+            uow.commit()
+
+        # GET should now report is_stale=True side-effect free (DB status is still READY_FOR_AUTHORIZATION)
+        fetched_stale = self.service.get_latest_execution_plan(self.user_id, self.case.case_id)
+        self.assertIsNotNone(fetched_stale)
+        self.assertTrue(fetched_stale.is_stale)
+        self.assertTrue(any("version changed" in r for r in fetched_stale.staleness_reasons))
+
+        # Check DB status remains READY_FOR_AUTHORIZATION
+        with self.storage.unit_of_work() as uow:
+            db_plan = uow.execution_plans.get_by_id(plan.plan_id)
+            self.assertEqual(db_plan.status, ExternalExecutionPlanStatus.READY_FOR_AUTHORIZATION)
+
+    def test_clarification4_destination_security_and_normalization(self) -> None:
+        """Clarification 4: Destination security: reject credentials, non-https, forbidden schemes, store normalized origin & hostname."""
+        # Valid https with path and query
+        dest = ExecutionDestination(
+            destination_type=ExecutionDestinationType.ATS_FORM.value,
+            destination_provenance=DestinationProvenance.OPPORTUNITY_APPLICATION_URL.value,
+            canonical_url="https://ACME.com:443/apply/job?source=linkedin",
+            organization="Acme",
+        )
+        self.assertEqual(dest.normalized_origin, "https://acme.com:443")
+        self.assertEqual(dest.normalized_hostname, "acme.com")
+        self.assertEqual(dest.canonical_url, "https://ACME.com:443/apply/job?source=linkedin")
+
+        # Reject embedded credentials
+        with self.assertRaises(DomainValidationError):
+            ExecutionDestination(
+                destination_type=ExecutionDestinationType.ATS_FORM.value,
+                destination_provenance=DestinationProvenance.USER_PROVIDED.value,
+                canonical_url="https://user:pass@evil.com/apply",
+                organization="Evil",
+            )
+
+        # Reject non-https for ATS_FORM
+        with self.assertRaises(DomainValidationError):
+            ExecutionDestination(
+                destination_type=ExecutionDestinationType.ATS_FORM.value,
+                destination_provenance=DestinationProvenance.USER_PROVIDED.value,
+                canonical_url="http://insecure.com/apply",
+                organization="Insecure",
+            )
+
+        # Reject javascript: and data:
+        with self.assertRaises(DomainValidationError):
+            ExecutionDestination(
+                destination_type=ExecutionDestinationType.CUSTOM.value,
+                destination_provenance=DestinationProvenance.USER_PROVIDED.value,
+                canonical_url="javascript:alert(1)",
+                organization="XSS",
+            )
+
+    def test_clarification5_target_field_semantic_type_validation(self) -> None:
+        """Clarification 5: Target field semantic type validation: strict select, boolean, email, phone, date; ambiguous kept in DRAFT."""
+        # Construct schema with typed fields
+        typed_schema = TargetInteractionSchema(
+            schema_id="ats_typed_schema",
+            destination_type="ats_form",
+            fields=[
+                TargetSchemaField(target_field_id="work_auth", label="Authorized to work in Germany?", field_type="select", required=True, allowed_options=["Yes", "No"]),
+                TargetSchemaField(target_field_id="remote_ok", label="Willing to work remote?", field_type="boolean", required=True),
+                TargetSchemaField(target_field_id="start_date", label="Start Date", field_type="date", required=True),
+                TargetSchemaField(target_field_id="contact_email", label="Email", field_type="email", required=True),
+                TargetSchemaField(target_field_id="contact_phone", label="Phone", field_type="phone", required=True),
+            ],
+            upload_slots=list(self.schema.upload_slots),
+            screening_questions=[],
+            final_submit_control=self.schema.final_submit_control,
+        )
+
+        # Case 1: Fact has descriptive text instead of exact option: "authorized to work in Germany"
+        with self.storage.unit_of_work() as uow:
+            uow.context.save(ContextFact(
+                fact_id="fact-auth-ambiguous",
+                user_id=self.user_id,
+                namespace="work_authorization",
+                key="work_auth",
+                value="authorized to work in Germany without restriction",
+                verification_status=VerificationStatus.USER_VERIFIED,
+                allowed_purposes=["job_application"],
+            ))
+            uow.context.save(ContextFact(
+                fact_id="fact-remote",
+                user_id=self.user_id,
+                namespace="preferences",
+                key="remote_ok",
+                value="True",
+                verification_status=VerificationStatus.USER_VERIFIED,
+                allowed_purposes=["job_application"],
+            ))
+            uow.context.save(ContextFact(
+                fact_id="fact-date",
+                user_id=self.user_id,
+                namespace="availability",
+                key="start_date",
+                value="2026-11-01",
+                verification_status=VerificationStatus.USER_VERIFIED,
+                allowed_purposes=["job_application"],
+            ))
+            uow.context.save(ContextFact(
+                fact_id="fact-email",
+                user_id=self.user_id,
+                namespace="identity",
+                key="contact_email",
+                value="grant@example.com",
+                verification_status=VerificationStatus.USER_VERIFIED,
+                allowed_purposes=["job_application"],
+            ))
+            uow.context.save(ContextFact(
+                fact_id="fact-phone",
+                user_id=self.user_id,
+                namespace="identity",
+                key="contact_phone",
+                value="+49 151 12345678",
+                verification_status=VerificationStatus.USER_VERIFIED,
+                allowed_purposes=["job_application"],
+            ))
+            uow.commit()
+
+        # When compiling, select field "work_auth" cannot guess between "Yes" and "No"
+        # Plan MUST stay DRAFT with INVALID_FIELD_TYPE_CONVERSION finding
+        plan_draft = self.service.create_execution_plan(
+            user_id=self.user_id,
+            case_id=self.case.case_id,
+            target_schema=typed_schema,
+        )
+        self.assertEqual(plan_draft.status, ExternalExecutionPlanStatus.DRAFT)
+        err_findings = [f for f in plan_draft.findings if f.code == "INVALID_FIELD_TYPE_CONVERSION"]
+        self.assertTrue(len(err_findings) > 0)
+        self.assertIn("work_auth", [f.details.get("target_field_id") for f in err_findings])
 
 
 if __name__ == "__main__":

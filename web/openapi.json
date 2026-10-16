@@ -1570,6 +1570,16 @@
             "title": "Is Exact Destination",
             "type": "boolean"
           },
+          "normalized_hostname": {
+            "default": "",
+            "title": "Normalized Hostname",
+            "type": "string"
+          },
+          "normalized_origin": {
+            "default": "",
+            "title": "Normalized Origin",
+            "type": "string"
+          },
           "organization": {
             "title": "Organization",
             "type": "string"
@@ -1787,6 +1797,11 @@
           "destination": {
             "$ref": "#/components/schemas/ExecutionDestinationSchema"
           },
+          "destination_provenance": {
+            "default": "",
+            "title": "Destination Provenance",
+            "type": "string"
+          },
           "execution_input_hash": {
             "title": "Execution Input Hash",
             "type": "string"
@@ -1819,6 +1834,11 @@
             "title": "Findings",
             "type": "array"
           },
+          "is_stale": {
+            "default": false,
+            "title": "Is Stale",
+            "type": "boolean"
+          },
           "opportunity_id": {
             "title": "Opportunity Id",
             "type": "string"
@@ -1839,6 +1859,13 @@
             "title": "Planner Version",
             "type": "string"
           },
+          "planning_findings": {
+            "items": {
+              "$ref": "#/components/schemas/ExecutionPlanFindingResponse"
+            },
+            "title": "Planning Findings",
+            "type": "array"
+          },
           "schema_version": {
             "title": "Schema Version",
             "type": "string"
@@ -1848,6 +1875,13 @@
               "$ref": "#/components/schemas/ExecutionScreeningResponseDTO"
             },
             "title": "Screening Responses",
+            "type": "array"
+          },
+          "staleness_reasons": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Staleness Reasons",
             "type": "array"
           },
           "status": {
@@ -1863,6 +1897,11 @@
                 "type": "null"
               }
             ]
+          },
+          "target_schema_hash": {
+            "default": "",
+            "title": "Target Schema Hash",
+            "type": "string"
           },
           "updated_at": {
             "title": "Updated At",

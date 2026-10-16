@@ -255,13 +255,15 @@ CREATE TABLE IF NOT EXISTS external_execution_plans (
     package_fingerprint TEXT NOT NULL,
     user_id TEXT NOT NULL,
     status TEXT NOT NULL,
+    destination_provenance TEXT NOT NULL,
     destination_json TEXT NOT NULL,
     target_schema_json TEXT,
+    target_schema_hash TEXT NOT NULL,
     field_mappings_json TEXT NOT NULL,
     upload_mappings_json TEXT NOT NULL,
     screening_responses_json TEXT NOT NULL,
     final_submit_control_json TEXT,
-    findings_json TEXT NOT NULL,
+    planning_findings_json TEXT NOT NULL,
     execution_input_hash TEXT NOT NULL,
     execution_plan_fingerprint TEXT NOT NULL UNIQUE,
     schema_version TEXT NOT NULL,
@@ -278,6 +280,27 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_exec_plans_fingerprint ON external_executi
 CREATE INDEX IF NOT EXISTS idx_exec_plans_case ON external_execution_plans(case_id, status);
 CREATE INDEX IF NOT EXISTS idx_exec_plans_package ON external_execution_plans(package_id);
 CREATE INDEX IF NOT EXISTS idx_exec_plans_user ON external_execution_plans(user_id);
+
+CREATE TABLE IF NOT EXISTS execution_upload_assets (
+    asset_id TEXT PRIMARY KEY,
+    plan_id TEXT NOT NULL,
+    case_id TEXT NOT NULL,
+    user_id TEXT NOT NULL,
+    source_artifact_id TEXT NOT NULL,
+    source_artifact_version INTEGER NOT NULL,
+    role TEXT NOT NULL,
+    filename TEXT NOT NULL,
+    mime_type TEXT NOT NULL,
+    byte_size INTEGER NOT NULL,
+    content_sha256 TEXT NOT NULL,
+    content_bytes BLOB NOT NULL,
+    created_at TEXT NOT NULL,
+    FOREIGN KEY (plan_id) REFERENCES external_execution_plans(plan_id) ON DELETE CASCADE,
+    FOREIGN KEY (case_id) REFERENCES cases(case_id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_exec_upload_assets_plan ON execution_upload_assets(plan_id);
+CREATE INDEX IF NOT EXISTS idx_exec_upload_assets_case ON execution_upload_assets(case_id);
 """
 
 

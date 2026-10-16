@@ -1837,6 +1837,16 @@ export interface components {
              * @default true
              */
             is_exact_destination: boolean;
+            /**
+             * Normalized Hostname
+             * @default
+             */
+            normalized_hostname: string;
+            /**
+             * Normalized Origin
+             * @default
+             */
+            normalized_origin: string;
             /** Organization */
             organization: string;
         };
@@ -1922,6 +1932,11 @@ export interface components {
             /** Created At */
             created_at: string;
             destination: components["schemas"]["ExecutionDestinationSchema"];
+            /**
+             * Destination Provenance
+             * @default
+             */
+            destination_provenance: string;
             /** Execution Input Hash */
             execution_input_hash: string;
             /** Execution Plan Fingerprint */
@@ -1931,6 +1946,11 @@ export interface components {
             final_submit_control?: components["schemas"]["TargetSubmitControlSpecSchema"] | null;
             /** Findings */
             findings: components["schemas"]["ExecutionPlanFindingResponse"][];
+            /**
+             * Is Stale
+             * @default false
+             */
+            is_stale: boolean;
             /** Opportunity Id */
             opportunity_id: string;
             /** Package Fingerprint */
@@ -1941,13 +1961,22 @@ export interface components {
             plan_id: string;
             /** Planner Version */
             planner_version: string;
+            /** Planning Findings */
+            planning_findings?: components["schemas"]["ExecutionPlanFindingResponse"][];
             /** Schema Version */
             schema_version: string;
             /** Screening Responses */
             screening_responses: components["schemas"]["ExecutionScreeningResponseDTO"][];
+            /** Staleness Reasons */
+            staleness_reasons?: string[];
             /** Status */
             status: string;
             target_schema?: components["schemas"]["TargetInteractionSchemaSchema"] | null;
+            /**
+             * Target Schema Hash
+             * @default
+             */
+            target_schema_hash: string;
             /** Updated At */
             updated_at: string;
             /** Upload Mappings */

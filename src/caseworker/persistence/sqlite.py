@@ -93,6 +93,7 @@ from caseworker.persistence.base import (
     ContextRepository,
     ContextSourceRepository,
     EventStore,
+    ExecutionUploadAssetRepository,
     ExternalExecutionPlanRepository,
     MissionRepository,
     OpportunityRepository,
@@ -2105,6 +2106,107 @@ class SQLitePreparationPackageRepository(PreparationPackageRepository):
         return [self._row_to_package(row) for row in cur.fetchall()]
 
 
+class SQLiteExecutionUploadAssetRepository(ExecutionUploadAssetRepository):
+    """SQLite implementation of ExecutionUploadAssetRepository."""
+
+    def __init__(self, conn: sqlite3.Connection) -> None:
+        self.conn = conn
+
+    def save(self, asset: ExecutionUploadAsset) -> None:
+        cur = self.conn.cursor()
+        cur.execute(
+            """
+            INSERT INTO execution_upload_assets (
+                asset_id, plan_id, case_id, user_id, source_artifact_id,
+                source_artifact_version, role, filename, mime_type,
+                byte_size, content_sha256, content_bytes, created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(asset_id) DO UPDATE SET
+                byte_size = excluded.byte_size,
+                content_sha256 = excluded.content_sha256,
+                content_bytes = excluded.content_bytes
+            """,
+            (
+                asset.asset_id,
+                asset.plan_id,
+                asset.case_id,
+                asset.user_id,
+                asset.source_artifact_id,
+                asset.source_artifact_version,
+                asset.role,
+                asset.filename,
+                asset.mime_type,
+                asset.byte_size,
+                asset.content_sha256,
+                asset.content_bytes or b"",
+                to_iso_utc(asset.created_at),
+            ),
+        )
+
+    def _row_to_asset(self, row: tuple[Any, ...]) -> ExecutionUploadAsset:
+        return ExecutionUploadAsset(
+            asset_id=row[0],
+            plan_id=row[1],
+            case_id=row[2],
+            user_id=row[3],
+            source_artifact_id=row[4],
+            source_artifact_version=row[5],
+            role=row[6],
+            filename=row[7],
+            mime_type=row[8],
+            byte_size=row[9],
+            content_sha256=row[10],
+            content_bytes=row[11] if isinstance(row[11], bytes) else (row[11].encode("utf-8") if row[11] else b""),
+            created_at=from_iso_utc(row[12]) or now_utc(),
+            materialized=bool(row[9] > 0 and row[10]),
+        )
+
+    def get_by_id(self, asset_id: str) -> ExecutionUploadAsset | None:
+        cur = self.conn.cursor()
+        cur.execute(
+            """
+            SELECT asset_id, plan_id, case_id, user_id, source_artifact_id,
+                   source_artifact_version, role, filename, mime_type,
+                   byte_size, content_sha256, content_bytes, created_at
+            FROM execution_upload_assets
+            WHERE asset_id = ?
+            """,
+            (asset_id,),
+        )
+        row = cur.fetchone()
+        return self._row_to_asset(row) if row else None
+
+    def list_by_plan(self, plan_id: str) -> list[ExecutionUploadAsset]:
+        cur = self.conn.cursor()
+        cur.execute(
+            """
+            SELECT asset_id, plan_id, case_id, user_id, source_artifact_id,
+                   source_artifact_version, role, filename, mime_type,
+                   byte_size, content_sha256, content_bytes, created_at
+            FROM execution_upload_assets
+            WHERE plan_id = ?
+            ORDER BY created_at ASC
+            """,
+            (plan_id,),
+        )
+        return [self._row_to_asset(row) for row in cur.fetchall()]
+
+    def list_by_case(self, case_id: str) -> list[ExecutionUploadAsset]:
+        cur = self.conn.cursor()
+        cur.execute(
+            """
+            SELECT asset_id, plan_id, case_id, user_id, source_artifact_id,
+                   source_artifact_version, role, filename, mime_type,
+                   byte_size, content_sha256, content_bytes, created_at
+            FROM execution_upload_assets
+            WHERE case_id = ?
+            ORDER BY created_at ASC
+            """,
+            (case_id,),
+        )
+        return [self._row_to_asset(row) for row in cur.fetchall()]
+
+
 class SQLiteExternalExecutionPlanRepository(ExternalExecutionPlanRepository):
     def __init__(self, conn: sqlite3.Connection) -> None:
         self.conn = conn
@@ -2114,8 +2216,9 @@ class SQLiteExternalExecutionPlanRepository(ExternalExecutionPlanRepository):
         cur.execute(
             """
             SELECT version, user_id, case_id, opportunity_id, package_id,
-                   package_fingerprint, destination_json, target_schema_json,
-                   field_mappings_json, upload_mappings_json, screening_responses_json,
+                   package_fingerprint, destination_provenance, destination_json,
+                   target_schema_json, target_schema_hash, field_mappings_json,
+                   upload_mappings_json, screening_responses_json,
                    final_submit_control_json, execution_input_hash,
                    execution_plan_fingerprint, schema_version, planner_version
             FROM external_execution_plans
@@ -2125,15 +2228,17 @@ class SQLiteExternalExecutionPlanRepository(ExternalExecutionPlanRepository):
         )
         row = cur.fetchone()
 
+        destination_provenance = plan.destination_provenance or plan.destination.destination_provenance
         destination_json = canonical_json_dumps(plan.destination.to_dict())
         target_schema_json = canonical_json_dumps(plan.target_schema.to_dict()) if plan.target_schema else None
+        target_schema_hash = plan.target_schema_hash or (plan.target_schema.schema_hash if plan.target_schema else "")
         field_mappings_json = canonical_json_dumps([m.to_dict() for m in plan.field_mappings])
         upload_mappings_json = canonical_json_dumps([u.to_dict() for u in plan.upload_mappings])
         screening_responses_json = canonical_json_dumps([s.to_dict() for s in plan.screening_responses])
         final_submit_control_json = (
             canonical_json_dumps(plan.final_submit_control.to_dict()) if plan.final_submit_control else None
         )
-        findings_json = canonical_json_dumps([f.to_dict() for f in plan.findings])
+        planning_findings_json = canonical_json_dumps([f.to_dict() for f in plan.findings])
 
         if row is None:
             try:
@@ -2141,13 +2246,14 @@ class SQLiteExternalExecutionPlanRepository(ExternalExecutionPlanRepository):
                     """
                     INSERT INTO external_execution_plans (
                         plan_id, case_id, opportunity_id, package_id,
-                        package_fingerprint, user_id, status, destination_json,
-                        target_schema_json, field_mappings_json, upload_mappings_json,
+                        package_fingerprint, user_id, status, destination_provenance,
+                        destination_json, target_schema_json, target_schema_hash,
+                        field_mappings_json, upload_mappings_json,
                         screening_responses_json, final_submit_control_json,
-                        findings_json, execution_input_hash, execution_plan_fingerprint,
+                        planning_findings_json, execution_input_hash, execution_plan_fingerprint,
                         schema_version, planner_version, created_at, updated_at,
                         version
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         plan.plan_id,
@@ -2157,13 +2263,15 @@ class SQLiteExternalExecutionPlanRepository(ExternalExecutionPlanRepository):
                         plan.package_fingerprint,
                         plan.user_id,
                         plan.status.value,
+                        destination_provenance,
                         destination_json,
                         target_schema_json,
+                        target_schema_hash,
                         field_mappings_json,
                         upload_mappings_json,
                         screening_responses_json,
                         final_submit_control_json,
-                        findings_json,
+                        planning_findings_json,
                         plan.execution_input_hash,
                         plan.execution_plan_fingerprint,
                         plan.schema_version,
@@ -2182,16 +2290,18 @@ class SQLiteExternalExecutionPlanRepository(ExternalExecutionPlanRepository):
             existing_opportunity_id = row[3]
             existing_package_id = row[4]
             existing_package_fingerprint = row[5]
-            existing_dest = row[6]
-            existing_schema = row[7]
-            existing_fields = row[8]
-            existing_uploads = row[9]
-            existing_screening = row[10]
-            existing_control = row[11]
-            existing_input_hash = row[12]
-            existing_plan_fp = row[13]
-            existing_schema_ver = row[14]
-            existing_planner_ver = row[15]
+            existing_dest_provenance = row[6]
+            existing_dest = row[7]
+            existing_schema = row[8]
+            existing_schema_hash = row[9]
+            existing_fields = row[10]
+            existing_uploads = row[11]
+            existing_screening = row[12]
+            existing_control = row[13]
+            existing_input_hash = row[14]
+            existing_plan_fp = row[15]
+            existing_schema_ver = row[16]
+            existing_planner_ver = row[17]
 
             expected_version = plan.version - 1
             if expected_version != existing_version:
@@ -2203,8 +2313,10 @@ class SQLiteExternalExecutionPlanRepository(ExternalExecutionPlanRepository):
                 or plan.opportunity_id != existing_opportunity_id
                 or plan.package_id != existing_package_id
                 or plan.package_fingerprint != existing_package_fingerprint
+                or destination_provenance != existing_dest_provenance
                 or destination_json != existing_dest
                 or target_schema_json != existing_schema
+                or target_schema_hash != existing_schema_hash
                 or field_mappings_json != existing_fields
                 or upload_mappings_json != existing_uploads
                 or screening_responses_json != existing_screening
@@ -2221,12 +2333,12 @@ class SQLiteExternalExecutionPlanRepository(ExternalExecutionPlanRepository):
             cur.execute(
                 """
                 UPDATE external_execution_plans SET
-                    status = ?, findings_json = ?, updated_at = ?, version = ?
+                    status = ?, planning_findings_json = ?, updated_at = ?, version = ?
                 WHERE plan_id = ? AND version = ?
                 """,
                 (
                     plan.status.value,
-                    findings_json,
+                    planning_findings_json,
                     to_iso_utc(plan.updated_at),
                     plan.version,
                     plan.plan_id,
@@ -2236,14 +2348,47 @@ class SQLiteExternalExecutionPlanRepository(ExternalExecutionPlanRepository):
             if cur.rowcount == 0:
                 raise OptimisticLockError("ExternalExecutionPlan", plan.plan_id, expected_version)
 
+        # Durable upload byte asset persistence (Clarification 2)
+        for u in plan.upload_mappings:
+            cur.execute(
+                """
+                INSERT INTO execution_upload_assets (
+                    asset_id, plan_id, case_id, user_id, source_artifact_id,
+                    source_artifact_version, role, filename, mime_type,
+                    byte_size, content_sha256, content_bytes, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(asset_id) DO UPDATE SET
+                    byte_size = excluded.byte_size,
+                    content_sha256 = excluded.content_sha256,
+                    content_bytes = excluded.content_bytes
+                """,
+                (
+                    u.asset_id,
+                    u.plan_id or plan.plan_id,
+                    u.case_id or plan.case_id,
+                    u.user_id or plan.user_id,
+                    u.source_artifact_id,
+                    u.source_artifact_version,
+                    u.role,
+                    u.filename,
+                    u.mime_type,
+                    u.byte_size,
+                    u.content_sha256,
+                    u.content_bytes or b"",
+                    to_iso_utc(u.created_at),
+                ),
+            )
+
     def _row_to_plan(self, row: tuple[Any, ...]) -> ExternalExecutionPlan:
-        dest_dict = json.loads(row[7])
-        target_schema_dict = json.loads(row[8]) if row[8] else None
-        fields_list = json.loads(row[9])
-        uploads_list = json.loads(row[10])
-        screening_list = json.loads(row[11])
-        control_dict = json.loads(row[12]) if row[12] else None
-        findings_list = json.loads(row[13])
+        destination_provenance = row[7]
+        dest_dict = json.loads(row[8])
+        target_schema_dict = json.loads(row[9]) if row[9] else None
+        target_schema_hash = row[10]
+        fields_list = json.loads(row[11])
+        uploads_list = json.loads(row[12])
+        screening_list = json.loads(row[13])
+        control_dict = json.loads(row[14]) if row[14] else None
+        findings_list = json.loads(row[15])
 
         return ExternalExecutionPlan(
             plan_id=row[0],
@@ -2253,20 +2398,22 @@ class SQLiteExternalExecutionPlanRepository(ExternalExecutionPlanRepository):
             package_fingerprint=row[4],
             user_id=row[5],
             status=ExternalExecutionPlanStatus(row[6]),
+            destination_provenance=destination_provenance,
             destination=ExecutionDestination.from_dict(dest_dict),
             target_schema=TargetInteractionSchema.from_dict(target_schema_dict) if target_schema_dict else None,
+            target_schema_hash=target_schema_hash,
             field_mappings=[ExecutionFieldMapping.from_dict(m) for m in fields_list],
             upload_mappings=[ExecutionUploadAsset.from_dict(u) for u in uploads_list],
             screening_responses=[ExecutionScreeningResponse.from_dict(s) for s in screening_list],
             final_submit_control=TargetSubmitControlSpec.from_dict(control_dict) if control_dict else None,
             findings=[ExecutionPlanFinding.from_dict(f) for f in findings_list],
-            execution_input_hash=row[14],
-            execution_plan_fingerprint=row[15],
-            schema_version=row[16],
-            planner_version=row[17],
-            created_at=from_iso_utc(row[18]) or now_utc(),
-            updated_at=from_iso_utc(row[19]) or now_utc(),
-            version=row[20],
+            execution_input_hash=row[16],
+            execution_plan_fingerprint=row[17],
+            schema_version=row[18],
+            planner_version=row[19],
+            created_at=from_iso_utc(row[20]) or now_utc(),
+            updated_at=from_iso_utc(row[21]) or now_utc(),
+            version=row[22],
         )
 
     def get_by_id(self, plan_id: str) -> ExternalExecutionPlan | None:
@@ -2274,10 +2421,11 @@ class SQLiteExternalExecutionPlanRepository(ExternalExecutionPlanRepository):
         cur.execute(
             """
             SELECT plan_id, case_id, opportunity_id, package_id,
-                   package_fingerprint, user_id, status, destination_json,
-                   target_schema_json, field_mappings_json, upload_mappings_json,
+                   package_fingerprint, user_id, status, destination_provenance,
+                   destination_json, target_schema_json, target_schema_hash,
+                   field_mappings_json, upload_mappings_json,
                    screening_responses_json, final_submit_control_json,
-                   findings_json, execution_input_hash, execution_plan_fingerprint,
+                   planning_findings_json, execution_input_hash, execution_plan_fingerprint,
                    schema_version, planner_version, created_at, updated_at,
                    version
             FROM external_execution_plans
@@ -2293,10 +2441,11 @@ class SQLiteExternalExecutionPlanRepository(ExternalExecutionPlanRepository):
         cur.execute(
             """
             SELECT plan_id, case_id, opportunity_id, package_id,
-                   package_fingerprint, user_id, status, destination_json,
-                   target_schema_json, field_mappings_json, upload_mappings_json,
+                   package_fingerprint, user_id, status, destination_provenance,
+                   destination_json, target_schema_json, target_schema_hash,
+                   field_mappings_json, upload_mappings_json,
                    screening_responses_json, final_submit_control_json,
-                   findings_json, execution_input_hash, execution_plan_fingerprint,
+                   planning_findings_json, execution_input_hash, execution_plan_fingerprint,
                    schema_version, planner_version, created_at, updated_at,
                    version
             FROM external_execution_plans
@@ -2312,10 +2461,11 @@ class SQLiteExternalExecutionPlanRepository(ExternalExecutionPlanRepository):
         cur.execute(
             """
             SELECT plan_id, case_id, opportunity_id, package_id,
-                   package_fingerprint, user_id, status, destination_json,
-                   target_schema_json, field_mappings_json, upload_mappings_json,
+                   package_fingerprint, user_id, status, destination_provenance,
+                   destination_json, target_schema_json, target_schema_hash,
+                   field_mappings_json, upload_mappings_json,
                    screening_responses_json, final_submit_control_json,
-                   findings_json, execution_input_hash, execution_plan_fingerprint,
+                   planning_findings_json, execution_input_hash, execution_plan_fingerprint,
                    schema_version, planner_version, created_at, updated_at,
                    version
             FROM external_execution_plans
@@ -2333,10 +2483,11 @@ class SQLiteExternalExecutionPlanRepository(ExternalExecutionPlanRepository):
         cur.execute(
             """
             SELECT plan_id, case_id, opportunity_id, package_id,
-                   package_fingerprint, user_id, status, destination_json,
-                   target_schema_json, field_mappings_json, upload_mappings_json,
+                   package_fingerprint, user_id, status, destination_provenance,
+                   destination_json, target_schema_json, target_schema_hash,
+                   field_mappings_json, upload_mappings_json,
                    screening_responses_json, final_submit_control_json,
-                   findings_json, execution_input_hash, execution_plan_fingerprint,
+                   planning_findings_json, execution_input_hash, execution_plan_fingerprint,
                    schema_version, planner_version, created_at, updated_at,
                    version
             FROM external_execution_plans
@@ -2352,10 +2503,11 @@ class SQLiteExternalExecutionPlanRepository(ExternalExecutionPlanRepository):
         cur.execute(
             """
             SELECT plan_id, case_id, opportunity_id, package_id,
-                   package_fingerprint, user_id, status, destination_json,
-                   target_schema_json, field_mappings_json, upload_mappings_json,
+                   package_fingerprint, user_id, status, destination_provenance,
+                   destination_json, target_schema_json, target_schema_hash,
+                   field_mappings_json, upload_mappings_json,
                    screening_responses_json, final_submit_control_json,
-                   findings_json, execution_input_hash, execution_plan_fingerprint,
+                   planning_findings_json, execution_input_hash, execution_plan_fingerprint,
                    schema_version, planner_version, created_at, updated_at,
                    version
             FROM external_execution_plans
@@ -2385,6 +2537,7 @@ class SQLiteCaseworkerUnitOfWork(CaseworkerUnitOfWork):
         self.preparation_artifacts = SQLitePreparationArtifactRepository(conn)
         self.preparation_packages = SQLitePreparationPackageRepository(conn)
         self.execution_plans = SQLiteExternalExecutionPlanRepository(conn)
+        self.upload_assets = SQLiteExecutionUploadAssetRepository(conn)
         self.events = SQLiteEventStore(conn)
         self._in_transaction = False
 

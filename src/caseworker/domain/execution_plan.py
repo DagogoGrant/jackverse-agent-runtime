@@ -6,12 +6,15 @@ from dataclasses import dataclass, field
 from datetime import datetime
 import re
 from typing import Any
+import urllib.parse
 import uuid
 
 from caseworker.domain.enums import (
+    ClaimStatus,
     DestinationProvenance,
     ExecutionDestinationType,
     ExternalExecutionPlanStatus,
+    PreparationPackageStatus,
     VerificationStatus,
 )
 from caseworker.domain.errors import DomainValidationError
@@ -40,6 +43,52 @@ def assert_safe_channel_metadata(metadata: dict[str, Any]) -> None:
             raise DomainValidationError(
                 f"Secret or credential key '{key}' is forbidden in channel_metadata."
             )
+
+
+def assert_safe_destination(
+    canonical_url: str,
+    destination_type: str,
+    channel_metadata: dict[str, Any] | None = None,
+) -> tuple[str, str]:
+    """Validate destination security boundaries and return (normalized_origin, normalized_hostname).
+
+    Security Rules (Clarification 4):
+    - Rejects embedded username/password credentials.
+    - Rejects dangerous non-web schemes (javascript:, data:, file:, etc.).
+    - For ATS_FORM and DIRECT_PORTAL, strictly requires HTTPS.
+    - Rejects credentials and secrets in channel_metadata.
+    - Preserves exact path and query components.
+    - Computes and returns canonical (origin, hostname).
+    """
+    if channel_metadata:
+        assert_safe_channel_metadata(channel_metadata)
+
+    if not canonical_url or not canonical_url.strip():
+        raise DomainValidationError("Destination canonical_url cannot be empty.")
+
+    clean_url = canonical_url.strip()
+    parsed = urllib.parse.urlparse(clean_url)
+
+    scheme = (parsed.scheme or "").lower()
+    if scheme in ("javascript", "data", "file", "vbscript", "about", "blob"):
+        raise DomainValidationError(f"Forbidden or dangerous destination URL scheme '{scheme}'.")
+
+    dest_val = destination_type.value if hasattr(destination_type, "value") else str(destination_type)
+    if dest_val in (ExecutionDestinationType.ATS_FORM.value, ExecutionDestinationType.DIRECT_PORTAL.value):
+        if scheme != "https":
+            raise DomainValidationError(
+                f"Destination URL must use HTTPS scheme for destination type '{dest_val}' (got '{scheme}')."
+            )
+
+    if parsed.username or parsed.password:
+        raise DomainValidationError("Destination URL must not contain embedded username or password credentials.")
+
+    hostname = (parsed.hostname or "").lower()
+    if not hostname:
+        raise DomainValidationError("Destination URL must include a valid hostname.")
+
+    origin = f"{scheme}://{parsed.netloc}".lower()
+    return origin, hostname
 
 
 @dataclass(frozen=True)
@@ -235,7 +284,7 @@ class TargetInteractionSchema:
 
 @dataclass(frozen=True)
 class ExecutionDestination:
-    """Exact destination specification with explicit provenance."""
+    """Exact destination specification with explicit provenance and security boundaries."""
 
     destination_type: str
     destination_provenance: str
@@ -243,9 +292,19 @@ class ExecutionDestination:
     organization: str
     channel_metadata: dict[str, Any] = field(default_factory=dict)
     is_exact_destination: bool = True
+    normalized_origin: str = ""
+    normalized_hostname: str = ""
 
     def __post_init__(self) -> None:
-        assert_safe_channel_metadata(self.channel_metadata)
+        origin, hostname = assert_safe_destination(
+            canonical_url=self.canonical_url,
+            destination_type=self.destination_type,
+            channel_metadata=self.channel_metadata,
+        )
+        if not self.normalized_origin:
+            object.__setattr__(self, "normalized_origin", origin)
+        if not self.normalized_hostname:
+            object.__setattr__(self, "normalized_hostname", hostname)
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -255,6 +314,8 @@ class ExecutionDestination:
             "organization": self.organization,
             "channel_metadata": dict(self.channel_metadata),
             "is_exact_destination": self.is_exact_destination,
+            "normalized_origin": self.normalized_origin,
+            "normalized_hostname": self.normalized_hostname,
         }
 
     @classmethod
@@ -266,6 +327,8 @@ class ExecutionDestination:
             organization=data.get("organization", ""),
             channel_metadata=data.get("channel_metadata", {}),
             is_exact_destination=bool(data.get("is_exact_destination", True)),
+            normalized_origin=data.get("normalized_origin", ""),
+            normalized_hostname=data.get("normalized_hostname", ""),
         )
 
 
@@ -318,9 +381,14 @@ class ExecutionUploadAsset:
     content_sha256: str
     byte_size: int
     materialized: bool = True
+    content_bytes: bytes | None = None
+    plan_id: str = ""
+    case_id: str = ""
+    user_id: str = ""
+    created_at: datetime = field(default_factory=now_utc)
 
-    def to_dict(self) -> dict[str, Any]:
-        return {
+    def to_dict(self, include_bytes: bool = False) -> dict[str, Any]:
+        data: dict[str, Any] = {
             "asset_id": self.asset_id,
             "role": self.role,
             "source_artifact_id": self.source_artifact_id,
@@ -330,7 +398,14 @@ class ExecutionUploadAsset:
             "content_sha256": self.content_sha256,
             "byte_size": self.byte_size,
             "materialized": self.materialized,
+            "plan_id": self.plan_id,
+            "case_id": self.case_id,
+            "user_id": self.user_id,
+            "created_at": to_iso_utc(self.created_at),
         }
+        if include_bytes and self.content_bytes is not None:
+            data["content_bytes"] = self.content_bytes
+        return data
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> ExecutionUploadAsset:
@@ -344,6 +419,11 @@ class ExecutionUploadAsset:
             content_sha256=data["content_sha256"],
             byte_size=int(data["byte_size"]),
             materialized=bool(data.get("materialized", True)),
+            content_bytes=data.get("content_bytes"),
+            plan_id=data.get("plan_id", ""),
+            case_id=data.get("case_id", ""),
+            user_id=data.get("user_id", ""),
+            created_at=from_iso_utc(data["created_at"]) if data.get("created_at") else now_utc(),
         )
 
 
@@ -531,6 +611,8 @@ class ExternalExecutionPlan:
     destination: ExecutionDestination
     status: ExternalExecutionPlanStatus = ExternalExecutionPlanStatus.DRAFT
     target_schema: TargetInteractionSchema | None = None
+    target_schema_hash: str = ""
+    destination_provenance: str = ""
     field_mappings: list[ExecutionFieldMapping] = field(default_factory=list)
     upload_mappings: list[ExecutionUploadAsset] = field(default_factory=list)
     screening_responses: list[ExecutionScreeningResponse] = field(default_factory=list)
@@ -544,6 +626,12 @@ class ExternalExecutionPlan:
     created_at: datetime = field(default_factory=now_utc)
     updated_at: datetime = field(default_factory=now_utc)
     version: int = 1
+    is_stale: bool = False
+    staleness_reasons: list[str] = field(default_factory=list)
+
+    @property
+    def planning_findings(self) -> list[ExecutionPlanFinding]:
+        return self.findings
 
     def __post_init__(self) -> None:
         if not self.plan_id or not self.plan_id.strip():
@@ -565,6 +653,11 @@ class ExternalExecutionPlan:
         if isinstance(self.status, str) and not isinstance(self.status, ExternalExecutionPlanStatus):
             self.status = ExternalExecutionPlanStatus(self.status)
 
+        if not self.target_schema_hash and self.target_schema:
+            self.target_schema_hash = self.target_schema.schema_hash
+        if not self.destination_provenance and self.destination:
+            self.destination_provenance = self.destination.destination_provenance
+
         # Compute execution input hash if empty
         if not self.execution_input_hash:
             self.execution_input_hash = compute_execution_input_hash(self.field_mappings)
@@ -579,7 +672,7 @@ class ExternalExecutionPlan:
             )
 
     def compute_fingerprint(self) -> str:
-        target_schema_hash = self.target_schema.schema_hash if self.target_schema else ""
+        target_schema_hash = self.target_schema_hash or (self.target_schema.schema_hash if self.target_schema else "")
         return compute_execution_plan_fingerprint(
             case_id=self.case_id,
             opportunity_id=self.opportunity_id,
@@ -622,12 +715,15 @@ class ExternalExecutionPlan:
             "user_id": self.user_id,
             "status": self.status.value,
             "destination": self.destination.to_dict(),
+            "destination_provenance": self.destination_provenance,
             "target_schema": self.target_schema.to_dict() if self.target_schema else None,
+            "target_schema_hash": self.target_schema_hash,
             "field_mappings": [m.to_dict() for m in self.field_mappings],
             "upload_mappings": [u.to_dict() for u in self.upload_mappings],
             "screening_responses": [s.to_dict() for s in self.screening_responses],
             "final_submit_control": self.final_submit_control.to_dict() if self.final_submit_control else None,
             "findings": [f.to_dict() for f in self.findings],
+            "planning_findings": [f.to_dict() for f in self.findings],
             "execution_input_hash": self.execution_input_hash,
             "execution_plan_fingerprint": self.execution_plan_fingerprint,
             "schema_version": self.schema_version,
@@ -635,6 +731,8 @@ class ExternalExecutionPlan:
             "created_at": to_iso_utc(self.created_at),
             "updated_at": to_iso_utc(self.updated_at),
             "version": self.version,
+            "is_stale": self.is_stale,
+            "staleness_reasons": list(self.staleness_reasons),
         }
 
     @classmethod
@@ -642,6 +740,7 @@ class ExternalExecutionPlan:
         destination = ExecutionDestination.from_dict(data["destination"])
         schema = TargetInteractionSchema.from_dict(data["target_schema"]) if data.get("target_schema") else None
         control = TargetSubmitControlSpec.from_dict(data["final_submit_control"]) if data.get("final_submit_control") else None
+        raw_findings = data.get("findings") or data.get("planning_findings") or []
         return cls(
             plan_id=data["plan_id"],
             case_id=data["case_id"],
@@ -652,11 +751,13 @@ class ExternalExecutionPlan:
             destination=destination,
             status=ExternalExecutionPlanStatus(data["status"]),
             target_schema=schema,
+            target_schema_hash=data.get("target_schema_hash", schema.schema_hash if schema else ""),
+            destination_provenance=data.get("destination_provenance", destination.destination_provenance),
             field_mappings=[ExecutionFieldMapping.from_dict(m) for m in data.get("field_mappings", [])],
             upload_mappings=[ExecutionUploadAsset.from_dict(u) for u in data.get("upload_mappings", [])],
             screening_responses=[ExecutionScreeningResponse.from_dict(s) for s in data.get("screening_responses", [])],
             final_submit_control=control,
-            findings=[ExecutionPlanFinding.from_dict(f) for f in data.get("findings", [])],
+            findings=[ExecutionPlanFinding.from_dict(f) for f in raw_findings],
             execution_input_hash=data.get("execution_input_hash", ""),
             execution_plan_fingerprint=data.get("execution_plan_fingerprint", ""),
             schema_version=data.get("schema_version", EXEC_PLAN_SCHEMA_VERSION),
@@ -664,4 +765,106 @@ class ExternalExecutionPlan:
             created_at=from_iso_utc(data["created_at"]),
             updated_at=from_iso_utc(data["updated_at"]),
             version=int(data.get("version", 1)),
+            is_stale=bool(data.get("is_stale", False)),
+            staleness_reasons=list(data.get("staleness_reasons", [])),
         )
+
+
+def compute_execution_plan_staleness(
+    plan: ExternalExecutionPlan,
+    package: Any | None,
+    current_facts: list[Any],
+    artifacts: list[Any],
+    claims: list[Any],
+    upload_assets: list[ExecutionUploadAsset] | None = None,
+) -> tuple[bool, list[str]]:
+    """Deterministically evaluate plan staleness against live Case and Vault dependencies (Clarification 3).
+
+    Checks:
+    - Approved package fingerprint & status
+    - Target schema hash
+    - Destination HTTPS and exactness
+    - ContextFact IDs, versions, verification status, and job_application purpose
+    - Upload asset byte hashes
+    - Screening source artifact version & grounding claim statuses
+    - Planner and schema version
+    """
+    reasons: list[str] = []
+
+    # 1. Approved package fingerprint / status
+    if package is None:
+        reasons.append("Approved preparation package not found.")
+    else:
+        pkg_status = package.status.value if hasattr(package.status, "value") else str(package.status)
+        if pkg_status != PreparationPackageStatus.APPROVED.value:
+            reasons.append(f"Preparation package is '{pkg_status}', expected APPROVED.")
+        if package.package_fingerprint != plan.package_fingerprint:
+            reasons.append("Preparation package fingerprint changed.")
+        if package.package_id != plan.package_id:
+            reasons.append("Preparation package ID mismatch.")
+
+    # 2. Target schema hash
+    if plan.target_schema is None:
+        reasons.append("Target interaction schema is missing.")
+    elif plan.target_schema.schema_hash != plan.target_schema_hash:
+        reasons.append("Target interaction schema hash changed.")
+
+    # 3. Destination validity
+    if not plan.destination.is_exact_destination:
+        reasons.append("Destination is not an exact application endpoint.")
+    dest_type_val = plan.destination.destination_type.value if hasattr(plan.destination.destination_type, "value") else str(plan.destination.destination_type)
+    if dest_type_val in (ExecutionDestinationType.ATS_FORM.value, ExecutionDestinationType.DIRECT_PORTAL.value):
+        if not plan.destination.canonical_url.startswith("https://"):
+            reasons.append("Destination URL does not use HTTPS.")
+
+    # 4. ContextFact ID / version / verification / purpose state
+    facts_by_id = {f.fact_id: f for f in current_facts}
+    for m in plan.field_mappings:
+        fact = facts_by_id.get(m.source_fact_id)
+        if fact is None:
+            reasons.append(f"ContextFact '{m.source_fact_id}' for field '{m.target_field_id}' no longer exists.")
+        else:
+            if fact.version != m.source_fact_version:
+                reasons.append(f"ContextFact '{m.source_fact_id}' version changed ({fact.version} != {m.source_fact_version}).")
+            v_status = fact.verification_status.value if hasattr(fact.verification_status, "value") else str(fact.verification_status)
+            if v_status not in (VerificationStatus.USER_VERIFIED.value, VerificationStatus.SOURCE_VERIFIED.value):
+                reasons.append(f"ContextFact '{m.source_fact_id}' is no longer verified ({v_status}).")
+            if "job_application" not in (fact.allowed_purposes or []):
+                reasons.append(f"ContextFact '{m.source_fact_id}' lacks purpose 'job_application'.")
+            if getattr(fact, "superseded_by_fact_id", None) is not None:
+                reasons.append(f"ContextFact '{m.source_fact_id}' is superseded.")
+
+    # 5. Upload asset byte hashes
+    upload_assets_by_id = {u.asset_id: u for u in (upload_assets or [])}
+    for u in plan.upload_mappings:
+        if not u.materialized:
+            reasons.append(f"Upload asset '{u.role}' is not materialized.")
+        if u.byte_size <= 0:
+            reasons.append(f"Upload asset '{u.role}' has empty byte payload.")
+        if upload_assets is not None and u.asset_id in upload_assets_by_id:
+            stored_asset = upload_assets_by_id[u.asset_id]
+            if stored_asset.content_bytes:
+                actual_hash = compute_sha256(stored_asset.content_bytes.decode("utf-8", errors="replace"))
+                if actual_hash != u.content_sha256:
+                    reasons.append(f"Upload asset '{u.role}' byte hash mismatch.")
+
+    # 6. Screening source artifact version & grounding claims
+    artifacts_by_id = {a.artifact_id: a for a in artifacts}
+    claims_by_id = {c.claim_id: c for c in claims}
+    for s in plan.screening_responses:
+        art = artifacts_by_id.get(s.source_artifact_id)
+        if art is None:
+            reasons.append(f"Screening artifact '{s.source_artifact_id}' no longer exists.")
+        for cid in s.grounding_claim_ids:
+            claim = claims_by_id.get(cid)
+            c_status = claim.status.value if hasattr(claim.status, "value") else str(claim.status) if claim else ""
+            if claim is None or c_status != ClaimStatus.SUPPORTED.value:
+                reasons.append(f"Screening grounding claim '{cid}' is not SUPPORTED.")
+
+    # 7. Planner and schema version
+    if plan.schema_version != EXEC_PLAN_SCHEMA_VERSION:
+        reasons.append("Plan schema version mismatch.")
+    if plan.planner_version != EXEC_ACTION_PLANNER_VERSION:
+        reasons.append("Plan compiler version mismatch.")
+
+    return (len(reasons) > 0, reasons)

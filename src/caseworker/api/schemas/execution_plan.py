@@ -66,6 +66,8 @@ class ExecutionDestinationSchema(BaseModel):
     organization: str
     channel_metadata: dict[str, Any] = Field(default_factory=dict)
     is_exact_destination: bool = True
+    normalized_origin: str = ""
+    normalized_hostname: str = ""
 
 
 class CreateExecutionPlanRequest(BaseModel):
@@ -125,13 +127,16 @@ class ExternalExecutionPlanResponse(BaseModel):
     package_fingerprint: str
     user_id: str
     status: str
+    destination_provenance: str = ""
     destination: ExecutionDestinationSchema
     target_schema: TargetInteractionSchemaSchema | None = None
+    target_schema_hash: str = ""
     field_mappings: list[ExecutionFieldMappingResponse]
     upload_mappings: list[ExecutionUploadAssetResponse]
     screening_responses: list[ExecutionScreeningResponseDTO]
     final_submit_control: TargetSubmitControlSpecSchema | None = None
     findings: list[ExecutionPlanFindingResponse]
+    planning_findings: list[ExecutionPlanFindingResponse] = Field(default_factory=list)
     execution_input_hash: str
     execution_plan_fingerprint: str
     schema_version: str
@@ -139,6 +144,8 @@ class ExternalExecutionPlanResponse(BaseModel):
     created_at: str
     updated_at: str
     version: int
+    is_stale: bool = False
+    staleness_reasons: list[str] = Field(default_factory=list)
 
 
 class ExternalExecutionPlanListResponse(BaseModel):

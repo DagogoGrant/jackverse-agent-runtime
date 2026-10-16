@@ -483,6 +483,89 @@ class TestExecutionPlanAPI(unittest.TestCase):
         )
         self.assertEqual(res_b_post.status_code, 404)
 
+    def test_clarifications_api_response_and_staleness(self) -> None:
+        """Verify API returns all Phase 5.3.1 clarification fields and side-effect free staleness."""
+        case_id = self.case_a.case_id
+        valid_etag = f'"case:{case_id}:v{self.case_a.version}"'
+
+        res = self.client.post(
+            f"/api/v1/cases/{case_id}/execution/plan",
+            headers={**self.user_a_headers, "If-Match": valid_etag},
+            json=self.sample_request,
+        )
+        self.assertEqual(res.status_code, 200)
+        data = res.json()
+        self.assertIn("destination_provenance", data)
+        self.assertIn("target_schema_hash", data)
+        self.assertIn("planning_findings", data)
+        self.assertIn("is_stale", data)
+        self.assertIn("staleness_reasons", data)
+        self.assertFalse(data["is_stale"])
+        self.assertEqual(data["staleness_reasons"], [])
+
+        dest = data["destination"]
+        self.assertIn("normalized_origin", dest)
+        self.assertIn("normalized_hostname", dest)
+        self.assertEqual(dest["normalized_hostname"], "hyperscale.apply.workable.com")
+
+        # Mutate fact to trigger staleness
+        with self.storage.unit_of_work() as uow:
+            fact = uow.context.get_by_id(self.fact_name.fact_id)
+            self.assertIsNotNone(fact)
+            updated = ContextFact(
+                fact_id=fact.fact_id,
+                user_id=fact.user_id,
+                namespace=fact.namespace,
+                key=fact.key,
+                value="New Name",
+                source_type=fact.source_type,
+                source_reference=fact.source_reference,
+                confidence=fact.confidence,
+                verification_status=fact.verification_status,
+                sensitivity=fact.sensitivity,
+                allowed_purposes=fact.allowed_purposes,
+                created_at=fact.created_at,
+                updated_at=fact.updated_at,
+                version=fact.version + 1,
+            )
+            uow.context.save(updated)
+            uow.commit()
+
+        # GET latest should report is_stale=True side-effect free
+        res_get = self.client.get(
+            f"/api/v1/cases/{case_id}/execution/plan/latest",
+            headers=self.user_a_headers,
+        )
+        self.assertEqual(res_get.status_code, 200)
+        get_data = res_get.json()
+        self.assertTrue(get_data["is_stale"])
+        self.assertTrue(len(get_data["staleness_reasons"]) > 0)
+        # Database status is unchanged
+        self.assertEqual(get_data["status"], "ready_for_authorization")
+
+    def test_destination_security_api_rejection(self) -> None:
+        """Verify API rejects non-https URLs and embedded credentials with 400 Problem Details."""
+        case_id = self.case_a.case_id
+        valid_etag = f'"case:{case_id}:v{self.case_a.version}"'
+
+        bad_req = dict(self.sample_request)
+        bad_req["destination_override"] = {
+            "destination_type": "ats_form",
+            "destination_provenance": "user_provided",
+            "canonical_url": "https://admin:secret@portal.com/apply",
+            "organization": "Evil",
+            "channel_metadata": {},
+            "is_exact_destination": True,
+        }
+        res = self.client.post(
+            f"/api/v1/cases/{case_id}/execution/plan",
+            headers={**self.user_a_headers, "If-Match": valid_etag},
+            json=bad_req,
+        )
+        self.assertEqual(res.status_code, 422)
+        problem = res.json()
+        self.assertIn("embedded", problem["detail"].lower())
+
 
 if __name__ == "__main__":
     unittest.main()

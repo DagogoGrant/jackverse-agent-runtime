@@ -33,6 +33,7 @@ class TestSQLiteMigration(unittest.TestCase):
             "preparation_artifacts",
             "preparation_packages",
             "external_execution_plans",
+            "execution_upload_assets",
         }
         for table in expected_tables:
             self.assertIn(table, tables, f"Expected table '{table}' missing after migration.")
@@ -78,13 +79,15 @@ class TestSQLiteMigration(unittest.TestCase):
             "package_fingerprint",
             "user_id",
             "status",
+            "destination_provenance",
             "destination_json",
             "target_schema_json",
+            "target_schema_hash",
             "field_mappings_json",
             "upload_mappings_json",
             "screening_responses_json",
             "final_submit_control_json",
-            "findings_json",
+            "planning_findings_json",
             "execution_input_hash",
             "execution_plan_fingerprint",
             "schema_version",
@@ -94,6 +97,26 @@ class TestSQLiteMigration(unittest.TestCase):
             "version",
         }
         self.assertTrue(expected_plan_cols.issubset(plan_columns))
+
+        # Verify execution_upload_assets columns
+        cur.execute("PRAGMA table_info(execution_upload_assets);")
+        upload_columns = {row[1] for row in cur.fetchall()}
+        expected_upload_cols = {
+            "asset_id",
+            "plan_id",
+            "case_id",
+            "user_id",
+            "source_artifact_id",
+            "source_artifact_version",
+            "role",
+            "filename",
+            "mime_type",
+            "byte_size",
+            "content_sha256",
+            "content_bytes",
+            "created_at",
+        }
+        self.assertTrue(expected_upload_cols.issubset(upload_columns))
 
         conn.close()
 
@@ -617,12 +640,20 @@ class TestSQLiteMigration(unittest.TestCase):
         cur.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='external_execution_plans';")
         self.assertIsNotNone(cur.fetchone())
 
+        cur.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='execution_upload_assets';")
+        self.assertIsNotNone(cur.fetchone())
+
         cur.execute("SELECT name FROM sqlite_master WHERE type='index' AND name LIKE 'idx_exec_plans_%';")
         indexes = {row[0] for row in cur.fetchall()}
         self.assertIn("idx_exec_plans_fingerprint", indexes)
         self.assertIn("idx_exec_plans_case", indexes)
         self.assertIn("idx_exec_plans_package", indexes)
         self.assertIn("idx_exec_plans_user", indexes)
+
+        cur.execute("SELECT name FROM sqlite_master WHERE type='index' AND name LIKE 'idx_exec_upload_assets_%';")
+        upload_indexes = {row[0] for row in cur.fetchall()}
+        self.assertIn("idx_exec_upload_assets_plan", upload_indexes)
+        self.assertIn("idx_exec_upload_assets_case", upload_indexes)
         conn.close()
 
 

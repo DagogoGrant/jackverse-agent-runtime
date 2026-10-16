@@ -33,11 +33,13 @@ from caseworker.domain.execution_plan import (
     ExternalExecutionPlan,
     TargetInteractionSchema,
     TargetSubmitControlSpec,
+    compute_execution_plan_staleness,
 )
 from caseworker.domain.execution_planner import ExecutionPlanCompiler
 from caseworker.domain.package_integrity import PreparationPackageIntegrityValidator
 
 if TYPE_CHECKING:
+    from caseworker.persistence.base import CaseworkerUnitOfWork
     from caseworker.persistence.sqlite import SQLiteCaseworkerStorage
 
 
@@ -250,16 +252,39 @@ class ExecutionPlanService:
             uow.commit()
             return compiled_plan
 
+    def _attach_staleness(self, uow: CaseworkerUnitOfWork, plan: ExternalExecutionPlan) -> ExternalExecutionPlan:
+        """Compute live staleness against current dependencies side-effect free (Clarification 3)."""
+        package = uow.preparation_packages.get_by_id(plan.package_id)
+        current_facts = uow.context.list_active(user_id=plan.user_id)
+        artifacts = uow.preparation_artifacts.list_by_case(plan.case_id)
+        claims = uow.claims.list_by_case(plan.case_id)
+        upload_assets = uow.upload_assets.list_by_plan(plan.plan_id)
+
+        is_stale, staleness_reasons = compute_execution_plan_staleness(
+            plan=plan,
+            package=package,
+            current_facts=current_facts,
+            artifacts=artifacts,
+            claims=claims,
+            upload_assets=upload_assets,
+        )
+        plan.is_stale = is_stale
+        plan.staleness_reasons = staleness_reasons
+        return plan
+
     def get_latest_execution_plan(self, user_id: str, case_id: str) -> ExternalExecutionPlan | None:
-        """Retrieve the latest execution plan for a case."""
+        """Retrieve the latest execution plan for a case with side-effect free staleness."""
         with self.storage.unit_of_work() as uow:
             case = uow.cases.get_by_id(case_id)
             if case is None or case.user_id != user_id:
                 raise EntityNotFoundError("Case", case_id)
-            return uow.execution_plans.get_latest_for_case(case_id)
+            plan = uow.execution_plans.get_latest_for_case(case_id)
+            if plan is not None:
+                return self._attach_staleness(uow, plan)
+            return None
 
     def get_execution_plan(self, user_id: str, case_id: str, plan_id: str) -> ExternalExecutionPlan | None:
-        """Retrieve a specific execution plan by plan_id."""
+        """Retrieve a specific execution plan by plan_id with side-effect free staleness."""
         with self.storage.unit_of_work() as uow:
             case = uow.cases.get_by_id(case_id)
             if case is None or case.user_id != user_id:
@@ -267,12 +292,13 @@ class ExecutionPlanService:
             plan = uow.execution_plans.get_by_id(plan_id)
             if plan is None or plan.case_id != case_id or plan.user_id != user_id:
                 return None
-            return plan
+            return self._attach_staleness(uow, plan)
 
     def list_execution_plans(self, user_id: str, case_id: str) -> list[ExternalExecutionPlan]:
-        """List all execution plans for a case, newest first."""
+        """List all execution plans for a case, newest first, with side-effect free staleness."""
         with self.storage.unit_of_work() as uow:
             case = uow.cases.get_by_id(case_id)
             if case is None or case.user_id != user_id:
                 raise EntityNotFoundError("Case", case_id)
-            return uow.execution_plans.list_for_case(case_id)
+            plans = uow.execution_plans.list_for_case(case_id)
+            return [self._attach_staleness(uow, p) for p in plans]

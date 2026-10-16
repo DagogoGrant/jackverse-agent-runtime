@@ -753,13 +753,20 @@ async def get_preparation_package(
 
 
 def _to_execution_plan_response(plan: ExternalExecutionPlan) -> ExternalExecutionPlanResponse:
+    dest_type_val = (
+        plan.destination.destination_type.value
+        if hasattr(plan.destination.destination_type, "value")
+        else str(plan.destination.destination_type)
+    )
     dest_schema = ExecutionDestinationSchema(
-        destination_type=plan.destination.destination_type,
+        destination_type=dest_type_val,
         destination_provenance=plan.destination.destination_provenance,
         canonical_url=plan.destination.canonical_url,
         organization=plan.destination.organization,
         channel_metadata=plan.destination.channel_metadata,
         is_exact_destination=plan.destination.is_exact_destination,
+        normalized_origin=plan.destination.normalized_origin,
+        normalized_hostname=plan.destination.normalized_hostname,
     )
     target_schema_dto = None
     if plan.target_schema:
@@ -820,6 +827,18 @@ def _to_execution_plan_response(plan: ExternalExecutionPlan) -> ExternalExecutio
             requires_double_confirmation=ctrl.requires_double_confirmation,
         )
 
+    findings_dtos = [
+        ExecutionPlanFindingResponse(
+            check_name=f.check_name,
+            passed=f.passed,
+            severity=f.severity,
+            code=f.code,
+            message=f.message,
+            details=f.details,
+        )
+        for f in plan.findings
+    ]
+
     return ExternalExecutionPlanResponse(
         plan_id=plan.plan_id,
         case_id=plan.case_id,
@@ -828,8 +847,10 @@ def _to_execution_plan_response(plan: ExternalExecutionPlan) -> ExternalExecutio
         package_fingerprint=plan.package_fingerprint,
         user_id=plan.user_id,
         status=plan.status.value,
+        destination_provenance=plan.destination_provenance or plan.destination.destination_provenance,
         destination=dest_schema,
         target_schema=target_schema_dto,
+        target_schema_hash=plan.target_schema_hash or (plan.target_schema.schema_hash if plan.target_schema else ""),
         field_mappings=[
             ExecutionFieldMappingResponse(
                 target_field_id=m.target_field_id,
@@ -867,17 +888,8 @@ def _to_execution_plan_response(plan: ExternalExecutionPlan) -> ExternalExecutio
             for s in plan.screening_responses
         ],
         final_submit_control=submit_control_dto,
-        findings=[
-            ExecutionPlanFindingResponse(
-                check_name=f.check_name,
-                passed=f.passed,
-                severity=f.severity,
-                code=f.code,
-                message=f.message,
-                details=f.details,
-            )
-            for f in plan.findings
-        ],
+        findings=findings_dtos,
+        planning_findings=findings_dtos,
         execution_input_hash=plan.execution_input_hash,
         execution_plan_fingerprint=plan.execution_plan_fingerprint,
         schema_version=plan.schema_version,
@@ -885,6 +897,8 @@ def _to_execution_plan_response(plan: ExternalExecutionPlan) -> ExternalExecutio
         created_at=to_iso_utc(plan.created_at),
         updated_at=to_iso_utc(plan.updated_at),
         version=plan.version,
+        is_stale=plan.is_stale,
+        staleness_reasons=list(plan.staleness_reasons),
     )
 
 

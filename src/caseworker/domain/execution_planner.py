@@ -1,7 +1,8 @@
-"""ExecutionPlanCompiler synthesizing exact, reviewable external action plans."""
+"""Execution plan compiler synthesizing deterministic, content-addressed external execution plans."""
 
 from __future__ import annotations
 
+from datetime import datetime
 import re
 from typing import Any
 import uuid
@@ -17,6 +18,11 @@ from caseworker.domain.enums import (
     PreparationMaterialType,
     VerificationStatus,
 )
+from caseworker.domain.errors import (
+    DomainValidationError,
+    EntityNotFoundError,
+    PackageVerificationError,
+)
 from caseworker.domain.execution_plan import (
     EXEC_ACTION_PLANNER_VERSION,
     EXEC_PLAN_SCHEMA_VERSION,
@@ -27,11 +33,103 @@ from caseworker.domain.execution_plan import (
     ExecutionUploadAsset,
     ExternalExecutionPlan,
     TargetInteractionSchema,
+    TargetSchemaField,
+    TargetSubmitControlSpec,
+    assert_safe_channel_metadata,
+    assert_safe_destination,
     compute_execution_input_hash,
 )
 from caseworker.domain.opportunity import Opportunity
 from caseworker.domain.package import PreparationPackage
 from caseworker.domain.types import compute_sha256
+
+
+def validate_and_normalize_field_value(tf: TargetSchemaField, raw_value: Any) -> tuple[bool, Any, str]:
+    """Validate and normalize a ContextFact value to match target field semantics (Clarification 5).
+
+    Rules:
+    - select: exact match to declared allowed_options (or case-insensitive exact single match).
+      If allowed_options are yes/no and value is boolean-equivalent, maps canonically.
+      Ambiguous free text is never guessed.
+    - boolean: deterministic boolean (bool, or true/false/yes/no/1/0). Ambiguous text rejected.
+    - date: canonical YYYY-MM-DD. Unstructured text rejected.
+    - email: RFC-valid email syntax.
+    - phone: valid standard phone syntax (>= 7 digits, no alphabetic characters).
+    - number: valid int or float.
+    - text: string representation.
+    """
+    ftype = (tf.field_type or "text").strip().lower()
+
+    if ftype == "email":
+        val = str(raw_value).strip()
+        email_re = re.compile(r"^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$")
+        if email_re.match(val):
+            return True, val, ""
+        return False, None, f"Value '{raw_value}' is not a valid email address."
+
+    if ftype == "phone":
+        val = str(raw_value).strip()
+        if any(c.isalpha() for c in val):
+            return False, None, f"Phone value '{raw_value}' contains forbidden alphabetic characters."
+        digit_count = sum(c.isdigit() for c in val)
+        phone_re = re.compile(r"^\+?[0-9\s\-\(\)\.]+$")
+        if digit_count >= 7 and phone_re.match(val):
+            return True, val, ""
+        return False, None, f"Phone value '{raw_value}' does not match standard phone format (at least 7 digits required)."
+
+    if ftype == "select":
+        allowed = tf.allowed_options or []
+        if not allowed:
+            return False, None, "Target select field has no declared allowed_options."
+        val = str(raw_value).strip()
+        # Direct exact match
+        if val in allowed:
+            return True, val, ""
+        # Case-insensitive single match
+        ci_matches = [opt for opt in allowed if opt.lower() == val.lower()]
+        if len(ci_matches) == 1:
+            return True, ci_matches[0], ""
+        # Deterministic yes/no boolean equivalence
+        allowed_lower_set = {opt.lower() for opt in allowed}
+        if allowed_lower_set == {"yes", "no"}:
+            if val.lower() in ("true", "1", "yes"):
+                canonical = [opt for opt in allowed if opt.lower() == "yes"][0]
+                return True, canonical, ""
+            if val.lower() in ("false", "0", "no"):
+                canonical = [opt for opt in allowed if opt.lower() == "no"][0]
+                return True, canonical, ""
+        # Free-text or unresolvable option -> do not guess
+        return False, None, f"Value '{raw_value}' does not match any declared option in {allowed}."
+
+    if ftype == "boolean":
+        if isinstance(raw_value, bool):
+            return True, raw_value, ""
+        val = str(raw_value).strip().lower()
+        if val in ("true", "yes", "1"):
+            return True, True, ""
+        if val in ("false", "no", "0"):
+            return True, False, ""
+        return False, None, f"Value '{raw_value}' cannot be deterministically converted to boolean."
+
+    if ftype == "date":
+        val = str(raw_value).strip()
+        date_re = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+        if date_re.match(val):
+            return True, val, ""
+        return False, None, f"Date value '{raw_value}' does not conform to canonical format YYYY-MM-DD."
+
+    if ftype == "number":
+        try:
+            if isinstance(raw_value, (int, float)):
+                return True, raw_value, ""
+            s = str(raw_value).strip()
+            if "." in s:
+                return True, float(s), ""
+            return True, int(s), ""
+        except ValueError:
+            return False, None, f"Value '{raw_value}' is not a valid number."
+
+    return True, str(raw_value).strip(), ""
 
 
 class ExecutionPlanCompiler:
@@ -58,25 +156,20 @@ class ExecutionPlanCompiler:
     ) -> ExternalExecutionPlan:
         """Compile an ExternalExecutionPlan deterministically.
 
-        Invariants:
-        - Never guesses ATS destination or fields.
-        - Rejects unverified ContextFacts or facts lacking 'job_application' purpose.
-        - Rejects APPLICATION_ANSWER_BANK as transmission payload.
-        - Computes byte-level hash for materialized upload assets.
-        - Resolves to READY_FOR_AUTHORIZATION only if 100% of required fields/files/controls are resolved.
+        Constitutional Invariant:
+        - Planning does NOT equal approval, transmission, or execution authority.
+        - Zero outbound network transmission is executed here.
         """
         findings: list[ExecutionPlanFinding] = []
         metadata = dict(channel_metadata or {})
-        active_facts_list = context_facts if context_facts is not None else (facts or [])
+        active_facts_list = facts if facts is not None else (context_facts or [])
 
-        # 1. Resolve Exact Destination
-        canonical_url = ""
+        # 1. Destination Resolution with Security Gating (Clarification 4)
         resolved_provenance = (
             destination_provenance.value
             if hasattr(destination_provenance, "value")
             else str(destination_provenance)
         )
-        is_exact_dest = False
         dest_type = ExecutionDestinationType.ATS_FORM.value
         dest_org = opportunity.organization or "Target Organization"
 
@@ -150,7 +243,7 @@ class ExecutionPlanCompiler:
                 )
             )
 
-        # 3. Field Mappings from Verified ContextFacts
+        # 3. Field Mappings from Verified ContextFacts with Type Semantic Validation (Clarification 5)
         field_mappings: list[ExecutionFieldMapping] = []
         active_facts_by_key: dict[str, list[ContextFact]] = {}
         for f in active_facts_list:
@@ -162,7 +255,6 @@ class ExecutionPlanCompiler:
             for tf in target_schema.fields:
                 matching_facts = active_facts_by_key.get(tf.target_field_id, [])
                 if not matching_facts:
-                    # Also try matching common alias
                     alias_key = tf.target_field_id.replace("-", "_")
                     matching_facts = active_facts_by_key.get(alias_key, [])
 
@@ -181,17 +273,31 @@ class ExecutionPlanCompiler:
                     break
 
                 if valid_fact is not None:
-                    field_mappings.append(
-                        ExecutionFieldMapping(
-                            target_field_id=tf.target_field_id,
-                            field_name=tf.label,
-                            field_value=valid_fact.value,
-                            source_fact_id=valid_fact.fact_id,
-                            source_fact_version=valid_fact.version,
-                            verification_status=valid_fact.verification_status.value if hasattr(valid_fact.verification_status, "value") else str(valid_fact.verification_status),
-                            required=tf.required,
+                    is_valid, norm_val, err_msg = validate_and_normalize_field_value(tf, valid_fact.value)
+                    if is_valid:
+                        field_mappings.append(
+                            ExecutionFieldMapping(
+                                target_field_id=tf.target_field_id,
+                                field_name=tf.label,
+                                field_value=norm_val,
+                                source_fact_id=valid_fact.fact_id,
+                                source_fact_version=valid_fact.version,
+                                verification_status=valid_fact.verification_status.value if hasattr(valid_fact.verification_status, "value") else str(valid_fact.verification_status),
+                                required=tf.required,
+                            )
                         )
-                    )
+                    else:
+                        if tf.required:
+                            findings.append(
+                                ExecutionPlanFinding(
+                                    check_name="field_mapping_resolution",
+                                    passed=False,
+                                    severity="error",
+                                    code="INVALID_FIELD_TYPE_CONVERSION",
+                                    message=f"Required target field '{tf.target_field_id}' (type '{tf.field_type}') failed semantic validation: {err_msg}",
+                                    details={"target_field_id": tf.target_field_id, "field_type": tf.field_type, "error": err_msg},
+                                )
+                            )
                 else:
                     if tf.required:
                         findings.append(
@@ -205,7 +311,7 @@ class ExecutionPlanCompiler:
                             )
                         )
 
-        # 4. Upload Mappings & Byte Asset Materialization
+        # 4. Upload Mappings & Byte Asset Materialization (Clarification 2)
         upload_mappings: list[ExecutionUploadAsset] = []
         artifacts_by_type: dict[str, PreparedArtifact] = {}
         for art in artifacts:
@@ -249,7 +355,6 @@ class ExecutionPlanCompiler:
                     ext = "txt"
                 elif "application/pdf" in slot.accepted_mime_types and len(slot.accepted_mime_types) == 1:
                     # Slot strictly requires PDF bytes, but we only have text payload in this environment
-                    # Mark unmaterialized so plan stays DRAFT
                     deterministic_asset_id = f"asset-{compute_sha256(f'{case.case_id}:{art.artifact_id}:{slot.role}')[:12]}"
                     upload_mappings.append(
                         ExecutionUploadAsset(
@@ -262,6 +367,9 @@ class ExecutionPlanCompiler:
                             content_sha256="",
                             byte_size=0,
                             materialized=False,
+                            content_bytes=b"",
+                            case_id=case.case_id,
+                            user_id=case.user_id,
                         )
                     )
                     findings.append(
@@ -289,6 +397,9 @@ class ExecutionPlanCompiler:
                         content_sha256=byte_sha256,
                         byte_size=len(raw_bytes),
                         materialized=True,
+                        content_bytes=raw_bytes,
+                        case_id=case.case_id,
+                        user_id=case.user_id,
                     )
                 )
 
@@ -360,7 +471,34 @@ class ExecutionPlanCompiler:
                 )
             )
 
-        # 7. Evaluate Plan Status
+        # 7. Evaluate Durable Upload Assets Precondition (Clarification 2)
+        for u in upload_mappings:
+            if not u.materialized or u.byte_size <= 0:
+                findings.append(
+                    ExecutionPlanFinding(
+                        check_name="upload_asset_durability",
+                        passed=False,
+                        severity="error",
+                        code="UNMATERIALIZED_UPLOAD",
+                        message=f"Upload asset '{u.role}' has not been materialized or is empty (byte_size={u.byte_size}).",
+                        details={"role": u.role, "asset_id": u.asset_id},
+                    )
+                )
+            elif u.content_bytes is not None:
+                computed_hash = compute_sha256(u.content_bytes.decode("utf-8", errors="replace"))
+                if computed_hash != u.content_sha256:
+                    findings.append(
+                        ExecutionPlanFinding(
+                            check_name="upload_asset_durability",
+                            passed=False,
+                            severity="error",
+                            code="UPLOAD_HASH_MISMATCH",
+                            message=f"Upload asset '{u.role}' content hash mismatch.",
+                            details={"role": u.role, "computed": computed_hash, "stored": u.content_sha256},
+                        )
+                    )
+
+        # 8. Evaluate Overall Plan Status
         has_errors = any(f.severity == "error" for f in findings)
         plan_status = (
             ExternalExecutionPlanStatus.READY_FOR_AUTHORIZATION
@@ -377,8 +515,10 @@ class ExecutionPlanCompiler:
             package_fingerprint=package.package_fingerprint,
             user_id=case.user_id,
             destination=destination,
+            destination_provenance=destination.destination_provenance,
             status=plan_status,
             target_schema=target_schema,
+            target_schema_hash=target_schema.schema_hash if target_schema else "",
             field_mappings=field_mappings,
             upload_mappings=upload_mappings,
             screening_responses=screening_responses,
