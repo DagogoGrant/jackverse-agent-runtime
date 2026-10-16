@@ -238,6 +238,10 @@ class PreparedArtifact:
             self.updated_at = now_utc()
             self.version += 1
 
+    def compute_rendered_payload(self) -> str:
+        """Return the rendered markdown payload."""
+        return self.render_markdown()
+
     def compute_rendered_payload_hash(self) -> str:
         """Compute sha256 hash of the rendered markdown payload."""
         return compute_sha256(self.render_markdown())

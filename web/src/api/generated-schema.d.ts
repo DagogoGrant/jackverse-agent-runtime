@@ -192,6 +192,91 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/cases/{case_id}/execution/plan": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create Execution Plan
+         * @description Compile and seal an exact ExternalExecutionPlan for a case.
+         *
+         *     Concurrency & Idempotency:
+         *     - Exact replay resolution occurs before If-Match check.
+         *     - If a plan with matching content fingerprint already exists, it is returned idempotently.
+         *     - If compiling a new plan, If-Match header on Case is strictly validated.
+         */
+        post: operations["create_execution_plan_api_v1_cases__case_id__execution_plan_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/cases/{case_id}/execution/plan/latest": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Latest Execution Plan
+         * @description Retrieve the latest execution plan for a case.
+         */
+        get: operations["get_latest_execution_plan_api_v1_cases__case_id__execution_plan_latest_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/cases/{case_id}/execution/plan/{plan_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Execution Plan
+         * @description Retrieve a specific execution plan by plan_id.
+         */
+        get: operations["get_execution_plan_api_v1_cases__case_id__execution_plan__plan_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/cases/{case_id}/execution/plans": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Execution Plans
+         * @description List all execution plans for a case.
+         */
+        get: operations["list_execution_plans_api_v1_cases__case_id__execution_plans_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/cases/{case_id}/preparation/artifacts": {
         parameters: {
             query?: never;
@@ -1465,6 +1550,18 @@ export interface components {
              */
             title: string;
         };
+        /** CreateExecutionPlanRequest */
+        CreateExecutionPlanRequest: {
+            /** Channel Metadata */
+            channel_metadata?: {
+                [key: string]: unknown;
+            } | null;
+            destination_override?: components["schemas"]["ExecutionDestinationSchema"] | null;
+            final_submit_control?: components["schemas"]["TargetSubmitControlSpecSchema"] | null;
+            /** Package Id */
+            package_id?: string | null;
+            target_schema?: components["schemas"]["TargetInteractionSchemaSchema"] | null;
+        };
         /** CreateMissionRequest */
         CreateMissionRequest: {
             /**
@@ -1722,6 +1819,143 @@ export interface components {
             status: string;
             /** Verification Status */
             verification_status?: string | null;
+        };
+        /** ExecutionDestinationSchema */
+        ExecutionDestinationSchema: {
+            /** Canonical Url */
+            canonical_url: string;
+            /** Channel Metadata */
+            channel_metadata?: {
+                [key: string]: unknown;
+            };
+            /** Destination Provenance */
+            destination_provenance: string;
+            /** Destination Type */
+            destination_type: string;
+            /**
+             * Is Exact Destination
+             * @default true
+             */
+            is_exact_destination: boolean;
+            /** Organization */
+            organization: string;
+        };
+        /** ExecutionFieldMappingResponse */
+        ExecutionFieldMappingResponse: {
+            /** Field Name */
+            field_name: string;
+            /** Field Value */
+            field_value: unknown;
+            /** Required */
+            required: boolean;
+            /** Source Fact Id */
+            source_fact_id: string;
+            /** Source Fact Version */
+            source_fact_version: number;
+            /** Target Field Id */
+            target_field_id: string;
+            /** Verification Status */
+            verification_status: string;
+        };
+        /** ExecutionPlanFindingResponse */
+        ExecutionPlanFindingResponse: {
+            /** Check Name */
+            check_name: string;
+            /** Code */
+            code: string;
+            /** Details */
+            details?: {
+                [key: string]: unknown;
+            };
+            /** Message */
+            message: string;
+            /** Passed */
+            passed: boolean;
+            /** Severity */
+            severity: string;
+        };
+        /** ExecutionScreeningResponseDTO */
+        ExecutionScreeningResponseDTO: {
+            /** Answer */
+            answer: string;
+            /** Grounding Claim Ids */
+            grounding_claim_ids: string[];
+            /** Question */
+            question: string;
+            /** Question Id */
+            question_id: string;
+            /** Source Artifact Id */
+            source_artifact_id: string;
+        };
+        /** ExecutionUploadAssetResponse */
+        ExecutionUploadAssetResponse: {
+            /** Asset Id */
+            asset_id: string;
+            /** Byte Size */
+            byte_size: number;
+            /** Content Sha256 */
+            content_sha256: string;
+            /** Filename */
+            filename: string;
+            /** Materialized */
+            materialized: boolean;
+            /** Mime Type */
+            mime_type: string;
+            /** Role */
+            role: string;
+            /** Source Artifact Id */
+            source_artifact_id: string;
+            /** Source Artifact Version */
+            source_artifact_version: number;
+        };
+        /** ExternalExecutionPlanListResponse */
+        ExternalExecutionPlanListResponse: {
+            /** Plans */
+            plans: components["schemas"]["ExternalExecutionPlanResponse"][];
+            /** Total */
+            total: number;
+        };
+        /** ExternalExecutionPlanResponse */
+        ExternalExecutionPlanResponse: {
+            /** Case Id */
+            case_id: string;
+            /** Created At */
+            created_at: string;
+            destination: components["schemas"]["ExecutionDestinationSchema"];
+            /** Execution Input Hash */
+            execution_input_hash: string;
+            /** Execution Plan Fingerprint */
+            execution_plan_fingerprint: string;
+            /** Field Mappings */
+            field_mappings: components["schemas"]["ExecutionFieldMappingResponse"][];
+            final_submit_control?: components["schemas"]["TargetSubmitControlSpecSchema"] | null;
+            /** Findings */
+            findings: components["schemas"]["ExecutionPlanFindingResponse"][];
+            /** Opportunity Id */
+            opportunity_id: string;
+            /** Package Fingerprint */
+            package_fingerprint: string;
+            /** Package Id */
+            package_id: string;
+            /** Plan Id */
+            plan_id: string;
+            /** Planner Version */
+            planner_version: string;
+            /** Schema Version */
+            schema_version: string;
+            /** Screening Responses */
+            screening_responses: components["schemas"]["ExecutionScreeningResponseDTO"][];
+            /** Status */
+            status: string;
+            target_schema?: components["schemas"]["TargetInteractionSchemaSchema"] | null;
+            /** Updated At */
+            updated_at: string;
+            /** Upload Mappings */
+            upload_mappings: components["schemas"]["ExecutionUploadAssetResponse"][];
+            /** User Id */
+            user_id: string;
+            /** Version */
+            version: number;
         };
         /** FactResponse */
         FactResponse: {
@@ -2593,6 +2827,108 @@ export interface components {
              */
             reason?: string | null;
         };
+        /** TargetInteractionSchemaSchema */
+        TargetInteractionSchemaSchema: {
+            /**
+             * Destination Type
+             * @default ats_form
+             */
+            destination_type: string;
+            /** Fields */
+            fields?: components["schemas"]["TargetSchemaFieldSchema"][];
+            final_submit_control?: components["schemas"]["TargetSubmitControlSpecSchema"] | null;
+            /**
+             * Schema Hash
+             * @default
+             */
+            schema_hash: string;
+            /** Schema Id */
+            schema_id: string;
+            /** Screening Questions */
+            screening_questions?: components["schemas"]["TargetSchemaQuestionSchema"][];
+            /** Upload Slots */
+            upload_slots?: components["schemas"]["TargetSchemaUploadSlotSchema"][];
+        };
+        /** TargetSchemaFieldSchema */
+        TargetSchemaFieldSchema: {
+            /** Allowed Options */
+            allowed_options?: string[];
+            /**
+             * Field Type
+             * @default text
+             */
+            field_type: string;
+            /** Label */
+            label: string;
+            /**
+             * Required
+             * @default true
+             */
+            required: boolean;
+            /** Target Field Id */
+            target_field_id: string;
+        };
+        /** TargetSchemaQuestionSchema */
+        TargetSchemaQuestionSchema: {
+            /**
+             * Answer Type
+             * @default text
+             */
+            answer_type: string;
+            /** Question Id */
+            question_id: string;
+            /** Question Text */
+            question_text: string;
+            /**
+             * Required
+             * @default true
+             */
+            required: boolean;
+        };
+        /** TargetSchemaUploadSlotSchema */
+        TargetSchemaUploadSlotSchema: {
+            /** Accepted Mime Types */
+            accepted_mime_types?: string[];
+            /** Label */
+            label: string;
+            /**
+             * Required
+             * @default true
+             */
+            required: boolean;
+            /** Role */
+            role: string;
+            /** Slot Id */
+            slot_id: string;
+        };
+        /** TargetSubmitControlSpecSchema */
+        TargetSubmitControlSpecSchema: {
+            /**
+             * Control Type
+             * @default button_submit
+             */
+            control_type: string;
+            /**
+             * Method
+             * @default POST
+             */
+            method: string;
+            /**
+             * Requires Double Confirmation
+             * @default true
+             */
+            requires_double_confirmation: boolean;
+            /**
+             * Selector
+             * @default
+             */
+            selector: string;
+            /**
+             * Semantic Target
+             * @default Submit Application
+             */
+            semantic_target: string;
+        };
         /** TransitionCaseRequest */
         TransitionCaseRequest: {
             /** @description Target case status. */
@@ -3051,6 +3387,135 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ActionResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_execution_plan_api_v1_cases__case_id__execution_plan_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                case_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateExecutionPlanRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExternalExecutionPlanResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_latest_execution_plan_api_v1_cases__case_id__execution_plan_latest_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                case_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExternalExecutionPlanResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_execution_plan_api_v1_cases__case_id__execution_plan__plan_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                case_id: string;
+                plan_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExternalExecutionPlanResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_execution_plans_api_v1_cases__case_id__execution_plans_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                case_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExternalExecutionPlanListResponse"];
                 };
             };
             /** @description Validation Error */

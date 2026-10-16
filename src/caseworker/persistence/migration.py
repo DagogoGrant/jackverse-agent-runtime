@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import sqlite3
 
-LATEST_SCHEMA_VERSION = 8
+LATEST_SCHEMA_VERSION = 9
 
 MIGRATION_V1_DDL = """
 CREATE TABLE IF NOT EXISTS missions (
@@ -246,6 +246,41 @@ CREATE INDEX IF NOT EXISTS idx_prep_packages_set ON preparation_packages(artifac
 CREATE INDEX IF NOT EXISTS idx_prep_packages_user ON preparation_packages(user_id);
 """
 
+MIGRATION_V9_TABLES_DDL = """
+CREATE TABLE IF NOT EXISTS external_execution_plans (
+    plan_id TEXT PRIMARY KEY,
+    case_id TEXT NOT NULL,
+    opportunity_id TEXT NOT NULL,
+    package_id TEXT NOT NULL,
+    package_fingerprint TEXT NOT NULL,
+    user_id TEXT NOT NULL,
+    status TEXT NOT NULL,
+    destination_json TEXT NOT NULL,
+    target_schema_json TEXT,
+    field_mappings_json TEXT NOT NULL,
+    upload_mappings_json TEXT NOT NULL,
+    screening_responses_json TEXT NOT NULL,
+    final_submit_control_json TEXT,
+    findings_json TEXT NOT NULL,
+    execution_input_hash TEXT NOT NULL,
+    execution_plan_fingerprint TEXT NOT NULL UNIQUE,
+    schema_version TEXT NOT NULL,
+    planner_version TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    version INTEGER NOT NULL DEFAULT 1,
+    FOREIGN KEY (case_id) REFERENCES cases(case_id) ON DELETE CASCADE,
+    FOREIGN KEY (package_id) REFERENCES preparation_packages(package_id) ON DELETE RESTRICT,
+    FOREIGN KEY (opportunity_id) REFERENCES opportunities(opportunity_id) ON DELETE RESTRICT
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_exec_plans_fingerprint ON external_execution_plans(execution_plan_fingerprint);
+CREATE INDEX IF NOT EXISTS idx_exec_plans_case ON external_execution_plans(case_id, status);
+CREATE INDEX IF NOT EXISTS idx_exec_plans_package ON external_execution_plans(package_id);
+CREATE INDEX IF NOT EXISTS idx_exec_plans_user ON external_execution_plans(user_id);
+"""
+
+
 MIGRATION_V7_TABLES_DDL = """
 CREATE TABLE IF NOT EXISTS preparation_artifacts (
     artifact_id TEXT PRIMARY KEY,
@@ -443,6 +478,12 @@ class SQLiteMigrator:
             conn.executescript(MIGRATION_V8_TABLES_DDL)
             conn.execute("PRAGMA user_version = 8;")
             current_version = 8
+
+        # Migrate 8 -> 9 (Phase 5.3.1: Exact External Action Planning)
+        if current_version < 9:
+            conn.executescript(MIGRATION_V9_TABLES_DDL)
+            conn.execute("PRAGMA user_version = 9;")
+            current_version = 9
 
         return current_version
 

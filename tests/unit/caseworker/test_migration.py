@@ -14,7 +14,7 @@ class TestSQLiteMigration(unittest.TestCase):
         cur = conn.cursor()
         cur.execute("PRAGMA user_version;")
         version = cur.fetchone()[0]
-        self.assertEqual(version, 8)
+        self.assertEqual(version, 9)
 
         # Verify all tables exist
         cur.execute("SELECT name FROM sqlite_master WHERE type='table';")
@@ -31,6 +31,8 @@ class TestSQLiteMigration(unittest.TestCase):
             "domain_events",
             "preparation_intelligence_reports",
             "preparation_artifacts",
+            "preparation_packages",
+            "external_execution_plans",
         }
         for table in expected_tables:
             self.assertIn(table, tables, f"Expected table '{table}' missing after migration.")
@@ -64,6 +66,34 @@ class TestSQLiteMigration(unittest.TestCase):
         self.assertIn("artifact_set_id", art_columns)
         self.assertIn("blocks_json", art_columns)
         self.assertIn("source_report_id", art_columns)
+
+        # Verify external_execution_plans columns
+        cur.execute("PRAGMA table_info(external_execution_plans);")
+        plan_columns = {row[1] for row in cur.fetchall()}
+        expected_plan_cols = {
+            "plan_id",
+            "case_id",
+            "opportunity_id",
+            "package_id",
+            "package_fingerprint",
+            "user_id",
+            "status",
+            "destination_json",
+            "target_schema_json",
+            "field_mappings_json",
+            "upload_mappings_json",
+            "screening_responses_json",
+            "final_submit_control_json",
+            "findings_json",
+            "execution_input_hash",
+            "execution_plan_fingerprint",
+            "schema_version",
+            "planner_version",
+            "created_at",
+            "updated_at",
+            "version",
+        }
+        self.assertTrue(expected_plan_cols.issubset(plan_columns))
 
         conn.close()
 
@@ -407,7 +437,7 @@ class TestSQLiteMigration(unittest.TestCase):
         SQLiteMigrator.migrate(conn)
 
         cur.execute("PRAGMA user_version;")
-        self.assertEqual(cur.fetchone()[0], 8)
+        self.assertEqual(cur.fetchone()[0], 9)
 
         # Verify table exists
         cur.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='preparation_intelligence_reports';")
@@ -500,7 +530,7 @@ class TestSQLiteMigration(unittest.TestCase):
 
         cur = conn.cursor()
         cur.execute("PRAGMA user_version;")
-        self.assertEqual(cur.fetchone()[0], 8)
+        self.assertEqual(cur.fetchone()[0], 9)
         conn.close()
 
     def test_migration_from_v6_schema_preserves_claims_and_creates_artifacts(self) -> None:
@@ -538,9 +568,9 @@ class TestSQLiteMigration(unittest.TestCase):
             ),
         )
 
-        # 2. Run migrator to upgrade to v7
+        # 2. Run migrator to upgrade to v9
         new_version = SQLiteMigrator.migrate(conn)
-        self.assertEqual(new_version, 8)
+        self.assertEqual(new_version, 9)
 
         # 3. Verify legacy claim is intact and has NULL for new columns
         cur.execute(
@@ -560,6 +590,39 @@ class TestSQLiteMigration(unittest.TestCase):
         # 4. Verify preparation_artifacts table exists and can be written to
         cur.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='preparation_artifacts';")
         self.assertIsNotNone(cur.fetchone())
+        conn.close()
+
+    def test_migration_from_v8_to_v9_creates_execution_plans_table(self) -> None:
+        conn = sqlite3.connect(":memory:")
+        # Migrate cleanly to v8 first
+        from caseworker.persistence.migration import (
+            MIGRATION_V1_DDL,
+            MIGRATION_V2_TABLES_DDL,
+            MIGRATION_V6_TABLES_DDL,
+            MIGRATION_V7_TABLES_DDL,
+            MIGRATION_V8_TABLES_DDL,
+        )
+        conn.executescript(MIGRATION_V1_DDL)
+        conn.executescript(MIGRATION_V2_TABLES_DDL)
+        conn.executescript(MIGRATION_V6_TABLES_DDL)
+        conn.executescript(MIGRATION_V7_TABLES_DDL)
+        conn.executescript(MIGRATION_V8_TABLES_DDL)
+        conn.execute("PRAGMA user_version = 8;")
+
+        # Migrate to v9
+        new_version = SQLiteMigrator.migrate(conn)
+        self.assertEqual(new_version, 9)
+
+        cur = conn.cursor()
+        cur.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='external_execution_plans';")
+        self.assertIsNotNone(cur.fetchone())
+
+        cur.execute("SELECT name FROM sqlite_master WHERE type='index' AND name LIKE 'idx_exec_plans_%';")
+        indexes = {row[0] for row in cur.fetchall()}
+        self.assertIn("idx_exec_plans_fingerprint", indexes)
+        self.assertIn("idx_exec_plans_case", indexes)
+        self.assertIn("idx_exec_plans_package", indexes)
+        self.assertIn("idx_exec_plans_user", indexes)
         conn.close()
 
 

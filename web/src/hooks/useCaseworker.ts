@@ -24,6 +24,9 @@ import type {
   ArtifactProvenance,
   PreparationPackage,
   VerifyPackageResponse,
+  ExternalExecutionPlan,
+  ExecutionDestination,
+  TargetInteractionSchema,
 } from '../api/types';
 
 // Invalidate on dev user switch
@@ -444,6 +447,75 @@ export function useVerifyPreparationPackage() {
       queryClient.invalidateQueries({ queryKey: ['preparation-package-latest', vars.caseId] });
       queryClient.invalidateQueries({ queryKey: ['actions', vars.caseId] });
       queryClient.invalidateQueries({ queryKey: ['approvals'] });
+      queryClient.invalidateQueries({ queryKey: ['events'] });
+    },
+  });
+}
+
+// ----------------------------------------------------------------------------
+// External Execution Plans (Phase 5.3.1)
+// ----------------------------------------------------------------------------
+export function useLatestExecutionPlan(caseId?: string) {
+  return useQuery({
+    queryKey: ['execution-plan-latest', caseId],
+    queryFn: async () => {
+      if (!caseId) return null;
+      try {
+        const res = await apiRequest<ExternalExecutionPlan>(
+          `/cases/${caseId}/execution/plan/latest`
+        );
+        return res.data;
+      } catch (err: unknown) {
+        if (err instanceof ApiError && err.status === 404) {
+          return null;
+        }
+        throw err;
+      }
+    },
+    enabled: Boolean(caseId),
+  });
+}
+
+export function useCreateExecutionPlan() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({
+      caseId,
+      packageId,
+      destinationOverride,
+      targetSchema,
+      channelMetadata,
+      finalSubmitControl,
+      etag,
+    }: {
+      caseId: string;
+      packageId?: string | null;
+      destinationOverride?: ExecutionDestination | null;
+      targetSchema?: TargetInteractionSchema | null;
+      channelMetadata?: Record<string, unknown> | null;
+      finalSubmitControl?: Record<string, unknown> | null;
+      etag?: string | null;
+    }) => {
+      const res = await apiRequest<ExternalExecutionPlan>(
+        `/cases/${caseId}/execution/plan`,
+        {
+          method: 'POST',
+          body: JSON.stringify({
+            package_id: packageId || null,
+            destination_override: destinationOverride || null,
+            target_schema: targetSchema || null,
+            channel_metadata: channelMetadata || null,
+            final_submit_control: finalSubmitControl || null,
+          }),
+        },
+        etag
+      );
+      return res.data;
+    },
+    onSuccess: (_, vars) => {
+      queryClient.invalidateQueries({ queryKey: ['cases'] });
+      queryClient.invalidateQueries({ queryKey: ['cases', vars.caseId] });
+      queryClient.invalidateQueries({ queryKey: ['execution-plan-latest', vars.caseId] });
       queryClient.invalidateQueries({ queryKey: ['events'] });
     },
   });

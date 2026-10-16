@@ -28,6 +28,7 @@ from caseworker.domain.events import (
     make_preparation_package_superseded_event,
 )
 from caseworker.domain.package import compute_package_fingerprint
+from caseworker.domain.package_integrity import PreparationPackageIntegrityValidator
 from caseworker.domain.package_verifier import PackageVerificationEngine
 from caseworker.services.package_service import PackageService
 
@@ -108,151 +109,19 @@ class ApprovalService:
                 if package is None:
                     raise EntityNotFoundError("PreparationPackage", package_id or "unknown")
 
-                # Phase 5.2.3.1: Approval-time revalidation & exact payload verification
-                reval_ok = True
-                reval_reason = ""
-                findings: list[Any] = []
-
-                # 1. Exact Artifact Payload & Snapshot Revalidation
-                artifacts = []
-                artifacts_by_id = {}
-                for snapshot in package.artifact_snapshots:
-                    art = uow.preparation_artifacts.get_by_id(snapshot.artifact_id)
-                    if art is None:
-                        reval_ok = False
-                        reval_reason = f"Artifact '{snapshot.artifact_id}' missing from database"
-                        break
-                    if art.version != snapshot.artifact_version:
-                        reval_ok = False
-                        reval_reason = (
-                            f"Artifact '{snapshot.artifact_id}' version mismatch "
-                            f"(expected {snapshot.artifact_version}, got {art.version})"
-                        )
-                        break
-                    if art.status != ArtifactStatus.FROZEN:
-                        reval_ok = False
-                        reval_reason = (
-                            f"Artifact '{snapshot.artifact_id}' has invalid status '{art.status.value}', expected FROZEN"
-                        )
-                        break
-
-                    current_rendered_hash = art.compute_rendered_payload_hash()
-                    if current_rendered_hash != snapshot.rendered_payload_hash:
-                        reval_ok = False
-                        reval_reason = (
-                            f"Artifact '{snapshot.artifact_id}' rendered payload hash mismatch "
-                            f"(expected {snapshot.rendered_payload_hash}, got {current_rendered_hash})"
-                        )
-                        break
-
-                    if art.grounding_snapshot_hash != snapshot.grounding_snapshot_hash:
-                        reval_ok = False
-                        reval_reason = (
-                            f"Artifact '{snapshot.artifact_id}' grounding snapshot hash mismatch "
-                            f"(expected {snapshot.grounding_snapshot_hash}, got {art.grounding_snapshot_hash})"
-                        )
-                        break
-
-                    expected_mat_type = (
-                        art.material_type.value if hasattr(art.material_type, "value") else str(art.material_type)
-                    )
-                    if snapshot.material_type != expected_mat_type:
-                        reval_ok = False
-                        reval_reason = (
-                            f"Artifact '{snapshot.artifact_id}' material_type mismatch "
-                            f"(expected '{expected_mat_type}', got '{snapshot.material_type}')"
-                        )
-                        break
-
-                    expected_role = PackageVerificationEngine.get_publication_role(art.material_type)
-                    expected_role_str = expected_role.value if hasattr(expected_role, "value") else str(expected_role)
-                    if snapshot.publication_role != expected_role_str:
-                        reval_ok = False
-                        reval_reason = (
-                            f"Artifact '{snapshot.artifact_id}' publication_role mismatch "
-                            f"(expected '{expected_role_str}', got '{snapshot.publication_role}')"
-                        )
-                        break
-
-                    artifacts.append(art)
-                    artifacts_by_id[art.artifact_id] = art
-
-                if reval_ok and set(package.artifact_ids) != set(artifacts_by_id.keys()):
-                    reval_ok = False
-                    reval_reason = "Package artifact_ids does not match artifact_snapshots set"
-
-                # 2. Latest report check
-                latest_report = uow.preparation_reports.get_latest_for_case(case.case_id)
-                if reval_ok:
-                    if latest_report is None or latest_report.report_id != package.source_report_id:
-                        reval_ok = False
-                        reval_reason = "Preparation report is missing or newer report exists"
-                    else:
-                        is_stale = PackageService.is_report_stale_in_uow(uow, case, latest_report)
-                        if is_stale:
-                            reval_ok = False
-                            reval_reason = "Source preparation intelligence report has become stale"
-
-                # 3. Claims & Facts verification engine check
-                if reval_ok:
-                    claims = uow.claims.list_by_case(case.case_id)
-                    claims_by_id = {c.claim_id: c for c in claims}
-                    facts = uow.context.list_active(user_id=user_id)
-                    facts_by_id = {f.fact_id: f for f in facts}
-
-                    v_result = PackageVerificationEngine.verify(
-                        case_id=case.case_id,
-                        artifact_set_id=package.artifact_set_id,
-                        artifacts=artifacts,
-                        latest_report=latest_report,
-                        is_report_stale=False,
-                        claims_by_id=claims_by_id,
-                        facts_by_id=facts_by_id,
-                        allow_frozen_artifacts=True,
-                    )
-                    findings = [f.to_dict() for f in v_result.findings]
-                    if not v_result.passed:
-                        reval_ok = False
-                        reval_reason = "Package verification engine checks failed"
-                    elif v_result.claim_snapshots != package.claim_snapshots:
-                        reval_ok = False
-                        reval_reason = "Package claim snapshots mismatch against current verification result"
-                    elif v_result.rendered_payload_hashes != package.rendered_payload_hashes:
-                        reval_ok = False
-                        reval_reason = "Package rendered payload hashes mismatch against current verification result"
-                    elif v_result.artifact_snapshots != package.artifact_snapshots:
-                        reval_ok = False
-                        reval_reason = "Package artifact snapshots mismatch against current verification result"
-
-                # 4. Fingerprint check
-                if reval_ok:
-                    computed_fp = package.compute_fingerprint()
-                    live_fp = compute_package_fingerprint(
-                        case_id=case.case_id,
-                        artifact_set_id=package.artifact_set_id,
-                        source_report_id=package.source_report_id,
-                        artifact_snapshots=v_result.artifact_snapshots,
-                        claim_snapshots=v_result.claim_snapshots,
-                        schema_version=package.schema_version,
-                        verifier_version=package.verifier_version,
-                    )
-                    if computed_fp != package.package_fingerprint or live_fp != package.package_fingerprint:
-                        reval_ok = False
-                        reval_reason = "Package content fingerprint mismatch"
-
-                # 5. Semantic Action / Package Binding Check
-                if reval_ok:
-                    params = action.parameters or {}
-                    if (
-                        action.case_id != package.case_id
-                        or params.get("package_id") != package.package_id
-                        or params.get("package_fingerprint") != package.package_fingerprint
-                        or params.get("artifact_set_id") != package.artifact_set_id
-                        or params.get("source_report_id") != package.source_report_id
-                        or params.get("case_id") != package.case_id
-                    ):
-                        reval_ok = False
-                        reval_reason = "Action parameters do not match preparation package semantic binding"
+                # Phase 5.2.3.1 / Phase 5.3.1: Approval-time revalidation & exact payload verification
+                integrity_result = PreparationPackageIntegrityValidator.validate(
+                    uow=uow,
+                    case=case,
+                    package=package,
+                    user_id=user_id,
+                    expected_package_status=None,
+                    action=action,
+                )
+                reval_ok = integrity_result.is_valid
+                reval_reason = integrity_result.reason
+                findings = integrity_result.findings
+                artifacts = integrity_result.artifacts
 
                 # Amendment 7: Stale package unwind on revalidation failure
                 if not reval_ok:

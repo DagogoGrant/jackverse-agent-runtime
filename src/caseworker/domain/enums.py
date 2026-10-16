@@ -332,3 +332,30 @@ class ArtifactPublicationRole(StrEnum):
     INTERNAL_PREPARATION = "internal_preparation"
 
 
+class ExecutionDestinationType(StrEnum):
+    """Destination channel category for external action execution."""
+
+    ATS_FORM = "ats_form"
+    DIRECT_PORTAL = "direct_portal"
+    EMAIL = "email"
+    API = "api"
+    CUSTOM = "custom"
+
+
+class DestinationProvenance(StrEnum):
+    """Provenance origin verifying the authenticity of an application destination."""
+
+    USER_PROVIDED = "user_provided"
+    OPPORTUNITY_APPLICATION_URL = "opportunity_application_url"
+    VERIFIED_PROVIDER_METADATA = "verified_provider_metadata"
+
+
+class ExternalExecutionPlanStatus(StrEnum):
+    """Lifecycle states for an ExternalExecutionPlan."""
+
+    DRAFT = "draft"
+    READY_FOR_AUTHORIZATION = "ready_for_authorization"
+    SUPERSEDED = "superseded"
+
+
+

@@ -33,6 +33,7 @@ from caseworker.domain.enums import (
     CaseStatus,
     CaseType,
     ClaimStatus,
+    ExternalExecutionPlanStatus,
     MissionKind,
     MissionStatus,
     OpportunityStatus,
@@ -52,6 +53,16 @@ from caseworker.domain.errors import (
     PersistenceError,
 )
 from caseworker.domain.events import DomainEvent
+from caseworker.domain.execution_plan import (
+    ExecutionDestination,
+    ExecutionFieldMapping,
+    ExecutionPlanFinding,
+    ExecutionScreeningResponse,
+    ExecutionUploadAsset,
+    ExternalExecutionPlan,
+    TargetInteractionSchema,
+    TargetSubmitControlSpec,
+)
 from caseworker.domain.mission import Mission
 from caseworker.domain.namespaces import matches_namespace_filter
 from caseworker.domain.opportunity import Opportunity
@@ -82,6 +93,7 @@ from caseworker.persistence.base import (
     ContextRepository,
     ContextSourceRepository,
     EventStore,
+    ExternalExecutionPlanRepository,
     MissionRepository,
     OpportunityRepository,
     PreparationArtifactRepository,
@@ -2092,6 +2104,269 @@ class SQLitePreparationPackageRepository(PreparationPackageRepository):
         )
         return [self._row_to_package(row) for row in cur.fetchall()]
 
+
+class SQLiteExternalExecutionPlanRepository(ExternalExecutionPlanRepository):
+    def __init__(self, conn: sqlite3.Connection) -> None:
+        self.conn = conn
+
+    def save(self, plan: ExternalExecutionPlan) -> None:
+        cur = self.conn.cursor()
+        cur.execute(
+            """
+            SELECT version, user_id, case_id, opportunity_id, package_id,
+                   package_fingerprint, destination_json, target_schema_json,
+                   field_mappings_json, upload_mappings_json, screening_responses_json,
+                   final_submit_control_json, execution_input_hash,
+                   execution_plan_fingerprint, schema_version, planner_version
+            FROM external_execution_plans
+            WHERE plan_id = ?
+            """,
+            (plan.plan_id,),
+        )
+        row = cur.fetchone()
+
+        destination_json = canonical_json_dumps(plan.destination.to_dict())
+        target_schema_json = canonical_json_dumps(plan.target_schema.to_dict()) if plan.target_schema else None
+        field_mappings_json = canonical_json_dumps([m.to_dict() for m in plan.field_mappings])
+        upload_mappings_json = canonical_json_dumps([u.to_dict() for u in plan.upload_mappings])
+        screening_responses_json = canonical_json_dumps([s.to_dict() for s in plan.screening_responses])
+        final_submit_control_json = (
+            canonical_json_dumps(plan.final_submit_control.to_dict()) if plan.final_submit_control else None
+        )
+        findings_json = canonical_json_dumps([f.to_dict() for f in plan.findings])
+
+        if row is None:
+            try:
+                cur.execute(
+                    """
+                    INSERT INTO external_execution_plans (
+                        plan_id, case_id, opportunity_id, package_id,
+                        package_fingerprint, user_id, status, destination_json,
+                        target_schema_json, field_mappings_json, upload_mappings_json,
+                        screening_responses_json, final_submit_control_json,
+                        findings_json, execution_input_hash, execution_plan_fingerprint,
+                        schema_version, planner_version, created_at, updated_at,
+                        version
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        plan.plan_id,
+                        plan.case_id,
+                        plan.opportunity_id,
+                        plan.package_id,
+                        plan.package_fingerprint,
+                        plan.user_id,
+                        plan.status.value,
+                        destination_json,
+                        target_schema_json,
+                        field_mappings_json,
+                        upload_mappings_json,
+                        screening_responses_json,
+                        final_submit_control_json,
+                        findings_json,
+                        plan.execution_input_hash,
+                        plan.execution_plan_fingerprint,
+                        plan.schema_version,
+                        plan.planner_version,
+                        to_iso_utc(plan.created_at),
+                        to_iso_utc(plan.updated_at),
+                        plan.version,
+                    ),
+                )
+            except sqlite3.IntegrityError as e:
+                raise PersistenceError(f"Failed to insert ExternalExecutionPlan '{plan.plan_id}': {e}") from e
+        else:
+            existing_version = row[0]
+            existing_user_id = row[1]
+            existing_case_id = row[2]
+            existing_opportunity_id = row[3]
+            existing_package_id = row[4]
+            existing_package_fingerprint = row[5]
+            existing_dest = row[6]
+            existing_schema = row[7]
+            existing_fields = row[8]
+            existing_uploads = row[9]
+            existing_screening = row[10]
+            existing_control = row[11]
+            existing_input_hash = row[12]
+            existing_plan_fp = row[13]
+            existing_schema_ver = row[14]
+            existing_planner_ver = row[15]
+
+            expected_version = plan.version - 1
+            if expected_version != existing_version:
+                raise OptimisticLockError("ExternalExecutionPlan", plan.plan_id, expected_version)
+
+            if (
+                plan.user_id != existing_user_id
+                or plan.case_id != existing_case_id
+                or plan.opportunity_id != existing_opportunity_id
+                or plan.package_id != existing_package_id
+                or plan.package_fingerprint != existing_package_fingerprint
+                or destination_json != existing_dest
+                or target_schema_json != existing_schema
+                or field_mappings_json != existing_fields
+                or upload_mappings_json != existing_uploads
+                or screening_responses_json != existing_screening
+                or final_submit_control_json != existing_control
+                or plan.execution_input_hash != existing_input_hash
+                or plan.execution_plan_fingerprint != existing_plan_fp
+                or plan.schema_version != existing_schema_ver
+                or plan.planner_version != existing_planner_ver
+            ):
+                raise DomainValidationError(
+                    f"Cannot mutate content-addressed fields of ExternalExecutionPlan '{plan.plan_id}'."
+                )
+
+            cur.execute(
+                """
+                UPDATE external_execution_plans SET
+                    status = ?, findings_json = ?, updated_at = ?, version = ?
+                WHERE plan_id = ? AND version = ?
+                """,
+                (
+                    plan.status.value,
+                    findings_json,
+                    to_iso_utc(plan.updated_at),
+                    plan.version,
+                    plan.plan_id,
+                    expected_version,
+                ),
+            )
+            if cur.rowcount == 0:
+                raise OptimisticLockError("ExternalExecutionPlan", plan.plan_id, expected_version)
+
+    def _row_to_plan(self, row: tuple[Any, ...]) -> ExternalExecutionPlan:
+        dest_dict = json.loads(row[7])
+        target_schema_dict = json.loads(row[8]) if row[8] else None
+        fields_list = json.loads(row[9])
+        uploads_list = json.loads(row[10])
+        screening_list = json.loads(row[11])
+        control_dict = json.loads(row[12]) if row[12] else None
+        findings_list = json.loads(row[13])
+
+        return ExternalExecutionPlan(
+            plan_id=row[0],
+            case_id=row[1],
+            opportunity_id=row[2],
+            package_id=row[3],
+            package_fingerprint=row[4],
+            user_id=row[5],
+            status=ExternalExecutionPlanStatus(row[6]),
+            destination=ExecutionDestination.from_dict(dest_dict),
+            target_schema=TargetInteractionSchema.from_dict(target_schema_dict) if target_schema_dict else None,
+            field_mappings=[ExecutionFieldMapping.from_dict(m) for m in fields_list],
+            upload_mappings=[ExecutionUploadAsset.from_dict(u) for u in uploads_list],
+            screening_responses=[ExecutionScreeningResponse.from_dict(s) for s in screening_list],
+            final_submit_control=TargetSubmitControlSpec.from_dict(control_dict) if control_dict else None,
+            findings=[ExecutionPlanFinding.from_dict(f) for f in findings_list],
+            execution_input_hash=row[14],
+            execution_plan_fingerprint=row[15],
+            schema_version=row[16],
+            planner_version=row[17],
+            created_at=from_iso_utc(row[18]) or now_utc(),
+            updated_at=from_iso_utc(row[19]) or now_utc(),
+            version=row[20],
+        )
+
+    def get_by_id(self, plan_id: str) -> ExternalExecutionPlan | None:
+        cur = self.conn.cursor()
+        cur.execute(
+            """
+            SELECT plan_id, case_id, opportunity_id, package_id,
+                   package_fingerprint, user_id, status, destination_json,
+                   target_schema_json, field_mappings_json, upload_mappings_json,
+                   screening_responses_json, final_submit_control_json,
+                   findings_json, execution_input_hash, execution_plan_fingerprint,
+                   schema_version, planner_version, created_at, updated_at,
+                   version
+            FROM external_execution_plans
+            WHERE plan_id = ?
+            """,
+            (plan_id,),
+        )
+        row = cur.fetchone()
+        return self._row_to_plan(row) if row else None
+
+    def get_by_fingerprint(self, case_id: str, plan_fingerprint: str) -> ExternalExecutionPlan | None:
+        cur = self.conn.cursor()
+        cur.execute(
+            """
+            SELECT plan_id, case_id, opportunity_id, package_id,
+                   package_fingerprint, user_id, status, destination_json,
+                   target_schema_json, field_mappings_json, upload_mappings_json,
+                   screening_responses_json, final_submit_control_json,
+                   findings_json, execution_input_hash, execution_plan_fingerprint,
+                   schema_version, planner_version, created_at, updated_at,
+                   version
+            FROM external_execution_plans
+            WHERE case_id = ? AND execution_plan_fingerprint = ?
+            """,
+            (case_id, plan_fingerprint),
+        )
+        row = cur.fetchone()
+        return self._row_to_plan(row) if row else None
+
+    def get_latest_for_case(self, case_id: str) -> ExternalExecutionPlan | None:
+        cur = self.conn.cursor()
+        cur.execute(
+            """
+            SELECT plan_id, case_id, opportunity_id, package_id,
+                   package_fingerprint, user_id, status, destination_json,
+                   target_schema_json, field_mappings_json, upload_mappings_json,
+                   screening_responses_json, final_submit_control_json,
+                   findings_json, execution_input_hash, execution_plan_fingerprint,
+                   schema_version, planner_version, created_at, updated_at,
+                   version
+            FROM external_execution_plans
+            WHERE case_id = ?
+            ORDER BY created_at DESC, version DESC
+            LIMIT 1
+            """,
+            (case_id,),
+        )
+        row = cur.fetchone()
+        return self._row_to_plan(row) if row else None
+
+    def list_for_case(self, case_id: str) -> list[ExternalExecutionPlan]:
+        cur = self.conn.cursor()
+        cur.execute(
+            """
+            SELECT plan_id, case_id, opportunity_id, package_id,
+                   package_fingerprint, user_id, status, destination_json,
+                   target_schema_json, field_mappings_json, upload_mappings_json,
+                   screening_responses_json, final_submit_control_json,
+                   findings_json, execution_input_hash, execution_plan_fingerprint,
+                   schema_version, planner_version, created_at, updated_at,
+                   version
+            FROM external_execution_plans
+            WHERE case_id = ?
+            ORDER BY created_at DESC, version DESC
+            """,
+            (case_id,),
+        )
+        return [self._row_to_plan(row) for row in cur.fetchall()]
+
+    def list_active_for_case(self, case_id: str) -> list[ExternalExecutionPlan]:
+        cur = self.conn.cursor()
+        cur.execute(
+            """
+            SELECT plan_id, case_id, opportunity_id, package_id,
+                   package_fingerprint, user_id, status, destination_json,
+                   target_schema_json, field_mappings_json, upload_mappings_json,
+                   screening_responses_json, final_submit_control_json,
+                   findings_json, execution_input_hash, execution_plan_fingerprint,
+                   schema_version, planner_version, created_at, updated_at,
+                   version
+            FROM external_execution_plans
+            WHERE case_id = ? AND status != ?
+            ORDER BY created_at DESC, version DESC
+            """,
+            (case_id, ExternalExecutionPlanStatus.SUPERSEDED.value),
+        )
+        return [self._row_to_plan(row) for row in cur.fetchall()]
+
+
 class SQLiteCaseworkerUnitOfWork(CaseworkerUnitOfWork):
     """Transaction / Unit-of-Work boundary using SQLite."""
 
@@ -2109,6 +2384,7 @@ class SQLiteCaseworkerUnitOfWork(CaseworkerUnitOfWork):
         self.preparation_reports = SQLitePreparationReportRepository(conn)
         self.preparation_artifacts = SQLitePreparationArtifactRepository(conn)
         self.preparation_packages = SQLitePreparationPackageRepository(conn)
+        self.execution_plans = SQLiteExternalExecutionPlanRepository(conn)
         self.events = SQLiteEventStore(conn)
         self._in_transaction = False
 

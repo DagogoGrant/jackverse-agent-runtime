@@ -14,6 +14,7 @@ from caseworker.domain.claim import Claim
 from caseworker.domain.context import ContextFact
 from caseworker.domain.enums import ArtifactStatus, CaseStatus, ClaimStatus, MissionStatus, OpportunityStatus
 from caseworker.domain.events import DomainEvent
+from caseworker.domain.execution_plan import ExternalExecutionPlan
 from caseworker.domain.mission import Mission
 from caseworker.domain.opportunity import Opportunity
 from caseworker.domain.package import PreparationPackage
@@ -344,6 +345,35 @@ class PreparationPackageRepository(Protocol):
 
 
 @runtime_checkable
+class ExternalExecutionPlanRepository(Protocol):
+    """Repository interface for ExternalExecutionPlan entities."""
+
+    def save(self, plan: ExternalExecutionPlan) -> None:
+        """Save a new execution plan or update mutable fields of an existing one."""
+        ...
+
+    def get_by_id(self, plan_id: str) -> ExternalExecutionPlan | None:
+        """Retrieve an execution plan by its unique plan_id."""
+        ...
+
+    def get_by_fingerprint(self, case_id: str, plan_fingerprint: str) -> ExternalExecutionPlan | None:
+        """Retrieve an execution plan by case ID and content-addressed fingerprint."""
+        ...
+
+    def get_latest_for_case(self, case_id: str) -> ExternalExecutionPlan | None:
+        """Retrieve the latest execution plan created for a case."""
+        ...
+
+    def list_for_case(self, case_id: str) -> list[ExternalExecutionPlan]:
+        """List all execution plans for a case, newest first."""
+        ...
+
+    def list_active_for_case(self, case_id: str) -> list[ExternalExecutionPlan]:
+        """List active (non-superseded) execution plans for a case."""
+        ...
+
+
+@runtime_checkable
 class CaseworkerUnitOfWork(Protocol):
     """Transaction / Unit-of-Work boundary ensuring atomic domain state and event persistence."""
 
@@ -358,6 +388,7 @@ class CaseworkerUnitOfWork(Protocol):
     preparation_reports: PreparationReportRepository
     preparation_artifacts: PreparationArtifactRepository
     preparation_packages: PreparationPackageRepository
+    execution_plans: ExternalExecutionPlanRepository
     events: EventStore
 
     def commit(self) -> None:

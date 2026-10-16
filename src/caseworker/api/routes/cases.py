@@ -8,6 +8,7 @@ from fastapi import APIRouter, Depends, Request, Response, status
 from caseworker.api.dependencies import (
     PaginationParams,
     get_artifact_service,
+    get_execution_plan_service,
     get_package_service,
     get_case_service,
     get_mission_service,
@@ -28,6 +29,21 @@ from caseworker.api.schemas.case import (
     TransitionCaseRequest,
 )
 from caseworker.api.schemas.common import PaginatedResponse
+from caseworker.api.schemas.execution_plan import (
+    CreateExecutionPlanRequest,
+    ExecutionDestinationSchema,
+    ExecutionFieldMappingResponse,
+    ExecutionPlanFindingResponse,
+    ExecutionScreeningResponseDTO,
+    ExecutionUploadAssetResponse,
+    ExternalExecutionPlanListResponse,
+    ExternalExecutionPlanResponse,
+    TargetInteractionSchemaSchema,
+    TargetSchemaFieldSchema,
+    TargetSchemaQuestionSchema,
+    TargetSchemaUploadSlotSchema,
+    TargetSubmitControlSpecSchema,
+)
 from caseworker.api.schemas.preparation import (
     ClaimIntentResponse,
     EvidenceMappingItemResponse,
@@ -39,10 +55,20 @@ from caseworker.domain.artifact import PreparedArtifact
 from caseworker.domain.case import Case
 from caseworker.domain.enums import CaseStatus
 from caseworker.domain.errors import EntityNotFoundError
+from caseworker.domain.execution_plan import (
+    ExecutionDestination,
+    ExternalExecutionPlan,
+    TargetInteractionSchema,
+    TargetSchemaField,
+    TargetSchemaQuestion,
+    TargetSchemaUploadSlot,
+    TargetSubmitControlSpec,
+)
 from caseworker.domain.preparation import PreparationIntelligenceReport
 from caseworker.domain.types import to_iso_utc
 from caseworker.services.artifact_service import ArtifactPreparationService
 from caseworker.services.case_service import CaseService
+from caseworker.services.execution_plan_service import ExecutionPlanService
 from caseworker.services.mission_service import MissionService
 from caseworker.api.schemas.action import ActionResponse
 from caseworker.api.schemas.approval import ApprovalResponse
@@ -724,3 +750,334 @@ async def get_preparation_package(
 
     set_etag_header(response, "package", package.package_id, package.version)
     return _to_package_response(package)
+
+
+def _to_execution_plan_response(plan: ExternalExecutionPlan) -> ExternalExecutionPlanResponse:
+    dest_schema = ExecutionDestinationSchema(
+        destination_type=plan.destination.destination_type,
+        destination_provenance=plan.destination.destination_provenance,
+        canonical_url=plan.destination.canonical_url,
+        organization=plan.destination.organization,
+        channel_metadata=plan.destination.channel_metadata,
+        is_exact_destination=plan.destination.is_exact_destination,
+    )
+    target_schema_dto = None
+    if plan.target_schema:
+        control_dto = None
+        if plan.target_schema.final_submit_control:
+            ctrl = plan.target_schema.final_submit_control
+            control_dto = TargetSubmitControlSpecSchema(
+                control_type=ctrl.control_type,
+                semantic_target=ctrl.semantic_target,
+                selector=ctrl.selector,
+                method=ctrl.method,
+                requires_double_confirmation=ctrl.requires_double_confirmation,
+            )
+        target_schema_dto = TargetInteractionSchemaSchema(
+            schema_id=plan.target_schema.schema_id,
+            destination_type=plan.target_schema.destination_type,
+            fields=[
+                TargetSchemaFieldSchema(
+                    target_field_id=f.target_field_id,
+                    label=f.label,
+                    field_type=f.field_type,
+                    required=f.required,
+                    allowed_options=f.allowed_options,
+                )
+                for f in plan.target_schema.fields
+            ],
+            upload_slots=[
+                TargetSchemaUploadSlotSchema(
+                    slot_id=s.slot_id,
+                    role=s.role,
+                    label=s.label,
+                    required=s.required,
+                    accepted_mime_types=s.accepted_mime_types,
+                )
+                for s in plan.target_schema.upload_slots
+            ],
+            screening_questions=[
+                TargetSchemaQuestionSchema(
+                    question_id=q.question_id,
+                    question_text=q.question_text,
+                    required=q.required,
+                    answer_type=q.answer_type,
+                )
+                for q in plan.target_schema.screening_questions
+            ],
+            final_submit_control=control_dto,
+            schema_hash=plan.target_schema.schema_hash,
+        )
+
+    submit_control_dto = None
+    if plan.final_submit_control:
+        ctrl = plan.final_submit_control
+        submit_control_dto = TargetSubmitControlSpecSchema(
+            control_type=ctrl.control_type,
+            semantic_target=ctrl.semantic_target,
+            selector=ctrl.selector,
+            method=ctrl.method,
+            requires_double_confirmation=ctrl.requires_double_confirmation,
+        )
+
+    return ExternalExecutionPlanResponse(
+        plan_id=plan.plan_id,
+        case_id=plan.case_id,
+        opportunity_id=plan.opportunity_id,
+        package_id=plan.package_id,
+        package_fingerprint=plan.package_fingerprint,
+        user_id=plan.user_id,
+        status=plan.status.value,
+        destination=dest_schema,
+        target_schema=target_schema_dto,
+        field_mappings=[
+            ExecutionFieldMappingResponse(
+                target_field_id=m.target_field_id,
+                field_name=m.field_name,
+                field_value=m.field_value,
+                source_fact_id=m.source_fact_id,
+                source_fact_version=m.source_fact_version,
+                verification_status=m.verification_status,
+                required=m.required,
+            )
+            for m in plan.field_mappings
+        ],
+        upload_mappings=[
+            ExecutionUploadAssetResponse(
+                asset_id=u.asset_id,
+                role=u.role,
+                source_artifact_id=u.source_artifact_id,
+                source_artifact_version=u.source_artifact_version,
+                filename=u.filename,
+                mime_type=u.mime_type,
+                content_sha256=u.content_sha256,
+                byte_size=u.byte_size,
+                materialized=u.materialized,
+            )
+            for u in plan.upload_mappings
+        ],
+        screening_responses=[
+            ExecutionScreeningResponseDTO(
+                question_id=s.question_id,
+                question=s.question,
+                answer=s.answer,
+                source_artifact_id=s.source_artifact_id,
+                grounding_claim_ids=s.grounding_claim_ids,
+            )
+            for s in plan.screening_responses
+        ],
+        final_submit_control=submit_control_dto,
+        findings=[
+            ExecutionPlanFindingResponse(
+                check_name=f.check_name,
+                passed=f.passed,
+                severity=f.severity,
+                code=f.code,
+                message=f.message,
+                details=f.details,
+            )
+            for f in plan.findings
+        ],
+        execution_input_hash=plan.execution_input_hash,
+        execution_plan_fingerprint=plan.execution_plan_fingerprint,
+        schema_version=plan.schema_version,
+        planner_version=plan.planner_version,
+        created_at=to_iso_utc(plan.created_at),
+        updated_at=to_iso_utc(plan.updated_at),
+        version=plan.version,
+    )
+
+
+@router.post(
+    "/api/v1/cases/{case_id}/execution/plan",
+    response_model=ExternalExecutionPlanResponse,
+    status_code=status.HTTP_200_OK,
+)
+async def create_execution_plan(
+    case_id: str,
+    req: CreateExecutionPlanRequest,
+    request: Request,
+    response: Response,
+    principal: Annotated[Principal, Depends(get_principal)],
+    case_service: Annotated[CaseService, Depends(get_case_service)],
+    execution_plan_service: Annotated[ExecutionPlanService, Depends(get_execution_plan_service)],
+) -> ExternalExecutionPlanResponse:
+    """Compile and seal an exact ExternalExecutionPlan for a case.
+
+    Concurrency & Idempotency:
+    - Exact replay resolution occurs before If-Match check.
+    - If a plan with matching content fingerprint already exists, it is returned idempotently.
+    - If compiling a new plan, If-Match header on Case is strictly validated.
+    """
+    dest_override = None
+    if req.destination_override:
+        dest_override = ExecutionDestination(
+            destination_type=req.destination_override.destination_type,
+            destination_provenance=req.destination_override.destination_provenance,
+            canonical_url=req.destination_override.canonical_url,
+            organization=req.destination_override.organization,
+            channel_metadata=req.destination_override.channel_metadata,
+            is_exact_destination=req.destination_override.is_exact_destination,
+        )
+
+    target_schema = None
+    if req.target_schema:
+        control = None
+        if req.target_schema.final_submit_control:
+            c = req.target_schema.final_submit_control
+            control = TargetSubmitControlSpec(
+                control_type=c.control_type,
+                semantic_target=c.semantic_target,
+                selector=c.selector,
+                method=c.method,
+                requires_double_confirmation=c.requires_double_confirmation,
+            )
+        target_schema = TargetInteractionSchema(
+            schema_id=req.target_schema.schema_id,
+            destination_type=req.target_schema.destination_type,
+            fields=[
+                TargetSchemaField(
+                    target_field_id=f.target_field_id,
+                    label=f.label,
+                    field_type=f.field_type,
+                    required=f.required,
+                    allowed_options=f.allowed_options,
+                )
+                for f in req.target_schema.fields
+            ],
+            upload_slots=[
+                TargetSchemaUploadSlot(
+                    slot_id=s.slot_id,
+                    role=s.role,
+                    label=s.label,
+                    required=s.required,
+                    accepted_mime_types=s.accepted_mime_types,
+                )
+                for s in req.target_schema.upload_slots
+            ],
+            screening_questions=[
+                TargetSchemaQuestion(
+                    question_id=q.question_id,
+                    question_text=q.question_text,
+                    required=q.required,
+                    answer_type=q.answer_type,
+                )
+                for q in req.target_schema.screening_questions
+            ],
+            final_submit_control=control,
+            schema_hash=req.target_schema.schema_hash,
+        )
+
+    submit_control = None
+    if req.final_submit_control:
+        c = req.final_submit_control
+        submit_control = TargetSubmitControlSpec(
+            control_type=c.control_type,
+            semantic_target=c.semantic_target,
+            selector=c.selector,
+            method=c.method,
+            requires_double_confirmation=c.requires_double_confirmation,
+        )
+
+    # 1. Exact replay resolution before If-Match check (Amendment 15)
+    existing_match = execution_plan_service.find_matching_plan(
+        user_id=principal.user_id,
+        case_id=case_id,
+        package_id=req.package_id,
+        destination_override=dest_override,
+        target_schema=target_schema,
+        channel_metadata=req.channel_metadata,
+        final_submit_control=submit_control,
+    )
+    if existing_match is not None:
+        plan, case = existing_match
+        set_etag_header(response, "case", case.case_id, case.version)
+        set_etag_header(response, "execution_plan", plan.plan_id, plan.version)
+        return _to_execution_plan_response(plan)
+
+    # 2. Case presence & concurrency validation
+    case = case_service.get_case_for_user(principal.user_id, case_id)
+    if case is None:
+        raise EntityNotFoundError("Case", case_id)
+
+    check_if_match(request, "case", case.case_id, case.version)
+
+    # 3. Create and persist new plan
+    plan = execution_plan_service.create_execution_plan(
+        user_id=principal.user_id,
+        case_id=case_id,
+        package_id=req.package_id,
+        destination_override=dest_override,
+        target_schema=target_schema,
+        channel_metadata=req.channel_metadata,
+        final_submit_control=submit_control,
+    )
+    set_etag_header(response, "case", case.case_id, case.version)
+    set_etag_header(response, "execution_plan", plan.plan_id, plan.version)
+    return _to_execution_plan_response(plan)
+
+
+@router.get(
+    "/api/v1/cases/{case_id}/execution/plan/latest",
+    response_model=ExternalExecutionPlanResponse,
+)
+async def get_latest_execution_plan(
+    case_id: str,
+    response: Response,
+    principal: Annotated[Principal, Depends(get_principal)],
+    execution_plan_service: Annotated[ExecutionPlanService, Depends(get_execution_plan_service)],
+) -> ExternalExecutionPlanResponse:
+    """Retrieve the latest execution plan for a case."""
+    plan = execution_plan_service.get_latest_execution_plan(
+        user_id=principal.user_id,
+        case_id=case_id,
+    )
+    if plan is None:
+        raise EntityNotFoundError("ExternalExecutionPlan", f"case:{case_id}")
+
+    set_etag_header(response, "execution_plan", plan.plan_id, plan.version)
+    return _to_execution_plan_response(plan)
+
+
+@router.get(
+    "/api/v1/cases/{case_id}/execution/plan/{plan_id}",
+    response_model=ExternalExecutionPlanResponse,
+)
+async def get_execution_plan(
+    case_id: str,
+    plan_id: str,
+    response: Response,
+    principal: Annotated[Principal, Depends(get_principal)],
+    execution_plan_service: Annotated[ExecutionPlanService, Depends(get_execution_plan_service)],
+) -> ExternalExecutionPlanResponse:
+    """Retrieve a specific execution plan by plan_id."""
+    plan = execution_plan_service.get_execution_plan(
+        user_id=principal.user_id,
+        case_id=case_id,
+        plan_id=plan_id,
+    )
+    if plan is None:
+        raise EntityNotFoundError("ExternalExecutionPlan", plan_id)
+
+    set_etag_header(response, "execution_plan", plan.plan_id, plan.version)
+    return _to_execution_plan_response(plan)
+
+
+@router.get(
+    "/api/v1/cases/{case_id}/execution/plans",
+    response_model=ExternalExecutionPlanListResponse,
+)
+async def list_execution_plans(
+    case_id: str,
+    principal: Annotated[Principal, Depends(get_principal)],
+    execution_plan_service: Annotated[ExecutionPlanService, Depends(get_execution_plan_service)],
+) -> ExternalExecutionPlanListResponse:
+    """List all execution plans for a case."""
+    plans = execution_plan_service.list_execution_plans(
+        user_id=principal.user_id,
+        case_id=case_id,
+    )
+    return ExternalExecutionPlanListResponse(
+        plans=[_to_execution_plan_response(p) for p in plans],
+        total=len(plans),
+    )

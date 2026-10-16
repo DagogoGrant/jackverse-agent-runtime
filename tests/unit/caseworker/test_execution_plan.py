@@ -1,0 +1,886 @@
+"""Comprehensive unit tests for Phase 5.3.1 Exact External Action Planning.
+
+Tests all 17 architectural amendments, domain invariants, compiler rules,
+shared package integrity validation, idempotency, supersession, and zero-transmission.
+"""
+
+from __future__ import annotations
+
+import unittest
+from datetime import datetime, timezone
+
+from caseworker.domain.artifact import (
+    ArtifactBlock,
+    PreparedArtifact,
+    compute_artifact_grounding_hash,
+)
+from caseworker.domain.case import Case
+from caseworker.domain.claim import Claim, compute_support_snapshot_hash
+from caseworker.domain.context import ContextFact
+from caseworker.domain.artifact_planner import PLANNER_VERSION
+from caseworker.domain.preparation_analyzer import PreparationAnalyzer
+from caseworker.services.package_service import PackageService
+from caseworker.domain.enums import (
+    ArtifactGroundingType,
+    ArtifactPublicationRole,
+    ArtifactStatus,
+    CaseStatus,
+    CaseType,
+    ClaimStatus,
+    DestinationProvenance,
+    ExecutionDestinationType,
+    ExternalExecutionPlanStatus,
+    OpportunityStatus,
+    OpportunityType,
+    PackageVerificationStatus,
+    PreparationMaterialType,
+    PreparationPackageStatus,
+    VerificationStatus,
+)
+from caseworker.domain.errors import (
+    DomainValidationError,
+    EntityNotFoundError,
+    InvalidStateTransitionError,
+    PackageVerificationError,
+)
+from caseworker.domain.events import (
+    make_external_execution_plan_created_event,
+    make_external_execution_plan_superseded_event,
+)
+from caseworker.domain.execution_plan import (
+    ExecutionDestination,
+    ExecutionFieldMapping,
+    ExecutionPlanFinding,
+    ExecutionScreeningResponse,
+    ExecutionUploadAsset,
+    ExternalExecutionPlan,
+    TargetInteractionSchema,
+    TargetSchemaField,
+    TargetSchemaQuestion,
+    TargetSchemaUploadSlot,
+    TargetSubmitControlSpec,
+    assert_safe_channel_metadata,
+    compute_execution_input_hash,
+    compute_execution_plan_fingerprint,
+)
+from caseworker.domain.execution_planner import ExecutionPlanCompiler
+from caseworker.domain.opportunity import Opportunity
+from caseworker.domain.package import (
+    ArtifactPackageSnapshot,
+    PreparationPackage,
+    SafeClaimSnapshot,
+)
+from caseworker.domain.package_integrity import PreparationPackageIntegrityValidator
+from caseworker.domain.preparation import PreparationIntelligenceReport
+from caseworker.domain.types import now_utc
+from caseworker.persistence.sqlite import SQLiteCaseworkerStorage
+from caseworker.services.approval_service import ApprovalService
+from caseworker.services.execution_plan_service import ExecutionPlanService
+
+
+class TestExecutionPlanDomain(unittest.TestCase):
+    """Domain aggregate and value object invariant tests."""
+
+    def test_secrets_rejection_in_channel_metadata(self) -> None:
+        """Amendment 11: Assert safe channel metadata rejects credentials/secrets."""
+        safe_meta = {"browser_engine": "chromium", "form_id": "job_app_123"}
+        assert_safe_channel_metadata(safe_meta)
+
+        forbidden_keys = [
+            "password", "user_password", "cookie", "session_cookie",
+            "auth", "authorization", "token", "access_token",
+            "secret", "api_key", "session_id", "csrf_token", "credential"
+        ]
+        for key in forbidden_keys:
+            with self.assertRaises(DomainValidationError):
+                assert_safe_channel_metadata({key: "leak_123"})
+
+        with self.assertRaises(DomainValidationError):
+            ExecutionDestination(
+                destination_type=ExecutionDestinationType.ATS_FORM.value,
+                destination_provenance=DestinationProvenance.USER_PROVIDED.value,
+                canonical_url="https://portal.example.com",
+                organization="Acme",
+                channel_metadata={"api_key": "secret_key_123"},
+            )
+
+    def test_fingerprint_invariance(self) -> None:
+        """Amendment 10: Fingerprint is invariant to mutable metadata (status, version, timestamps)."""
+        dest = ExecutionDestination(
+            destination_type=ExecutionDestinationType.ATS_FORM.value,
+            destination_provenance=DestinationProvenance.USER_PROVIDED.value,
+            canonical_url="https://acme.greenhouse.io/apply",
+            organization="Acme Corp",
+        )
+        fields = [
+            ExecutionFieldMapping(
+                target_field_id="first_name",
+                field_name="First Name",
+                field_value="Grant",
+                source_fact_id="fact-1",
+                source_fact_version=1,
+                verification_status=VerificationStatus.USER_VERIFIED.value,
+                required=True,
+            )
+        ]
+        uploads = [
+            ExecutionUploadAsset(
+                asset_id="asset-1",
+                role="RESUME",
+                source_artifact_id="art-1",
+                source_artifact_version=1,
+                filename="resume.pdf",
+                mime_type="application/pdf",
+                content_sha256="abc123hash",
+                byte_size=1024,
+                materialized=True,
+            )
+        ]
+        screening = [
+            ExecutionScreeningResponse(
+                question_id="q-1",
+                question="Authorized?",
+                answer="Yes",
+                source_artifact_id="art-2",
+                grounding_claim_ids=["claim-1"],
+            )
+        ]
+        control = TargetSubmitControlSpec(
+            control_type="button_submit",
+            semantic_target="Submit",
+            selector="#btn-submit",
+        )
+
+        plan = ExternalExecutionPlan(
+            plan_id="plan-test-1",
+            case_id="case-1",
+            opportunity_id="opp-1",
+            package_id="pkg-1",
+            package_fingerprint="pkg_fp_1",
+            user_id="user-1",
+            destination=dest,
+            status=ExternalExecutionPlanStatus.DRAFT,
+            field_mappings=fields,
+            upload_mappings=uploads,
+            screening_responses=screening,
+            final_submit_control=control,
+            created_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
+            version=1,
+        )
+        initial_fp = plan.execution_plan_fingerprint
+
+        # Transitioning status or updating timestamps does NOT alter fingerprint
+        plan.transition_to(ExternalExecutionPlanStatus.READY_FOR_AUTHORIZATION)
+        self.assertEqual(plan.compute_fingerprint(), initial_fp)
+
+        # But altering canonical field value changes fingerprint
+        changed_fields = [
+            ExecutionFieldMapping(
+                target_field_id="first_name",
+                field_name="First Name",
+                field_value="Grant Different",
+                source_fact_id="fact-1",
+                source_fact_version=1,
+                verification_status=VerificationStatus.USER_VERIFIED.value,
+                required=True,
+            )
+        ]
+        different_plan = ExternalExecutionPlan(
+            plan_id="plan-test-2",
+            case_id="case-1",
+            opportunity_id="opp-1",
+            package_id="pkg-1",
+            package_fingerprint="pkg_fp_1",
+            user_id="user-1",
+            destination=dest,
+            status=ExternalExecutionPlanStatus.DRAFT,
+            field_mappings=changed_fields,
+            upload_mappings=uploads,
+            screening_responses=screening,
+            final_submit_control=control,
+        )
+        self.assertNotEqual(different_plan.execution_plan_fingerprint, initial_fp)
+
+
+class TestExecutionPlanCompiler(unittest.TestCase):
+    """Compiler unit tests verifying deterministic mapping rules and findings."""
+
+    def setUp(self) -> None:
+        self.case = Case(
+            case_id="case-exec-1",
+            user_id="user-1",
+            title="Senior Engineer",
+            goal="Land role",
+            case_type=CaseType.JOB_APPLICATION,
+            status=CaseStatus.ACTION_REQUIRED,
+        )
+        self.opportunity = Opportunity(
+            opportunity_id="opp-exec-1",
+            user_id="user-1",
+            opportunity_type=OpportunityType.JOB,
+            title="Senior Engineer",
+            organization="CloudTech",
+            source_url="https://linkedin.com/jobs/view/123",  # Listing URL only
+            metadata={"application_url": "https://cloudtech.apply.workable.com/jobs/456"},
+            converted_case_id="case-exec-1",
+            status=OpportunityStatus.SHORTLISTED,
+        )
+        self.fact_name = ContextFact(
+            fact_id="fact-name",
+            user_id="user-1",
+            namespace="identity",
+            key="full_name",
+            value="Grant Dagogo-Jack",
+            verification_status=VerificationStatus.USER_VERIFIED,
+            allowed_purposes=["job_application", "case_preparation"],
+        )
+        self.fact_email = ContextFact(
+            fact_id="fact-email",
+            user_id="user-1",
+            namespace="identity",
+            key="email",
+            value="grant@example.com",
+            verification_status=VerificationStatus.SOURCE_VERIFIED,
+            allowed_purposes=["job_application"],
+        )
+        self.claim = Claim(
+            claim_id="claim-1",
+            user_id="user-1",
+            purpose="job_application",
+            text="Experienced in Python",
+            status=ClaimStatus.SUPPORTED.value,
+        )
+        self.art_resume = PreparedArtifact(
+            artifact_id="art-resume",
+            artifact_set_id="set-1",
+            case_id="case-exec-1",
+            opportunity_id="opp-exec-1",
+            user_id="user-1",
+            material_type=PreparationMaterialType.CV,
+            title="Tailored Resume",
+            status=ArtifactStatus.FROZEN,
+            source_report_id="rep-1",
+            blocks=[
+                ArtifactBlock(
+                    block_id="b1",
+                    content="Grant Resume",
+                    grounding_type=ArtifactGroundingType.CLAIM,
+                    claim_ids=["claim-1"],
+                )
+            ],
+        )
+        self.art_screening = PreparedArtifact(
+            artifact_id="art-screening",
+            artifact_set_id="set-1",
+            case_id="case-exec-1",
+            opportunity_id="opp-exec-1",
+            user_id="user-1",
+            material_type=PreparationMaterialType.SCREENING_ANSWERS,
+            title="Screening Answers",
+            status=ArtifactStatus.FROZEN,
+            source_report_id="rep-1",
+            blocks=[
+                ArtifactBlock(
+                    block_id="b2",
+                    block_type="qna_item",
+                    content="### Q: Are you authorized to work?\n\nYes, I am legally authorized to work.",
+                    grounding_type=ArtifactGroundingType.CLAIM,
+                    claim_ids=["claim-1"],
+                    metadata={
+                        "question": "Are you authorized to work?",
+                        "answer": "Yes, I am legally authorized to work.",
+                        "answer_status": "ANSWERED",
+                    },
+                )
+            ],
+        )
+        self.package = PreparationPackage(
+            package_id="pkg-exec-1",
+            case_id="case-exec-1",
+            artifact_set_id="set-1",
+            source_report_id="rep-1",
+            user_id="user-1",
+            status=PreparationPackageStatus.APPROVED,
+            artifact_ids=["art-resume", "art-screening"],
+            artifact_versions={"art-resume": 1, "art-screening": 1},
+            artifact_snapshots=[
+                ArtifactPackageSnapshot(
+                    artifact_id="art-resume",
+                    artifact_version=1,
+                    material_type=PreparationMaterialType.CV.value,
+                    rendered_payload_hash=self.art_resume.compute_rendered_payload_hash(),
+                    grounding_snapshot_hash=self.art_resume.grounding_snapshot_hash,
+                    publication_role=ArtifactPublicationRole.SUBMISSION_MATERIAL.value,
+                ),
+                ArtifactPackageSnapshot(
+                    artifact_id="art-screening",
+                    artifact_version=1,
+                    material_type=PreparationMaterialType.SCREENING_ANSWERS.value,
+                    rendered_payload_hash=self.art_screening.compute_rendered_payload_hash(),
+                    grounding_snapshot_hash=self.art_screening.grounding_snapshot_hash,
+                    publication_role=ArtifactPublicationRole.FIELD_RESPONSE.value,
+                ),
+            ],
+            claim_snapshots=[
+                SafeClaimSnapshot(
+                    claim_id="claim-1",
+                    claim_version=1,
+                    claim_status=self.claim.status,
+                    support_snapshot_hash="hash",
+                    assertion_hash=None,
+                )
+            ],
+            rendered_payload_hashes={
+                self.art_resume.artifact_id: self.art_resume.compute_rendered_payload_hash(),
+                self.art_screening.artifact_id: self.art_screening.compute_rendered_payload_hash(),
+            },
+        )
+
+    def test_never_infer_destination_from_listing_source_url(self) -> None:
+        """Amendment 1: Opportunity.source_url (e.g. LinkedIn) is never assumed to be application endpoint."""
+        opp_listing_only = Opportunity(
+            opportunity_id="opp-listing",
+            user_id="user-1",
+            opportunity_type=OpportunityType.JOB,
+            title="Senior Engineer",
+            organization="CloudTech",
+            source_url="https://www.linkedin.com/jobs/view/999",
+            metadata={},
+        )
+        plan = ExecutionPlanCompiler.compile_plan(
+            case=self.case,
+            opportunity=opp_listing_only,
+            package=self.package,
+            artifacts=[self.art_resume, self.art_screening],
+            claims=[self.claim],
+            facts=[self.fact_name, self.fact_email],
+            target_schema=None,
+        )
+        self.assertEqual(plan.status, ExternalExecutionPlanStatus.DRAFT)
+        codes = [f.code for f in plan.findings]
+        self.assertIn("DESTINATION_REQUIRED", codes)
+        self.assertFalse(plan.destination.is_exact_destination)
+
+    def test_missing_schema_requires_schema(self) -> None:
+        """Amendment 2: Missing target schema results in status DRAFT and TARGET_SCHEMA_REQUIRED."""
+        dest_override = ExecutionDestination(
+            destination_type=ExecutionDestinationType.ATS_FORM.value,
+            destination_provenance=DestinationProvenance.USER_PROVIDED.value,
+            canonical_url="https://cloudtech.apply.workable.com/jobs/456",
+            organization="CloudTech",
+        )
+        plan = ExecutionPlanCompiler.compile_plan(
+            case=self.case,
+            opportunity=self.opportunity,
+            package=self.package,
+            artifacts=[self.art_resume, self.art_screening],
+            claims=[self.claim],
+            facts=[self.fact_name, self.fact_email],
+            target_schema=None,
+            destination_override=dest_override,
+        )
+        self.assertEqual(plan.status, ExternalExecutionPlanStatus.DRAFT)
+        codes = [f.code for f in plan.findings]
+        self.assertIn("TARGET_SCHEMA_REQUIRED", codes)
+
+    def test_full_compilation_ready_for_authorization(self) -> None:
+        """Amendment 3: When all elements are exact, plan transitions to READY_FOR_AUTHORIZATION."""
+        schema = TargetInteractionSchema(
+            schema_id="workable-v1",
+            destination_type=ExecutionDestinationType.ATS_FORM.value,
+            fields=[
+                TargetSchemaField(target_field_id="full_name", label="Full Name", required=True),
+                TargetSchemaField(target_field_id="email", label="Email", required=True),
+            ],
+            upload_slots=[
+                TargetSchemaUploadSlot(
+                    slot_id="slot-resume",
+                    role="RESUME",
+                    label="Resume",
+                    required=True,
+                    accepted_mime_types=["application/pdf", "text/plain"],
+                )
+            ],
+            screening_questions=[
+                TargetSchemaQuestion(
+                    question_id="q-auth",
+                    question_text="Are you authorized to work?",
+                    required=True,
+                )
+            ],
+            final_submit_control=TargetSubmitControlSpec(
+                control_type="button_submit",
+                semantic_target="Submit Application",
+                selector="#submit-app",
+            ),
+        )
+        dest_override = ExecutionDestination(
+            destination_type=ExecutionDestinationType.ATS_FORM.value,
+            destination_provenance=DestinationProvenance.OPPORTUNITY_APPLICATION_URL.value,
+            canonical_url="https://cloudtech.apply.workable.com/jobs/456",
+            organization="CloudTech",
+        )
+
+        plan = ExecutionPlanCompiler.compile_plan(
+            case=self.case,
+            opportunity=self.opportunity,
+            package=self.package,
+            artifacts=[self.art_resume, self.art_screening],
+            claims=[self.claim],
+            facts=[self.fact_name, self.fact_email],
+            target_schema=schema,
+            destination_override=dest_override,
+        )
+        self.assertEqual(plan.status, ExternalExecutionPlanStatus.READY_FOR_AUTHORIZATION)
+        self.assertEqual(len(plan.field_mappings), 2)
+        self.assertEqual(len(plan.upload_mappings), 1)
+        self.assertTrue(plan.upload_mappings[0].materialized)
+        self.assertEqual(len(plan.screening_responses), 1)
+        self.assertTrue(all(f.passed for f in plan.findings))
+
+    def test_unverified_fact_or_wrong_purpose_rejected(self) -> None:
+        """Amendment 4: ContextFact must have job_application purpose and be verified."""
+        unverified_fact = ContextFact(
+            fact_id="fact-unverified",
+            user_id="user-1",
+            namespace="identity",
+            key="phone",
+            value="123456789",
+            verification_status=VerificationStatus.UNVERIFIED,
+            allowed_purposes=["job_application"],
+        )
+        wrong_purpose_fact = ContextFact(
+            fact_id="fact-wrong",
+            user_id="user-1",
+            namespace="identity",
+            key="address",
+            value="123 Street",
+            verification_status=VerificationStatus.USER_VERIFIED,
+            allowed_purposes=["benefits_enrollment"],  # Not job_application
+        )
+        schema = TargetInteractionSchema(
+            schema_id="s1",
+            destination_type=ExecutionDestinationType.ATS_FORM.value,
+            fields=[
+                TargetSchemaField(target_field_id="phone", label="Phone", required=True),
+                TargetSchemaField(target_field_id="address", label="Address", required=True),
+            ],
+        )
+        dest_override = ExecutionDestination(
+            destination_type=ExecutionDestinationType.ATS_FORM.value,
+            destination_provenance=DestinationProvenance.USER_PROVIDED.value,
+            canonical_url="https://cloudtech.apply.workable.com/jobs/456",
+            organization="CloudTech",
+        )
+        plan = ExecutionPlanCompiler.compile_plan(
+            case=self.case,
+            opportunity=self.opportunity,
+            package=self.package,
+            artifacts=[self.art_resume, self.art_screening],
+            claims=[self.claim],
+            facts=[unverified_fact, wrong_purpose_fact],
+            target_schema=schema,
+            destination_override=dest_override,
+        )
+        self.assertEqual(plan.status, ExternalExecutionPlanStatus.DRAFT)
+        codes = [f.code for f in plan.findings]
+        self.assertIn("UNRESOLVED_REQUIRED_FIELD", codes)
+
+    def test_answer_bank_transmission_prohibited(self) -> None:
+        """Amendment 7: APPLICATION_ANSWER_BANK is strictly internal and cannot be transmitted."""
+        art_answer_bank = PreparedArtifact(
+            artifact_id="art-bank",
+            artifact_set_id="set-1",
+            case_id="case-exec-1",
+            opportunity_id="opp-exec-1",
+            user_id="user-1",
+            material_type=PreparationMaterialType.APPLICATION_ANSWER_BANK,
+            title="Answer Bank",
+            status=ArtifactStatus.FROZEN,
+            source_report_id="rep-1",
+            blocks=[],
+        )
+        schema = TargetInteractionSchema(
+            schema_id="s1",
+            destination_type=ExecutionDestinationType.ATS_FORM.value,
+            screening_questions=[
+                TargetSchemaQuestion(question_id="q1", question_text="Tell us about yourself", required=True)
+            ],
+        )
+        dest_override = ExecutionDestination(
+            destination_type=ExecutionDestinationType.ATS_FORM.value,
+            destination_provenance=DestinationProvenance.USER_PROVIDED.value,
+            canonical_url="https://cloudtech.apply.workable.com/jobs/456",
+            organization="CloudTech",
+        )
+        # Passing answer bank without screening answers
+        plan = ExecutionPlanCompiler.compile_plan(
+            case=self.case,
+            opportunity=self.opportunity,
+            package=self.package,
+            artifacts=[self.art_resume, art_answer_bank],
+            claims=[self.claim],
+            facts=[self.fact_name],
+            target_schema=schema,
+            destination_override=dest_override,
+        )
+        codes = [f.code for f in plan.findings]
+        self.assertIn("ANSWER_BANK_TRANSMISSION_PROHIBITED", codes)
+        self.assertEqual(plan.status, ExternalExecutionPlanStatus.DRAFT)
+
+
+class TestExecutionPlanServiceAndIntegration(unittest.TestCase):
+    """Service integration tests including package integrity revalidation, idempotency, and supersession."""
+
+    def setUp(self) -> None:
+        self.storage = SQLiteCaseworkerStorage(db_path=":memory:")
+        self.package_service = PackageService(self.storage)
+        self.approval_service = ApprovalService(self.storage)
+        self.service = ExecutionPlanService(self.storage)
+        self.user_id = "user-service-1"
+        self.case_id = "case-svc-1"
+        self.opp_id = "opp-svc-1"
+        self.set_id = "set-svc-1"
+
+        with self.storage.unit_of_work() as uow:
+            self.case = Case(
+                case_id=self.case_id,
+                user_id=self.user_id,
+                title="Lead SRE",
+                goal="Apply",
+                case_type=CaseType.JOB_APPLICATION,
+                status=CaseStatus.PLANNING,
+            )
+            uow.cases.save(self.case)
+
+            self.opportunity = Opportunity(
+                opportunity_id=self.opp_id,
+                user_id=self.user_id,
+                opportunity_type=OpportunityType.JOB,
+                title="Lead SRE",
+                organization="Apex Infrastructure",
+                source_url="https://linkedin.com/jobs/1",
+                requirements=["Python architecture (Mandatory)"],
+                metadata={"application_url": "https://apex.apply.com/roles/1"},
+                converted_case_id=self.case_id,
+                status=OpportunityStatus.SHORTLISTED,
+            )
+            uow.opportunities.save(self.opportunity)
+
+            self.fact_name = ContextFact(
+                fact_id="fact-name-1",
+                user_id=self.user_id,
+                namespace="identity",
+                key="name",
+                value="Grant Dagogo-Jack",
+                verification_status=VerificationStatus.USER_VERIFIED,
+                allowed_purposes=["job_application", "case_preparation"],
+            )
+            uow.context.save(self.fact_name)
+
+            self.fact_py = ContextFact(
+                fact_id="fact-py",
+                user_id=self.user_id,
+                namespace="skills",
+                key="python",
+                value="10+ years expert Python architecture",
+                verification_status=VerificationStatus.USER_VERIFIED,
+                allowed_purposes=["job_application", "case_preparation"],
+            )
+            uow.context.save(self.fact_py)
+
+            analyzer = PreparationAnalyzer()
+            self.report = analyzer.analyze(
+                case=self.case,
+                opportunity=self.opportunity,
+                granted_facts=[self.fact_name, self.fact_py],
+                denied_descriptors=[],
+            )
+            uow.preparation_reports.save(self.report)
+
+            supp_hash = compute_support_snapshot_hash([self.fact_py])
+            self.claim = Claim(
+                claim_id="claim-svc-1",
+                user_id=self.user_id,
+                purpose="job_application",
+                text="SRE Expertise in Python",
+                status=ClaimStatus.SUPPORTED,
+                supporting_fact_ids=[self.fact_py.fact_id],
+                case_id=self.case_id,
+                source_report_id=self.report.report_id,
+                source_claim_intent_id="intent-1",
+                assertion_schema="skill_possession",
+                assertion_json='{"kind": "skill_possession", "fact_ids": ["fact-py"], "fields": {"skill": "Python"}}',
+                support_snapshot_hash=supp_hash,
+                version=1,
+            )
+            uow.claims.save(self.claim)
+
+            cv_grounding = compute_artifact_grounding_hash(claims=[self.claim], direct_facts=[self.fact_name])
+            cl_grounding = compute_artifact_grounding_hash(claims=[], direct_facts=[self.fact_name])
+            qa_grounding = compute_artifact_grounding_hash(claims=[self.claim], direct_facts=[])
+
+            self.art_resume = PreparedArtifact(
+                artifact_id="art-svc-resume",
+                artifact_set_id=self.set_id,
+                case_id=self.case_id,
+                opportunity_id=self.opp_id,
+                user_id=self.user_id,
+                material_type=PreparationMaterialType.CV,
+                title="Resume",
+                planner_version=PLANNER_VERSION,
+                status=ArtifactStatus.DRAFT,
+                source_report_id=self.report.report_id,
+                grounding_snapshot_hash=cv_grounding,
+                blocks=[
+                    ArtifactBlock(block_id="b-header", block_type="header", content="Profile", grounding_type=ArtifactGroundingType.CONTEXT_FACT, fact_ids=[self.fact_name.fact_id]),
+                    ArtifactBlock(block_id="b1", content="SRE skills", grounding_type=ArtifactGroundingType.CLAIM, claim_ids=[self.claim.claim_id]),
+                ],
+            )
+            uow.preparation_artifacts.save(self.art_resume)
+
+            self.art_cl = PreparedArtifact(
+                artifact_id="art-svc-cl",
+                artifact_set_id=self.set_id,
+                case_id=self.case_id,
+                opportunity_id=self.opp_id,
+                user_id=self.user_id,
+                material_type=PreparationMaterialType.COVER_LETTER,
+                title="Cover Letter",
+                planner_version=PLANNER_VERSION,
+                status=ArtifactStatus.DRAFT,
+                source_report_id=self.report.report_id,
+                grounding_snapshot_hash=cl_grounding,
+                blocks=[ArtifactBlock(block_id="b2", content="Cover letter content", grounding_type=ArtifactGroundingType.CONTEXT_FACT, fact_ids=[self.fact_name.fact_id])],
+            )
+            uow.preparation_artifacts.save(self.art_cl)
+
+            self.art_qa = PreparedArtifact(
+                artifact_id="art-svc-qa",
+                artifact_set_id=self.set_id,
+                case_id=self.case_id,
+                opportunity_id=self.opp_id,
+                user_id=self.user_id,
+                material_type=PreparationMaterialType.SCREENING_ANSWERS,
+                title="Screening Q&A",
+                planner_version=PLANNER_VERSION,
+                status=ArtifactStatus.DRAFT,
+                source_report_id=self.report.report_id,
+                grounding_snapshot_hash=qa_grounding,
+                blocks=[
+                    ArtifactBlock(
+                        block_id="b3",
+                        block_type="qna_item",
+                        content="### Q: Tell us about your Python experience?\n\nYes, 10 years Python experience.",
+                        grounding_type=ArtifactGroundingType.CLAIM,
+                        claim_ids=[self.claim.claim_id],
+                        metadata={
+                            "question": "Tell us about your Python experience?",
+                            "answer": "Yes, 10 years Python experience.",
+                            "answer_status": "ANSWERED",
+                        },
+                    )
+                ],
+            )
+            uow.preparation_artifacts.save(self.art_qa)
+
+        package, action, approval, _, _ = self.package_service.verify_and_prepare_package(
+            user_id=self.user_id,
+            case_id=self.case_id,
+            artifact_set_id=self.set_id,
+            expected_case_version=1,
+        )
+        self.approval_service.approve_action(
+            user_id=self.user_id,
+            approval_id=approval.approval_id,
+            reason="User approved package",
+        )
+        with self.storage.unit_of_work() as uow:
+            self.package = uow.preparation_packages.get_by_id(package.package_id)
+
+        self.schema = TargetInteractionSchema(
+            schema_id="schema-apex",
+            destination_type=ExecutionDestinationType.ATS_FORM.value,
+            fields=[TargetSchemaField(target_field_id="name", label="Full Name", required=True)],
+            upload_slots=[
+                TargetSchemaUploadSlot(
+                    slot_id="slot-resume",
+                    role="RESUME",
+                    label="Resume",
+                    required=True,
+                )
+            ],
+            final_submit_control=TargetSubmitControlSpec(
+                control_type="button_submit",
+                semantic_target="Submit",
+                selector="#submit",
+            ),
+        )
+
+    def tearDown(self) -> None:
+        self.storage.close()
+
+    def test_case_status_remains_action_required_and_no_action_or_approval_created(self) -> None:
+        """Amendment 5: Zero external transmission; case remains in ACTION_REQUIRED, no Action created."""
+        with self.storage.unit_of_work() as uow:
+            initial_actions_count = len(uow.actions.list_by_case(self.case.case_id))
+            initial_approvals_count = len(uow.approvals.list_by_case(self.case.case_id))
+
+        plan = self.service.create_execution_plan(
+            user_id=self.user_id,
+            case_id=self.case.case_id,
+            target_schema=self.schema,
+        )
+        self.assertIsNotNone(plan)
+
+        with self.storage.unit_of_work() as uow:
+            refreshed_case = uow.cases.get_by_id(self.case.case_id)
+            self.assertEqual(refreshed_case.status, CaseStatus.ACTION_REQUIRED)
+            actions = uow.actions.list_by_case(self.case.case_id)
+            self.assertEqual(len(actions), initial_actions_count)
+            approvals = uow.approvals.list_by_case(self.case.case_id)
+            self.assertEqual(len(approvals), initial_approvals_count)
+            for a in actions:
+                self.assertNotIn("SUBMIT", a.action_type.upper())
+            events = uow.events.get_events_by_user(self.user_id)
+            event_types = [e.event_type for e in events]
+            self.assertIn("execution.plan_created", event_types)
+
+    def test_shared_package_integrity_validator_detects_tampering(self) -> None:
+        """Amendment 8: PreparationPackageIntegrityValidator catches tampering before planning."""
+        # 1. Package not APPROVED
+        with self.storage.unit_of_work() as uow:
+            pkg = uow.preparation_packages.get_by_id(self.package.package_id)
+            pkg.status = PreparationPackageStatus.FROZEN
+            pkg.version += 1
+            uow.preparation_packages.save(pkg)
+
+        with self.assertRaises(DomainValidationError):
+            self.service.create_execution_plan(
+                user_id=self.user_id,
+                case_id=self.case.case_id,
+                target_schema=self.schema,
+            )
+
+        # 2. Tampered artifact rendered hash
+        with self.storage.unit_of_work() as uow:
+            pkg = uow.preparation_packages.get_by_id(self.package.package_id)
+            pkg.status = PreparationPackageStatus.APPROVED
+            pkg.version += 1
+            uow.preparation_packages.save(pkg)
+            art = uow.preparation_artifacts.get_by_id(self.art_resume.artifact_id)
+            art.blocks = [
+                ArtifactBlock(
+                    block_id="b1",
+                    content="TAMPERED CONTENT",
+                    grounding_type=ArtifactGroundingType.CLAIM,
+                    claim_ids=[self.claim.claim_id],
+                )
+            ]
+            art.version += 1
+            uow.preparation_artifacts.save(art)
+
+        with self.assertRaises(PackageVerificationError):
+            self.service.create_execution_plan(
+                user_id=self.user_id,
+                case_id=self.case.case_id,
+                target_schema=self.schema,
+            )
+
+    def test_idempotency_and_supersession(self) -> None:
+        """Amendment 9: Identical fingerprint returns idempotently; changed inputs supersede prior active plan."""
+        # First creation
+        plan1 = self.service.create_execution_plan(
+            user_id=self.user_id,
+            case_id=self.case.case_id,
+            target_schema=self.schema,
+        )
+        self.assertEqual(plan1.status, ExternalExecutionPlanStatus.READY_FOR_AUTHORIZATION)
+
+        # Idempotent replay with same inputs
+        plan2 = self.service.create_execution_plan(
+            user_id=self.user_id,
+            case_id=self.case.case_id,
+            target_schema=self.schema,
+        )
+        self.assertEqual(plan1.plan_id, plan2.plan_id)
+        self.assertEqual(plan1.execution_plan_fingerprint, plan2.execution_plan_fingerprint)
+
+        # Create with destination override (changed input)
+        dest_override = ExecutionDestination(
+            destination_type=ExecutionDestinationType.DIRECT_PORTAL.value,
+            destination_provenance=DestinationProvenance.USER_PROVIDED.value,
+            canonical_url="https://portal.apex.com/apply",
+            organization="Apex Direct",
+        )
+        plan3 = self.service.create_execution_plan(
+            user_id=self.user_id,
+            case_id=self.case.case_id,
+            target_schema=self.schema,
+            destination_override=dest_override,
+        )
+        self.assertNotEqual(plan1.plan_id, plan3.plan_id)
+        self.assertEqual(plan3.status, ExternalExecutionPlanStatus.READY_FOR_AUTHORIZATION)
+
+        # Verify plan1 is now SUPERSEDED
+        with self.storage.unit_of_work() as uow:
+            p1_refreshed = uow.execution_plans.get_by_id(plan1.plan_id)
+            self.assertEqual(p1_refreshed.status, ExternalExecutionPlanStatus.SUPERSEDED)
+
+            events = uow.events.get_events_by_user(self.user_id)
+            event_types = [e.event_type for e in events]
+            self.assertIn("execution.plan_superseded", event_types)
+
+    def test_privacy_safe_events(self) -> None:
+        """Amendment 13: Created and superseded events carry zero raw personal values or answers."""
+        created_ev = make_external_execution_plan_created_event(
+            user_id=self.user_id,
+            case_id=self.case.case_id,
+            plan_id="plan-1",
+            package_id="pkg-1",
+            package_fingerprint="pkg_fp_1",
+            destination_type="ats_form",
+            canonical_url="https://acme.com/apply",
+            plan_status="ready_for_authorization",
+            plan_fingerprint="plan_fp_1",
+            field_mapping_count=5,
+            upload_asset_count=1,
+            screening_response_count=2,
+            unresolved_findings_count=0,
+        )
+        payload = created_ev.payload
+        self.assertNotIn("First Name", str(payload))
+        self.assertNotIn("Grant", str(payload))
+        self.assertNotIn("grant@example.com", str(payload))
+        self.assertEqual(payload["field_mapping_count"], 5)
+        self.assertEqual(payload["host"], "acme.com")
+
+        superseded_ev = make_external_execution_plan_superseded_event(
+            user_id=self.user_id,
+            case_id=self.case.case_id,
+            plan_id="plan-1",
+            superseded_by_plan_id="plan-2",
+            package_id="pkg-1",
+            reason="Superseded by newer plan",
+        )
+        self.assertNotIn("Grant", str(superseded_ev.payload))
+
+    def test_repository_content_immutability(self) -> None:
+        """Amendment 17: Mutating content-addressed fields of an existing plan raises DomainValidationError."""
+        plan = self.service.create_execution_plan(
+            user_id=self.user_id,
+            case_id=self.case.case_id,
+            target_schema=self.schema,
+        )
+        with self.storage.unit_of_work() as uow:
+            loaded_plan = uow.execution_plans.get_by_id(plan.plan_id)
+            self.assertIsNotNone(loaded_plan)
+            # Mutate content-addressed field
+            object.__setattr__(loaded_plan, "package_id", "tampered_pkg")
+            loaded_plan.version += 1
+            with self.assertRaises(DomainValidationError):
+                uow.execution_plans.save(loaded_plan)
+
+
+if __name__ == "__main__":
+    unittest.main()

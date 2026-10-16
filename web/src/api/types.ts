@@ -115,6 +115,18 @@ export type ArtifactPackageSnapshot = Schemas['ArtifactPackageSnapshotResponse']
 export type SafeClaimSnapshot = Schemas['SafeClaimSnapshotResponse'];
 
 // ----------------------------------------------------------------------------
+// External Execution Plans (Phase 5.3.1)
+// ----------------------------------------------------------------------------
+export type ExternalExecutionPlan = Schemas['ExternalExecutionPlanResponse'];
+export type CreateExecutionPlanRequest = Schemas['CreateExecutionPlanRequest'];
+export type ExecutionDestination = Schemas['ExecutionDestinationSchema'];
+export type ExecutionFieldMapping = Schemas['ExecutionFieldMappingResponse'];
+export type ExecutionUploadAsset = Schemas['ExecutionUploadAssetResponse'];
+export type ExecutionScreeningResponse = Schemas['ExecutionScreeningResponseDTO'];
+export type ExecutionPlanFinding = Schemas['ExecutionPlanFindingResponse'];
+export type TargetInteractionSchema = Schemas['TargetInteractionSchemaSchema'];
+
+// ----------------------------------------------------------------------------
 // Activity & Domain Events
 // ----------------------------------------------------------------------------
 export type DomainEvent = Schemas['DomainEventResponse'];

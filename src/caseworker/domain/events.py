@@ -733,3 +733,72 @@ def make_preparation_package_superseded_event(
     )
 
 
+def make_external_execution_plan_created_event(
+    user_id: str,
+    case_id: str,
+    plan_id: str,
+    package_id: str,
+    package_fingerprint: str,
+    destination_type: str,
+    canonical_url: str,
+    plan_status: str,
+    plan_fingerprint: str,
+    field_mapping_count: int,
+    upload_asset_count: int,
+    screening_response_count: int,
+    unresolved_findings_count: int,
+    aggregate_version: int = 1,
+) -> DomainEvent:
+    """Create privacy-safe execution.plan_created event with zero raw personal values."""
+    from urllib.parse import urlparse
+    host = urlparse(canonical_url).netloc or canonical_url
+    return DomainEvent(
+        event_type="execution.plan_created",
+        aggregate_type="external_execution_plan",
+        aggregate_id=plan_id,
+        aggregate_version=aggregate_version,
+        user_id=user_id,
+        payload={
+            "plan_id": plan_id,
+            "case_id": case_id,
+            "package_id": package_id,
+            "package_fingerprint": package_fingerprint,
+            "destination_type": destination_type,
+            "host": host,
+            "plan_status": plan_status,
+            "plan_fingerprint": plan_fingerprint,
+            "field_mapping_count": field_mapping_count,
+            "upload_asset_count": upload_asset_count,
+            "screening_response_count": screening_response_count,
+            "unresolved_findings_count": unresolved_findings_count,
+        },
+    )
+
+
+def make_external_execution_plan_superseded_event(
+    user_id: str,
+    case_id: str,
+    plan_id: str,
+    superseded_by_plan_id: str,
+    package_id: str,
+    reason: str | None = None,
+    aggregate_version: int = 2,
+) -> DomainEvent:
+    """Create privacy-safe execution.plan_superseded event."""
+    return DomainEvent(
+        event_type="execution.plan_superseded",
+        aggregate_type="external_execution_plan",
+        aggregate_id=plan_id,
+        aggregate_version=aggregate_version,
+        user_id=user_id,
+        payload={
+            "plan_id": plan_id,
+            "case_id": case_id,
+            "superseded_by_plan_id": superseded_by_plan_id,
+            "package_id": package_id,
+            "reason": reason,
+        },
+    )
+
+
+

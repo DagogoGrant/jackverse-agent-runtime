@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
-import { ArrowLeft, AlertTriangle, CheckCircle2, XCircle, Search, ChevronDown, FileText, Copy, Check, ShieldCheck, X, Lock } from 'lucide-react';
+import { ArrowLeft, AlertTriangle, CheckCircle2, XCircle, Search, ChevronDown, FileText, Copy, Check, ShieldCheck, X, Lock, Send, Eye, EyeOff, FileCode } from 'lucide-react';
 import {
   useCase,
   useCaseActions,
@@ -17,6 +17,8 @@ import {
   useDraftArtifacts,
   useLatestPreparationPackage,
   useVerifyPreparationPackage,
+  useLatestExecutionPlan,
+  useCreateExecutionPlan,
 } from '../hooks/useCaseworker';
 import { apiRequest, PreconditionFailedError } from '../api/client';
 import type { Claim } from '../api/types';
@@ -66,6 +68,44 @@ export const CaseDetailView: React.FC = () => {
       } else {
         setVerificationError(
           err instanceof Error ? err.message : 'Package pre-verification failed.'
+        );
+      }
+    }
+  };
+
+  const { data: latestPlan, isLoading: _planLoading } = useLatestExecutionPlan(caseId);
+  const createPlan = useCreateExecutionPlan();
+  const [planError, setPlanError] = useState<string | null>(null);
+  const [showPlanBinding, setShowPlanBinding] = useState(false);
+  const [revealedFields, setRevealedFields] = useState<Record<string, boolean>>({});
+  const [copiedPlanFingerprint, setCopiedPlanFingerprint] = useState(false);
+
+  const toggleRevealField = (fieldId: string) => {
+    setRevealedFields((prev) => ({
+      ...prev,
+      [fieldId]: !prev[fieldId],
+    }));
+  };
+
+  const handleCompilePlan = async () => {
+    if (!caseId || !caseData) return;
+    setPlanError(null);
+    setConcurrencyNotice(null);
+    try {
+      await createPlan.mutateAsync({
+        caseId,
+        packageId: latestPackage?.package_id,
+        etag: caseData.etag,
+      });
+    } catch (err: unknown) {
+      if (err instanceof PreconditionFailedError) {
+        setConcurrencyNotice(
+          'Case was modified concurrently. Reloading current dossier state…'
+        );
+        await refetchCase();
+      } else {
+        setPlanError(
+          err instanceof Error ? err.message : 'Plan compilation failed.'
         );
       }
     }
@@ -968,6 +1008,294 @@ export const CaseDetailView: React.FC = () => {
                                 </div>
                               </div>
                             )}
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Phase 5.3.1 Exact External Action Planning Gate */}
+                      <div className="p-4 border border-jv-rule bg-jv-surface/50 space-y-4">
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-jv-rule">
+                          <div className="space-y-1">
+                            <div className="font-machine text-xs text-jv-accent uppercase tracking-wider flex items-center gap-2">
+                              <Send className="w-4 h-4" />
+                              PHASE 5.3.1 // EXACT EXTERNAL ACTION PLANNING
+                            </div>
+                            <div className="font-interface text-sm font-semibold text-jv-ink flex items-center gap-2">
+                              <span>Plan Status:</span>
+                              <TextureBadge status={latestPlan ? latestPlan.status : 'NO_PLAN'} />
+                              {latestPlan?.status === 'ready_for_authorization' && (
+                                <span className="font-machine text-[11px] text-emerald-600 font-normal border border-emerald-600/30 px-2 py-0.5 bg-emerald-600/10">
+                                  READY FOR AUTHORIZATION · ZERO TRANSMISSION
+                                </span>
+                              )}
+                              {latestPlan?.status === 'draft' && (
+                                <span className="font-machine text-[11px] text-amber-600 font-normal border border-amber-600/30 px-2 py-0.5 bg-amber-600/10">
+                                  DRAFT // INPUTS REQUIRED
+                                </span>
+                              )}
+                            </div>
+                          </div>
+
+                          {latestPackage?.status === 'approved' && (!latestPlan || latestPlan.status === 'draft' || latestPlan.status === 'superseded') && (
+                            <TactileButton
+                              variant="primary"
+                              size="sm"
+                              loading={createPlan.isPending}
+                              onClick={handleCompilePlan}
+                            >
+                              <FileCode className="w-3.5 h-3.5 mr-1.5 inline" />
+                              Compile Action Plan →
+                            </TactileButton>
+                          )}
+                        </div>
+
+                        {planError && (
+                          <div className="p-3 border border-red-500/30 bg-red-500/10 text-red-600 font-interface text-xs flex items-center gap-2">
+                            <AlertTriangle className="w-4 h-4 shrink-0" />
+                            <span>{planError}</span>
+                          </div>
+                        )}
+
+                        {!latestPlan && latestPackage?.status !== 'approved' && (
+                          <div className="p-3 border border-jv-rule bg-jv-bg/30 text-jv-muted font-interface text-xs">
+                            Preparation Package must be verified and approved locally before compiling an external action plan.
+                          </div>
+                        )}
+
+                        {latestPlan && (
+                          <div className="space-y-4">
+                            {/* Destination Card */}
+                            <div className="p-3 border border-jv-rule bg-jv-bg space-y-2 font-interface text-xs">
+                              <div className="font-machine text-[11px] text-jv-muted uppercase flex items-center justify-between">
+                                <span>Target Destination & Provenance</span>
+                                <span className={`px-1.5 py-0.5 border ${
+                                  latestPlan.destination.is_exact_destination
+                                    ? 'border-emerald-600/30 text-emerald-600 bg-emerald-600/10'
+                                    : 'border-amber-600/30 text-amber-600 bg-amber-600/10'
+                                }`}>
+                                  {latestPlan.destination.is_exact_destination ? 'EXACT DESTINATION' : 'DESTINATION REQUIRED'}
+                                </span>
+                              </div>
+                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-jv-ink">
+                                <div><span className="text-jv-muted">Organization:</span> <span className="font-medium">{latestPlan.destination.organization || '—'}</span></div>
+                                <div><span className="text-jv-muted">Channel Type:</span> <span className="font-mono">{latestPlan.destination.destination_type}</span></div>
+                                <div className="sm:col-span-2 flex items-center gap-1.5 overflow-hidden">
+                                  <span className="text-jv-muted shrink-0">Endpoint URL:</span>
+                                  <span className="font-mono text-jv-accent truncate" title={latestPlan.destination.canonical_url}>
+                                    {latestPlan.destination.canonical_url}
+                                  </span>
+                                </div>
+                                <div className="sm:col-span-2 text-[11px] text-jv-muted">
+                                  Provenance: <span className="font-machine text-jv-ink">{latestPlan.destination.destination_provenance}</span>
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* Field Mappings Table */}
+                            {latestPlan.field_mappings && latestPlan.field_mappings.length > 0 && (
+                              <div className="border border-jv-rule bg-jv-bg overflow-hidden">
+                                <div className="p-2.5 border-b border-jv-rule bg-jv-surface/50 font-machine text-xs text-jv-muted uppercase">
+                                  Exact Form Field Mappings ({latestPlan.field_mappings.length})
+                                </div>
+                                <div className="divide-y divide-jv-rule">
+                                  {latestPlan.field_mappings.map((m) => {
+                                    const isRevealed = revealedFields[m.target_field_id];
+                                    const valStr = String(m.field_value ?? '');
+                                    const displayVal = isRevealed ? valStr : '••••••••••••';
+                                    return (
+                                      <div key={m.target_field_id} className="p-2.5 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
+                                        <div className="space-y-0.5 min-w-0">
+                                          <div className="flex items-center gap-2">
+                                            <span className="font-interface font-medium text-jv-ink">{m.field_name}</span>
+                                            <span className="font-mono text-[10px] text-jv-muted">({m.target_field_id})</span>
+                                            {m.required && <span className="text-[10px] text-red-500 font-bold">*</span>}
+                                          </div>
+                                          <div className="font-machine text-[10px] text-jv-muted flex items-center gap-2">
+                                            <span>SRC: {m.source_fact_id} v{m.source_fact_version}</span>
+                                            <span className="text-jv-accent">{m.verification_status}</span>
+                                          </div>
+                                        </div>
+                                        <div className="flex items-center gap-2 shrink-0">
+                                          <span className="font-mono text-jv-ink max-w-[200px] truncate" title={isRevealed ? valStr : undefined}>
+                                            {displayVal}
+                                          </span>
+                                          <button
+                                            type="button"
+                                            onClick={() => toggleRevealField(m.target_field_id)}
+                                            className="p-1 text-jv-muted hover:text-jv-ink border border-jv-rule bg-jv-surface"
+                                            title={isRevealed ? 'Mask personal value' : 'Reveal personal value'}
+                                          >
+                                            {isRevealed ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
+                                          </button>
+                                        </div>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+                            )}
+
+                            {/* Upload Assets */}
+                            {latestPlan.upload_mappings && latestPlan.upload_mappings.length > 0 && (
+                              <div className="border border-jv-rule bg-jv-bg overflow-hidden">
+                                <div className="p-2.5 border-b border-jv-rule bg-jv-surface/50 font-machine text-xs text-jv-muted uppercase">
+                                  Materialized Upload Assets ({latestPlan.upload_mappings.length})
+                                </div>
+                                <div className="divide-y divide-jv-rule">
+                                  {latestPlan.upload_mappings.map((u) => (
+                                    <div key={u.asset_id} className="p-2.5 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
+                                      <div className="space-y-0.5 min-w-0">
+                                        <div className="flex items-center gap-2">
+                                          <span className="font-interface font-medium text-jv-ink">{u.filename}</span>
+                                          <span className="font-machine text-[10px] uppercase text-jv-muted border border-jv-rule px-1.5 py-0.2 bg-jv-surface">
+                                            {u.role}
+                                          </span>
+                                        </div>
+                                        <div className="font-mono text-[10px] text-jv-muted flex items-center gap-2 truncate">
+                                          <span>{u.mime_type}</span>
+                                          <span>·</span>
+                                          <span>{u.byte_size} bytes</span>
+                                          <span>·</span>
+                                          <span title={u.content_sha256}>SHA256: {u.content_sha256.slice(0, 12)}…</span>
+                                        </div>
+                                      </div>
+                                      <span className={`px-2 py-0.5 border text-[11px] font-machine uppercase shrink-0 ${
+                                        u.materialized
+                                          ? 'border-emerald-600/30 text-emerald-600 bg-emerald-600/10'
+                                          : 'border-red-500/30 text-red-600 bg-red-500/10'
+                                      }`}>
+                                        {u.materialized ? 'MATERIALIZED' : 'UNMATERIALIZED'}
+                                      </span>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+
+                            {/* Screening Responses */}
+                            {latestPlan.screening_responses && latestPlan.screening_responses.length > 0 && (
+                              <div className="border border-jv-rule bg-jv-bg overflow-hidden">
+                                <div className="p-2.5 border-b border-jv-rule bg-jv-surface/50 font-machine text-xs text-jv-muted uppercase">
+                                  Grounded Screening Responses ({latestPlan.screening_responses.length})
+                                </div>
+                                <div className="divide-y divide-jv-rule">
+                                  {latestPlan.screening_responses.map((s) => {
+                                    const isRevealed = revealedFields[`screening_${s.question_id}`];
+                                    return (
+                                      <div key={s.question_id} className="p-2.5 space-y-1.5 text-xs">
+                                        <div className="flex items-start justify-between gap-2">
+                                          <span className="font-interface font-medium text-jv-ink">{s.question}</span>
+                                          <button
+                                            type="button"
+                                            onClick={() => toggleRevealField(`screening_${s.question_id}`)}
+                                            className="p-1 text-jv-muted hover:text-jv-ink border border-jv-rule bg-jv-surface shrink-0"
+                                            title={isRevealed ? 'Mask answer' : 'Reveal answer'}
+                                          >
+                                            {isRevealed ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
+                                          </button>
+                                        </div>
+                                        <div className="font-interface text-jv-ink-soft bg-jv-surface/50 p-2 border border-jv-rule/50">
+                                          {isRevealed ? s.answer : '•••••••••••• (click eye to reveal screening answer)'}
+                                        </div>
+                                        <div className="font-machine text-[10px] text-jv-muted flex items-center gap-2">
+                                          <span>ARTIFACT: {s.source_artifact_id}</span>
+                                          <span>·</span>
+                                          <span>CLAIMS BOUND: {s.grounding_claim_ids?.length || 0}</span>
+                                        </div>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+                            )}
+
+                            {/* Validation Findings */}
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                              {(latestPlan.findings || []).map((f, idx) => {
+                                const isPassed = f.passed;
+                                return (
+                                  <div
+                                    key={idx}
+                                    className={`p-2.5 border text-xs flex items-start gap-2.5 ${
+                                      isPassed
+                                        ? 'border-jv-rule bg-jv-bg/50'
+                                        : 'border-red-500/40 bg-red-500/5'
+                                    }`}
+                                  >
+                                    {isPassed ? (
+                                      <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+                                    ) : (
+                                      <XCircle className="w-4 h-4 text-red-600 shrink-0 mt-0.5" />
+                                    )}
+                                    <div className="space-y-0.5 min-w-0">
+                                      <div className="font-machine uppercase text-[11px] font-semibold text-jv-ink">
+                                        {(f.check_name || '').replace(/_/g, ' ')}
+                                      </div>
+                                      <div className="font-interface text-[11px] text-jv-muted leading-tight">
+                                        {f.message}
+                                      </div>
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+
+                            {/* Inspect Plan Binding Collapsible */}
+                            <div className="border border-jv-rule bg-jv-bg p-3 space-y-2">
+                              <button
+                                type="button"
+                                onClick={() => setShowPlanBinding(!showPlanBinding)}
+                                className="w-full flex items-center justify-between text-left font-machine text-xs text-jv-ink font-semibold"
+                              >
+                                <span className="flex items-center gap-1.5">
+                                  <Lock className="w-3.5 h-3.5 text-jv-accent" />
+                                  INSPECT PLAN BINDING & CRYPTOGRAPHIC PROVENANCE
+                                </span>
+                                <ChevronDown className={`w-4 h-4 text-jv-muted transition-transform ${showPlanBinding ? 'rotate-180' : ''}`} />
+                              </button>
+
+                              {showPlanBinding && (
+                                <div className="pt-2 space-y-2 border-t border-jv-rule font-machine text-xs">
+                                  <div className="p-2 border border-jv-rule bg-jv-surface/50 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                                    <div className="flex items-center gap-2 overflow-hidden">
+                                      <span className="text-jv-muted shrink-0">PLAN FINGERPRINT:</span>
+                                      <span className="text-jv-ink font-mono truncate" title={latestPlan.execution_plan_fingerprint}>
+                                        {latestPlan.execution_plan_fingerprint}
+                                      </span>
+                                    </div>
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        navigator.clipboard.writeText(latestPlan.execution_plan_fingerprint);
+                                        setCopiedPlanFingerprint(true);
+                                        setTimeout(() => setCopiedPlanFingerprint(false), 2000);
+                                      }}
+                                      className="text-jv-muted hover:text-jv-ink px-2 py-1 border border-jv-rule bg-jv-surface shrink-0 flex items-center gap-1 text-[11px]"
+                                    >
+                                      {copiedPlanFingerprint ? <Check className="w-3 h-3 text-jv-accent" /> : <Copy className="w-3 h-3" />}
+                                      <span>{copiedPlanFingerprint ? 'COPIED' : 'COPY FP'}</span>
+                                    </button>
+                                  </div>
+                                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px] text-jv-muted p-2">
+                                    <div>INPUT HASH: <span className="font-mono text-jv-ink">{latestPlan.execution_input_hash.slice(0, 16)}…</span></div>
+                                    <div>PACKAGE FP: <span className="font-mono text-jv-ink">{latestPlan.package_fingerprint.slice(0, 16)}…</span></div>
+                                    <div>PLANNER VERSION: <span className="text-jv-ink">{latestPlan.planner_version}</span></div>
+                                    <div>SCHEMA VERSION: <span className="text-jv-ink">{latestPlan.schema_version}</span></div>
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+
+                            {/* Constitutional Governance Notice (Zero Transmission) */}
+                            <div className="p-3 border border-jv-rule bg-jv-surface/40 font-interface text-xs text-jv-muted space-y-1">
+                              <div className="font-semibold text-jv-ink flex items-center gap-2">
+                                <ShieldCheck className="w-4 h-4 text-jv-accent" />
+                                Constitutional Zero-Transmission Policy
+                              </div>
+                              <div>
+                                Planning authority is strictly decoupled from transmission and execution authority. This action plan is sealed for operator review. No browser connection, email, or external network transmission has been initiated.
+                              </div>
+                            </div>
                           </div>
                         )}
                       </div>

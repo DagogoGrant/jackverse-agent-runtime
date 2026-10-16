@@ -15,6 +15,7 @@ from caseworker.persistence.sqlite import SQLiteCaseworkerStorage
 from caseworker.services.action_service import ActionService
 from caseworker.services.approval_service import ApprovalService
 from caseworker.services.artifact_service import ArtifactPreparationService
+from caseworker.services.execution_plan_service import ExecutionPlanService
 from caseworker.services.package_service import PackageService
 from caseworker.services.case_service import CaseService
 from caseworker.services.claim_service import ClaimLedgerService as ClaimService
@@ -102,6 +103,12 @@ def get_package_service(
     storage: Annotated[SQLiteCaseworkerStorage, Depends(get_storage)],
 ) -> PackageService:
     return PackageService(storage)
+
+
+def get_execution_plan_service(
+    storage: Annotated[SQLiteCaseworkerStorage, Depends(get_storage)],
+) -> ExecutionPlanService:
+    return ExecutionPlanService(storage)
 
 
 

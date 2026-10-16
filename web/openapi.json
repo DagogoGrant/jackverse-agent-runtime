@@ -930,6 +930,66 @@
         "title": "CreateCaseRequest",
         "type": "object"
       },
+      "CreateExecutionPlanRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "channel_metadata": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Channel Metadata"
+          },
+          "destination_override": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ExecutionDestinationSchema"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "final_submit_control": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TargetSubmitControlSpecSchema"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "package_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Package Id"
+          },
+          "target_schema": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TargetInteractionSchemaSchema"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "title": "CreateExecutionPlanRequest",
+        "type": "object"
+      },
       "CreateMissionRequest": {
         "additionalProperties": false,
         "properties": {
@@ -1483,6 +1543,369 @@
           "status"
         ],
         "title": "EvidenceMappingItemResponse",
+        "type": "object"
+      },
+      "ExecutionDestinationSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "canonical_url": {
+            "title": "Canonical Url",
+            "type": "string"
+          },
+          "channel_metadata": {
+            "additionalProperties": true,
+            "title": "Channel Metadata",
+            "type": "object"
+          },
+          "destination_provenance": {
+            "title": "Destination Provenance",
+            "type": "string"
+          },
+          "destination_type": {
+            "title": "Destination Type",
+            "type": "string"
+          },
+          "is_exact_destination": {
+            "default": true,
+            "title": "Is Exact Destination",
+            "type": "boolean"
+          },
+          "organization": {
+            "title": "Organization",
+            "type": "string"
+          }
+        },
+        "required": [
+          "destination_type",
+          "destination_provenance",
+          "canonical_url",
+          "organization"
+        ],
+        "title": "ExecutionDestinationSchema",
+        "type": "object"
+      },
+      "ExecutionFieldMappingResponse": {
+        "properties": {
+          "field_name": {
+            "title": "Field Name",
+            "type": "string"
+          },
+          "field_value": {
+            "title": "Field Value"
+          },
+          "required": {
+            "title": "Required",
+            "type": "boolean"
+          },
+          "source_fact_id": {
+            "title": "Source Fact Id",
+            "type": "string"
+          },
+          "source_fact_version": {
+            "title": "Source Fact Version",
+            "type": "integer"
+          },
+          "target_field_id": {
+            "title": "Target Field Id",
+            "type": "string"
+          },
+          "verification_status": {
+            "title": "Verification Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "target_field_id",
+          "field_name",
+          "field_value",
+          "source_fact_id",
+          "source_fact_version",
+          "verification_status",
+          "required"
+        ],
+        "title": "ExecutionFieldMappingResponse",
+        "type": "object"
+      },
+      "ExecutionPlanFindingResponse": {
+        "properties": {
+          "check_name": {
+            "title": "Check Name",
+            "type": "string"
+          },
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "details": {
+            "additionalProperties": true,
+            "title": "Details",
+            "type": "object"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          },
+          "passed": {
+            "title": "Passed",
+            "type": "boolean"
+          },
+          "severity": {
+            "title": "Severity",
+            "type": "string"
+          }
+        },
+        "required": [
+          "check_name",
+          "passed",
+          "severity",
+          "code",
+          "message"
+        ],
+        "title": "ExecutionPlanFindingResponse",
+        "type": "object"
+      },
+      "ExecutionScreeningResponseDTO": {
+        "properties": {
+          "answer": {
+            "title": "Answer",
+            "type": "string"
+          },
+          "grounding_claim_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Grounding Claim Ids",
+            "type": "array"
+          },
+          "question": {
+            "title": "Question",
+            "type": "string"
+          },
+          "question_id": {
+            "title": "Question Id",
+            "type": "string"
+          },
+          "source_artifact_id": {
+            "title": "Source Artifact Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "question_id",
+          "question",
+          "answer",
+          "source_artifact_id",
+          "grounding_claim_ids"
+        ],
+        "title": "ExecutionScreeningResponseDTO",
+        "type": "object"
+      },
+      "ExecutionUploadAssetResponse": {
+        "properties": {
+          "asset_id": {
+            "title": "Asset Id",
+            "type": "string"
+          },
+          "byte_size": {
+            "title": "Byte Size",
+            "type": "integer"
+          },
+          "content_sha256": {
+            "title": "Content Sha256",
+            "type": "string"
+          },
+          "filename": {
+            "title": "Filename",
+            "type": "string"
+          },
+          "materialized": {
+            "title": "Materialized",
+            "type": "boolean"
+          },
+          "mime_type": {
+            "title": "Mime Type",
+            "type": "string"
+          },
+          "role": {
+            "title": "Role",
+            "type": "string"
+          },
+          "source_artifact_id": {
+            "title": "Source Artifact Id",
+            "type": "string"
+          },
+          "source_artifact_version": {
+            "title": "Source Artifact Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "asset_id",
+          "role",
+          "source_artifact_id",
+          "source_artifact_version",
+          "filename",
+          "mime_type",
+          "content_sha256",
+          "byte_size",
+          "materialized"
+        ],
+        "title": "ExecutionUploadAssetResponse",
+        "type": "object"
+      },
+      "ExternalExecutionPlanListResponse": {
+        "properties": {
+          "plans": {
+            "items": {
+              "$ref": "#/components/schemas/ExternalExecutionPlanResponse"
+            },
+            "title": "Plans",
+            "type": "array"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "plans",
+          "total"
+        ],
+        "title": "ExternalExecutionPlanListResponse",
+        "type": "object"
+      },
+      "ExternalExecutionPlanResponse": {
+        "properties": {
+          "case_id": {
+            "title": "Case Id",
+            "type": "string"
+          },
+          "created_at": {
+            "title": "Created At",
+            "type": "string"
+          },
+          "destination": {
+            "$ref": "#/components/schemas/ExecutionDestinationSchema"
+          },
+          "execution_input_hash": {
+            "title": "Execution Input Hash",
+            "type": "string"
+          },
+          "execution_plan_fingerprint": {
+            "title": "Execution Plan Fingerprint",
+            "type": "string"
+          },
+          "field_mappings": {
+            "items": {
+              "$ref": "#/components/schemas/ExecutionFieldMappingResponse"
+            },
+            "title": "Field Mappings",
+            "type": "array"
+          },
+          "final_submit_control": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TargetSubmitControlSpecSchema"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "findings": {
+            "items": {
+              "$ref": "#/components/schemas/ExecutionPlanFindingResponse"
+            },
+            "title": "Findings",
+            "type": "array"
+          },
+          "opportunity_id": {
+            "title": "Opportunity Id",
+            "type": "string"
+          },
+          "package_fingerprint": {
+            "title": "Package Fingerprint",
+            "type": "string"
+          },
+          "package_id": {
+            "title": "Package Id",
+            "type": "string"
+          },
+          "plan_id": {
+            "title": "Plan Id",
+            "type": "string"
+          },
+          "planner_version": {
+            "title": "Planner Version",
+            "type": "string"
+          },
+          "schema_version": {
+            "title": "Schema Version",
+            "type": "string"
+          },
+          "screening_responses": {
+            "items": {
+              "$ref": "#/components/schemas/ExecutionScreeningResponseDTO"
+            },
+            "title": "Screening Responses",
+            "type": "array"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "target_schema": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TargetInteractionSchemaSchema"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "updated_at": {
+            "title": "Updated At",
+            "type": "string"
+          },
+          "upload_mappings": {
+            "items": {
+              "$ref": "#/components/schemas/ExecutionUploadAssetResponse"
+            },
+            "title": "Upload Mappings",
+            "type": "array"
+          },
+          "user_id": {
+            "title": "User Id",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "plan_id",
+          "case_id",
+          "opportunity_id",
+          "package_id",
+          "package_fingerprint",
+          "user_id",
+          "status",
+          "destination",
+          "field_mappings",
+          "upload_mappings",
+          "screening_responses",
+          "findings",
+          "execution_input_hash",
+          "execution_plan_fingerprint",
+          "schema_version",
+          "planner_version",
+          "created_at",
+          "updated_at",
+          "version"
+        ],
+        "title": "ExternalExecutionPlanResponse",
         "type": "object"
       },
       "FactResponse": {
@@ -3454,6 +3877,194 @@
         "title": "SupersedeFactRequest",
         "type": "object"
       },
+      "TargetInteractionSchemaSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "destination_type": {
+            "default": "ats_form",
+            "title": "Destination Type",
+            "type": "string"
+          },
+          "fields": {
+            "items": {
+              "$ref": "#/components/schemas/TargetSchemaFieldSchema"
+            },
+            "title": "Fields",
+            "type": "array"
+          },
+          "final_submit_control": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TargetSubmitControlSpecSchema"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "schema_hash": {
+            "default": "",
+            "title": "Schema Hash",
+            "type": "string"
+          },
+          "schema_id": {
+            "title": "Schema Id",
+            "type": "string"
+          },
+          "screening_questions": {
+            "items": {
+              "$ref": "#/components/schemas/TargetSchemaQuestionSchema"
+            },
+            "title": "Screening Questions",
+            "type": "array"
+          },
+          "upload_slots": {
+            "items": {
+              "$ref": "#/components/schemas/TargetSchemaUploadSlotSchema"
+            },
+            "title": "Upload Slots",
+            "type": "array"
+          }
+        },
+        "required": [
+          "schema_id"
+        ],
+        "title": "TargetInteractionSchemaSchema",
+        "type": "object"
+      },
+      "TargetSchemaFieldSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "allowed_options": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Allowed Options",
+            "type": "array"
+          },
+          "field_type": {
+            "default": "text",
+            "title": "Field Type",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "required": {
+            "default": true,
+            "title": "Required",
+            "type": "boolean"
+          },
+          "target_field_id": {
+            "title": "Target Field Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "target_field_id",
+          "label"
+        ],
+        "title": "TargetSchemaFieldSchema",
+        "type": "object"
+      },
+      "TargetSchemaQuestionSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "answer_type": {
+            "default": "text",
+            "title": "Answer Type",
+            "type": "string"
+          },
+          "question_id": {
+            "title": "Question Id",
+            "type": "string"
+          },
+          "question_text": {
+            "title": "Question Text",
+            "type": "string"
+          },
+          "required": {
+            "default": true,
+            "title": "Required",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "question_id",
+          "question_text"
+        ],
+        "title": "TargetSchemaQuestionSchema",
+        "type": "object"
+      },
+      "TargetSchemaUploadSlotSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "accepted_mime_types": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Accepted Mime Types",
+            "type": "array"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "required": {
+            "default": true,
+            "title": "Required",
+            "type": "boolean"
+          },
+          "role": {
+            "title": "Role",
+            "type": "string"
+          },
+          "slot_id": {
+            "title": "Slot Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "slot_id",
+          "role",
+          "label"
+        ],
+        "title": "TargetSchemaUploadSlotSchema",
+        "type": "object"
+      },
+      "TargetSubmitControlSpecSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "control_type": {
+            "default": "button_submit",
+            "title": "Control Type",
+            "type": "string"
+          },
+          "method": {
+            "default": "POST",
+            "title": "Method",
+            "type": "string"
+          },
+          "requires_double_confirmation": {
+            "default": true,
+            "title": "Requires Double Confirmation",
+            "type": "boolean"
+          },
+          "selector": {
+            "default": "",
+            "title": "Selector",
+            "type": "string"
+          },
+          "semantic_target": {
+            "default": "Submit Application",
+            "title": "Semantic Target",
+            "type": "string"
+          }
+        },
+        "title": "TargetSubmitControlSpecSchema",
+        "type": "object"
+      },
       "TransitionCaseRequest": {
         "additionalProperties": false,
         "properties": {
@@ -4247,6 +4858,197 @@
         "summary": "Propose Action",
         "tags": [
           "actions"
+        ]
+      }
+    },
+    "/api/v1/cases/{case_id}/execution/plan": {
+      "post": {
+        "description": "Compile and seal an exact ExternalExecutionPlan for a case.\n\nConcurrency & Idempotency:\n- Exact replay resolution occurs before If-Match check.\n- If a plan with matching content fingerprint already exists, it is returned idempotently.\n- If compiling a new plan, If-Match header on Case is strictly validated.",
+        "operationId": "create_execution_plan_api_v1_cases__case_id__execution_plan_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "case_id",
+            "required": true,
+            "schema": {
+              "title": "Case Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateExecutionPlanRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExternalExecutionPlanResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Execution Plan",
+        "tags": [
+          "cases"
+        ]
+      }
+    },
+    "/api/v1/cases/{case_id}/execution/plan/latest": {
+      "get": {
+        "description": "Retrieve the latest execution plan for a case.",
+        "operationId": "get_latest_execution_plan_api_v1_cases__case_id__execution_plan_latest_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "case_id",
+            "required": true,
+            "schema": {
+              "title": "Case Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExternalExecutionPlanResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Latest Execution Plan",
+        "tags": [
+          "cases"
+        ]
+      }
+    },
+    "/api/v1/cases/{case_id}/execution/plan/{plan_id}": {
+      "get": {
+        "description": "Retrieve a specific execution plan by plan_id.",
+        "operationId": "get_execution_plan_api_v1_cases__case_id__execution_plan__plan_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "case_id",
+            "required": true,
+            "schema": {
+              "title": "Case Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "plan_id",
+            "required": true,
+            "schema": {
+              "title": "Plan Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExternalExecutionPlanResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Execution Plan",
+        "tags": [
+          "cases"
+        ]
+      }
+    },
+    "/api/v1/cases/{case_id}/execution/plans": {
+      "get": {
+        "description": "List all execution plans for a case.",
+        "operationId": "list_execution_plans_api_v1_cases__case_id__execution_plans_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "case_id",
+            "required": true,
+            "schema": {
+              "title": "Case Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExternalExecutionPlanListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Execution Plans",
+        "tags": [
+          "cases"
         ]
       }
     },
