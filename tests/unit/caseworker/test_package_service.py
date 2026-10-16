@@ -36,6 +36,12 @@ from caseworker.domain.errors import (
 )
 from caseworker.domain.opportunity import Opportunity
 from caseworker.domain.preparation_analyzer import PreparationAnalyzer
+from caseworker.domain.package import (
+    ArtifactPackageSnapshot,
+    SafeClaimSnapshot,
+    compute_package_fingerprint,
+)
+from caseworker.domain.types import canonical_json_dumps
 from caseworker.persistence.sqlite import SQLiteCaseworkerStorage
 from caseworker.services.approval_service import ApprovalService
 from caseworker.services.package_service import PackageService
@@ -530,6 +536,216 @@ class TestPackageService(unittest.TestCase):
                 reason="Approving tampered action",
             )
         self.assertIn("semantic binding", str(ctx.exception))
+
+    def test_approval_revalidation_fails_when_frozen_artifact_payload_tampered(self) -> None:
+        """Phase 5.2.3.1: Approval fails and unwinds if frozen artifact rendered payload is tampered without version change."""
+        package, action, approval, _, _ = self.package_service.verify_and_prepare_package(
+            user_id=self.user_id,
+            case_id=self.case_id,
+            artifact_set_id=self.set_id,
+            expected_case_version=1,
+        )
+
+        # Tamper with artifact block content directly in the database without advancing its version
+        with self.storage.unit_of_work() as uow:
+            cur = uow.conn.cursor()
+            # Fetch existing blocks, alter content
+            cur.execute("SELECT blocks_json FROM preparation_artifacts WHERE artifact_id = ?", (self.cv.artifact_id,))
+            row = cur.fetchone()
+            assert row is not None
+            import json
+            blocks = json.loads(row[0])
+            blocks[0]["content"] = "Tampered Resume Content Not Authorized by Human"
+            cur.execute(
+                "UPDATE preparation_artifacts SET blocks_json = ? WHERE artifact_id = ?",
+                (json.dumps(blocks), self.cv.artifact_id),
+            )
+
+        with self.assertRaises(ApprovalValidationError) as ctx:
+            self.approval_service.approve_action(
+                user_id=self.user_id,
+                approval_id=approval.approval_id,
+                reason="Attempting to approve tampered artifact",
+            )
+        self.assertIn("rendered payload hash mismatch", str(ctx.exception))
+
+        # Verify unwind state
+        with self.storage.unit_of_work() as uow:
+            pkg_db = uow.preparation_packages.get_by_id(package.package_id)
+            assert pkg_db is not None
+            self.assertEqual(pkg_db.status, PreparationPackageStatus.SUPERSEDED)
+
+            cv_db = uow.preparation_artifacts.get_by_id(self.cv.artifact_id)
+            assert cv_db is not None
+            self.assertEqual(cv_db.status, ArtifactStatus.SUPERSEDED)
+
+            act_db = uow.actions.get_by_id(action.action_id)
+            assert act_db is not None
+            self.assertEqual(act_db.status, ActionStatus.CANCELLED)
+
+            app_db = uow.approvals.get_by_id(approval.approval_id)
+            assert app_db is not None
+            self.assertEqual(app_db.status, ApprovalStatus.CANCELLED)
+
+            case_db = uow.cases.get_by_id(self.case_id)
+            assert case_db is not None
+            self.assertEqual(case_db.status, CaseStatus.PLANNING)
+
+    def test_approval_revalidation_fails_when_frozen_grounding_hash_tampered(self) -> None:
+        """Phase 5.2.3.1: Approval fails and unwinds if frozen grounding snapshot hash is tampered."""
+        package, action, approval, _, _ = self.package_service.verify_and_prepare_package(
+            user_id=self.user_id,
+            case_id=self.case_id,
+            artifact_set_id=self.set_id,
+            expected_case_version=1,
+        )
+
+        with self.storage.unit_of_work() as uow:
+            cur = uow.conn.cursor()
+            cur.execute(
+                "UPDATE preparation_artifacts SET grounding_snapshot_hash = ? WHERE artifact_id = ?",
+                ("tampered_grounding_hash", self.cl.artifact_id),
+            )
+
+        with self.assertRaises(ApprovalValidationError) as ctx:
+            self.approval_service.approve_action(
+                user_id=self.user_id,
+                approval_id=approval.approval_id,
+                reason="Attempting to approve tampered grounding",
+            )
+        self.assertIn("grounding snapshot hash mismatch", str(ctx.exception))
+
+        with self.storage.unit_of_work() as uow:
+            pkg_db = uow.preparation_packages.get_by_id(package.package_id)
+            assert pkg_db is not None
+            self.assertEqual(pkg_db.status, PreparationPackageStatus.SUPERSEDED)
+
+            cl_db = uow.preparation_artifacts.get_by_id(self.cl.artifact_id)
+            assert cl_db is not None
+            self.assertEqual(cl_db.status, ArtifactStatus.SUPERSEDED)
+
+            case_db = uow.cases.get_by_id(self.case_id)
+            assert case_db is not None
+            self.assertEqual(case_db.status, CaseStatus.PLANNING)
+
+    def test_approval_revalidation_fails_when_claim_snapshot_mismatches(self) -> None:
+        """Phase 5.2.3.1: Approval fails and unwinds if package claim snapshots mismatch current verification."""
+        package, action, approval, _, _ = self.package_service.verify_and_prepare_package(
+            user_id=self.user_id,
+            case_id=self.case_id,
+            artifact_set_id=self.set_id,
+            expected_case_version=1,
+        )
+
+        with self.storage.unit_of_work() as uow:
+            cur = uow.conn.cursor()
+            cur.execute(
+                "SELECT claim_snapshots_json, artifact_snapshots_json FROM preparation_packages WHERE package_id = ?",
+                (package.package_id,),
+            )
+            row = cur.fetchone()
+            assert row is not None
+            import json
+
+            claim_snaps_data = json.loads(row[0])
+            claim_snaps_data[0]["claim_version"] = 99
+            new_snaps = [SafeClaimSnapshot(**cs) for cs in claim_snaps_data]
+            art_snaps = [ArtifactPackageSnapshot(**a) for a in json.loads(row[1])]
+            new_fp = compute_package_fingerprint(
+                case_id=package.case_id,
+                artifact_set_id=package.artifact_set_id,
+                source_report_id=package.source_report_id,
+                artifact_snapshots=art_snaps,
+                claim_snapshots=new_snaps,
+                schema_version=package.schema_version,
+                verifier_version=package.verifier_version,
+            )
+            cur.execute(
+                "UPDATE preparation_packages SET claim_snapshots_json = ?, package_fingerprint = ? WHERE package_id = ?",
+                (canonical_json_dumps([cs.to_dict() for cs in new_snaps]), new_fp, package.package_id),
+            )
+            cur.execute("SELECT parameters FROM actions WHERE action_id = ?", (action.action_id,))
+            act_row = cur.fetchone()
+            assert act_row is not None
+            params = json.loads(act_row[0])
+            params["package_fingerprint"] = new_fp
+            cur.execute("UPDATE actions SET parameters = ? WHERE action_id = ?", (json.dumps(params), action.action_id))
+
+        with self.assertRaises(ApprovalValidationError) as ctx:
+            self.approval_service.approve_action(
+                user_id=self.user_id,
+                approval_id=approval.approval_id,
+                reason="Attempting to approve with mismatched claim snapshots",
+            )
+        self.assertIn("claim snapshots mismatch", str(ctx.exception))
+
+        with self.storage.unit_of_work() as uow:
+            pkg_db = uow.preparation_packages.get_by_id(package.package_id)
+            assert pkg_db is not None
+            self.assertEqual(pkg_db.status, PreparationPackageStatus.SUPERSEDED)
+
+            case_db = uow.cases.get_by_id(self.case_id)
+            assert case_db is not None
+            self.assertEqual(case_db.status, CaseStatus.PLANNING)
+
+    def test_approval_revalidation_fails_when_ledger_claim_modified(self) -> None:
+        """Phase 5.2.3.1: Approval fails and unwinds if ledger claim is modified after package freeze."""
+        package, action, approval, _, _ = self.package_service.verify_and_prepare_package(
+            user_id=self.user_id,
+            case_id=self.case_id,
+            artifact_set_id=self.set_id,
+            expected_case_version=1,
+        )
+
+        with self.storage.unit_of_work() as uow:
+            claim_db = uow.claims.get_by_id(self.claim.claim_id)
+            assert claim_db is not None
+            claim_db.version = 2
+            uow.claims.save(claim_db)
+
+        with self.assertRaises(ApprovalValidationError) as ctx:
+            self.approval_service.approve_action(
+                user_id=self.user_id,
+                approval_id=approval.approval_id,
+                reason="Attempting to approve with modified ledger claim",
+            )
+        self.assertIn("verification engine checks failed", str(ctx.exception))
+
+        with self.storage.unit_of_work() as uow:
+            pkg_db = uow.preparation_packages.get_by_id(package.package_id)
+            assert pkg_db is not None
+            self.assertEqual(pkg_db.status, PreparationPackageStatus.SUPERSEDED)
+
+            case_db = uow.cases.get_by_id(self.case_id)
+            assert case_db is not None
+            self.assertEqual(case_db.status, CaseStatus.PLANNING)
+
+    def test_approval_revalidation_succeeds_for_unchanged_exact_frozen_package(self) -> None:
+        """Phase 5.2.3.1: Approval succeeds cleanly for untouched, exact frozen package."""
+        package, action, approval, _, _ = self.package_service.verify_and_prepare_package(
+            user_id=self.user_id,
+            case_id=self.case_id,
+            artifact_set_id=self.set_id,
+            expected_case_version=1,
+        )
+
+        app_res, act_res = self.approval_service.approve_action(
+            user_id=self.user_id,
+            approval_id=approval.approval_id,
+            reason="Exact materials approved without alteration",
+        )
+
+        self.assertEqual(app_res.status, ApprovalStatus.APPROVED)
+        self.assertEqual(act_res.status, ActionStatus.SUCCEEDED)
+
+        with self.storage.unit_of_work() as uow:
+            pkg_db = uow.preparation_packages.get_by_id(package.package_id)
+            assert pkg_db is not None
+            self.assertEqual(pkg_db.status, PreparationPackageStatus.APPROVED)
+
+            case_db = uow.cases.get_by_id(self.case_id)
+            assert case_db is not None
+            self.assertEqual(case_db.status, CaseStatus.ACTION_REQUIRED)
 
 
 if __name__ == "__main__":

@@ -312,10 +312,11 @@ class PackageService:
             for a in sorted_frozen:
                 role = PackageVerificationEngine.get_publication_role(a.material_type)
                 rendered_hash = a.compute_rendered_payload_hash()
+                mat_type_str = a.material_type.value if hasattr(a.material_type, "value") else str(a.material_type)
                 snap = ArtifactPackageSnapshot(
                     artifact_id=a.artifact_id,
                     artifact_version=a.version,
-                    material_type=a.material_type.value if hasattr(a.material_type, "value") else str(a.material_type),
+                    material_type=mat_type_str,
                     rendered_payload_hash=rendered_hash,
                     grounding_snapshot_hash=a.grounding_snapshot_hash,
                     publication_role=role.value if hasattr(role, "value") else str(role),
@@ -323,7 +324,7 @@ class PackageService:
                 frozen_artifact_ids.append(a.artifact_id)
                 frozen_artifact_versions[a.artifact_id] = a.version
                 frozen_artifact_snapshots.append(snap)
-                frozen_rendered_hashes[a.artifact_id] = rendered_hash
+                frozen_rendered_hashes[mat_type_str] = rendered_hash
 
             # Compute content-addressed package fingerprint
             package_fingerprint = compute_package_fingerprint(
