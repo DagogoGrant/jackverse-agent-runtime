@@ -14,7 +14,7 @@ class TestSQLiteMigration(unittest.TestCase):
         cur = conn.cursor()
         cur.execute("PRAGMA user_version;")
         version = cur.fetchone()[0]
-        self.assertEqual(version, 7)
+        self.assertEqual(version, 8)
 
         # Verify all tables exist
         cur.execute("SELECT name FROM sqlite_master WHERE type='table';")
@@ -407,7 +407,7 @@ class TestSQLiteMigration(unittest.TestCase):
         SQLiteMigrator.migrate(conn)
 
         cur.execute("PRAGMA user_version;")
-        self.assertEqual(cur.fetchone()[0], 7)
+        self.assertEqual(cur.fetchone()[0], 8)
 
         # Verify table exists
         cur.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='preparation_intelligence_reports';")
@@ -500,7 +500,7 @@ class TestSQLiteMigration(unittest.TestCase):
 
         cur = conn.cursor()
         cur.execute("PRAGMA user_version;")
-        self.assertEqual(cur.fetchone()[0], 7)
+        self.assertEqual(cur.fetchone()[0], 8)
         conn.close()
 
     def test_migration_from_v6_schema_preserves_claims_and_creates_artifacts(self) -> None:
@@ -540,7 +540,7 @@ class TestSQLiteMigration(unittest.TestCase):
 
         # 2. Run migrator to upgrade to v7
         new_version = SQLiteMigrator.migrate(conn)
-        self.assertEqual(new_version, 7)
+        self.assertEqual(new_version, 8)
 
         # 3. Verify legacy claim is intact and has NULL for new columns
         cur.execute(

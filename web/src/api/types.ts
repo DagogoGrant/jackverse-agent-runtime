@@ -105,6 +105,16 @@ export type ArtifactBlock = Schemas['ArtifactBlockResponse'];
 export type ArtifactProvenance = Schemas['ArtifactProvenanceResponse'];
 
 // ----------------------------------------------------------------------------
+// Preparation Package & Verification (Phase 5.2.3)
+// ----------------------------------------------------------------------------
+export type PreparationPackage = Schemas['PreparationPackageResponse'];
+export type VerifyPackageRequest = Schemas['VerifyPackageRequest'];
+export type VerifyPackageResponse = Schemas['VerifyPackageResponse'];
+export type VerificationFinding = Schemas['VerificationFindingResponse'];
+export type ArtifactPackageSnapshot = Schemas['ArtifactPackageSnapshotResponse'];
+export type SafeClaimSnapshot = Schemas['SafeClaimSnapshotResponse'];
+
+// ----------------------------------------------------------------------------
 // Activity & Domain Events
 // ----------------------------------------------------------------------------
 export type DomainEvent = Schemas['DomainEventResponse'];

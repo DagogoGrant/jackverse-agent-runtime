@@ -231,12 +231,26 @@ class PreparedArtifact:
             self.updated_at = now_utc()
             self.version += 1
 
-    def freeze(self) -> None:
+    def freeze(self, reason: str | None = None) -> None:
         """Freeze artifact when verified/locked."""
         if self.status != ArtifactStatus.FROZEN:
             self.status = ArtifactStatus.FROZEN
             self.updated_at = now_utc()
             self.version += 1
+
+    def compute_rendered_payload_hash(self) -> str:
+        """Compute sha256 hash of the rendered markdown payload."""
+        return compute_sha256(self.render_markdown())
+
+    def transition_to(self, new_status: ArtifactStatus | str, reason: str | None = None) -> None:
+        """Transition artifact lifecycle status."""
+        if isinstance(new_status, str):
+            new_status = ArtifactStatus(new_status)
+        if new_status == self.status:
+            return
+        self.status = new_status
+        self.updated_at = now_utc()
+        self.version += 1
 
     def to_dict(self) -> dict[str, Any]:
         return {

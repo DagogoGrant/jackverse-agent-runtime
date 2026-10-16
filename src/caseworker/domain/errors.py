@@ -58,6 +58,10 @@ class DomainValidationError(CaseworkerError):
 class ApprovalValidationError(CaseworkerError):
     """Raised when an action approval cannot be granted because parameter fingerprint mismatch or status conflict."""
 
+    def __init__(self, message: str, details: dict[str, Any] | None = None) -> None:
+        super().__init__(message)
+        self.details = details or {}
+
 
 class MissionArchivalConflictError(CaseworkerError):
     """Raised when an archival or transition operation conflicts with the Mission's lifecycle or archival state."""
@@ -69,3 +73,19 @@ class MissionArchivalConflictError(CaseworkerError):
 
 class PersistenceError(CaseworkerError):
     """Raised when a storage, constraint, or database transaction operation fails."""
+
+
+class PackageVerificationError(CaseworkerError):
+    """Raised when one or more strict pre-verification checks fail on a preparation package."""
+
+    def __init__(self, message: str, findings: list[Any] | None = None) -> None:
+        super().__init__(message)
+        self.findings = findings or []
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "error": "PACKAGE_VERIFICATION_FAILED",
+            "message": str(self),
+            "findings": [f.to_dict() if hasattr(f, "to_dict") else f for f in self.findings],
+        }
+

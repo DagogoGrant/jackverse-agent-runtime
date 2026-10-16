@@ -38,11 +38,28 @@ from caseworker.domain.enums import (
     MissionStatus,
     OpportunityStatus,
     OpportunityType,
+    PackageVerificationStatus,
     PreparationMaterialType,
+    PreparationPackageStatus,
+    ArtifactPublicationRole,
     RiskLevel,
     SensitivityLevel,
     SourceType,
     VerificationStatus,
+)
+from caseworker.domain.package import (
+    ArtifactPackageSnapshot,
+    PreparationPackage,
+    SafeClaimSnapshot,
+    compute_package_fingerprint,
+    SCHEMA_VERSION as PACKAGE_SCHEMA_VERSION,
+    VERIFIER_VERSION as PACKAGE_VERIFIER_VERSION,
+)
+from caseworker.domain.package_verifier import (
+    PackageVerificationEngine,
+    PackageVerificationError,
+    PackageVerificationFinding,
+    VerificationResult,
 )
 from caseworker.domain.errors import (
     ApprovalValidationError,
@@ -77,6 +94,10 @@ from caseworker.domain.events import (
     make_opportunity_discovered_event,
     make_opportunity_status_changed_event,
     make_preparation_artifact_prepared_event,
+    make_preparation_package_approved_event,
+    make_preparation_package_rejected_event,
+    make_preparation_package_superseded_event,
+    make_preparation_package_verified_event,
     make_preparation_report_created_event,
 )
 from caseworker.domain.mission import Mission
@@ -190,6 +211,22 @@ __all__ = [
     "JobApplicationArtifactPlanner",
     "PLANNER_VERSION",
     "make_preparation_artifact_prepared_event",
+    # Package
+    "PreparationPackage",
+    "ArtifactPackageSnapshot",
+    "SafeClaimSnapshot",
+    "compute_package_fingerprint",
+    "PackageVerificationEngine",
+    "PackageVerificationError",
+    "PackageVerificationFinding",
+    "VerificationResult",
+    "PackageVerificationStatus",
+    "PreparationPackageStatus",
+    "ArtifactPublicationRole",
+    "make_preparation_package_verified_event",
+    "make_preparation_package_approved_event",
+    "make_preparation_package_rejected_event",
+    "make_preparation_package_superseded_event",
     # Errors
     "CaseworkerError",
     "EntityNotFoundError",

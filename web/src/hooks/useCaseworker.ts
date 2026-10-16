@@ -22,6 +22,8 @@ import type {
   PreparationIntelligenceReport,
   PreparedArtifactList,
   ArtifactProvenance,
+  PreparationPackage,
+  VerifyPackageResponse,
 } from '../api/types';
 
 // Invalidate on dev user switch
@@ -385,6 +387,65 @@ export function useArtifactProvenance(caseId?: string, artifactId?: string) {
       return res.data;
     },
     enabled: Boolean(caseId && artifactId),
+  });
+}
+
+
+// ----------------------------------------------------------------------------
+// Preparation Packages (Phase 5.2.3)
+// ----------------------------------------------------------------------------
+export function useLatestPreparationPackage(caseId?: string) {
+  return useQuery({
+    queryKey: ['preparation-package-latest', caseId],
+    queryFn: async () => {
+      if (!caseId) return null;
+      try {
+        const res = await apiRequest<PreparationPackage>(
+          `/cases/${caseId}/preparation/packages/latest`
+        );
+        return res.data;
+      } catch (err: unknown) {
+        if (err instanceof ApiError && err.status === 404) {
+          return null;
+        }
+        throw err;
+      }
+    },
+    enabled: Boolean(caseId),
+  });
+}
+
+export function useVerifyPreparationPackage() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({
+      caseId,
+      artifactSetId,
+      etag,
+    }: {
+      caseId: string;
+      artifactSetId: string;
+      etag?: string | null;
+    }) => {
+      const res = await apiRequest<VerifyPackageResponse>(
+        `/cases/${caseId}/preparation/packages/verify`,
+        {
+          method: 'POST',
+          body: JSON.stringify({ artifact_set_id: artifactSetId }),
+        },
+        etag
+      );
+      return res.data;
+    },
+    onSuccess: (_, vars) => {
+      queryClient.invalidateQueries({ queryKey: ['cases'] });
+      queryClient.invalidateQueries({ queryKey: ['cases', vars.caseId] });
+      queryClient.invalidateQueries({ queryKey: ['artifacts', vars.caseId] });
+      queryClient.invalidateQueries({ queryKey: ['preparation-package-latest', vars.caseId] });
+      queryClient.invalidateQueries({ queryKey: ['actions', vars.caseId] });
+      queryClient.invalidateQueries({ queryKey: ['approvals'] });
+      queryClient.invalidateQueries({ queryKey: ['events'] });
+    },
   });
 }
 

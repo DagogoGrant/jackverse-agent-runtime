@@ -52,6 +52,10 @@ class ActionPolicy:
             risk_level=RiskLevel.HIGH,
             requires_approval=True,
         ),
+        ActionType.APPROVE_PREPARATION_PACKAGE: ActionPolicyDecision(
+            risk_level=RiskLevel.HIGH,
+            requires_approval=True,
+        ),
         ActionType.CUSTOM: ActionPolicyDecision(
             risk_level=RiskLevel.HIGH,
             requires_approval=True,

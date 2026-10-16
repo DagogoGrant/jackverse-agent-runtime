@@ -300,6 +300,66 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/cases/{case_id}/preparation/packages/latest": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Latest Preparation Package
+         * @description Retrieve the latest verified preparation package for a case.
+         */
+        get: operations["get_latest_preparation_package_api_v1_cases__case_id__preparation_packages_latest_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/cases/{case_id}/preparation/packages/verify": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Verify Preparation Package
+         * @description Verify DRAFT candidate artifacts against 7 strict deterministic checks, freeze them, and request approval.
+         */
+        post: operations["verify_preparation_package_api_v1_cases__case_id__preparation_packages_verify_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/cases/{case_id}/preparation/packages/{package_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Preparation Package
+         * @description Retrieve a specific preparation package by ID.
+         */
+        get: operations["get_preparation_package_api_v1_cases__case_id__preparation_packages__package_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/cases/{case_id}/resolve": {
         parameters: {
             query?: never;
@@ -1162,6 +1222,24 @@ export interface components {
             };
             /** Opportunity Fields */
             opportunity_fields?: string[];
+        };
+        /**
+         * ArtifactPackageSnapshotResponse
+         * @description Immutable snapshot of an artifact frozen inside a preparation package.
+         */
+        ArtifactPackageSnapshotResponse: {
+            /** Artifact Id */
+            artifact_id: string;
+            /** Artifact Version */
+            artifact_version: number;
+            /** Grounding Snapshot Hash */
+            grounding_snapshot_hash: string;
+            /** Material Type */
+            material_type: string;
+            /** Publication Role */
+            publication_role: string;
+            /** Rendered Payload Hash */
+            rendered_payload_hash: string;
         };
         /**
          * ArtifactProvenanceResponse
@@ -2055,6 +2133,58 @@ export interface components {
             /** Version */
             version: number;
         };
+        /**
+         * PreparationPackageResponse
+         * @description Verified and frozen preparation package DTO.
+         */
+        PreparationPackageResponse: {
+            /** Artifact Ids */
+            artifact_ids: string[];
+            /** Artifact Set Id */
+            artifact_set_id: string;
+            /** Artifact Snapshots */
+            artifact_snapshots: components["schemas"]["ArtifactPackageSnapshotResponse"][];
+            /** Artifact Versions */
+            artifact_versions: {
+                [key: string]: number;
+            };
+            /** Case Id */
+            case_id: string;
+            /** Claim Snapshots */
+            claim_snapshots: components["schemas"]["SafeClaimSnapshotResponse"][];
+            /** Created At */
+            created_at: string;
+            /** Frozen At */
+            frozen_at: string;
+            /** Package Fingerprint */
+            package_fingerprint: string;
+            /** Package Id */
+            package_id: string;
+            /** Reason */
+            reason?: string | null;
+            /** Rendered Payload Hashes */
+            rendered_payload_hashes: {
+                [key: string]: string;
+            };
+            /** Schema Version */
+            schema_version: string;
+            /** Source Report Id */
+            source_report_id: string;
+            /** Status */
+            status: string;
+            /** Updated At */
+            updated_at: string;
+            /** User Id */
+            user_id: string;
+            /** Verification Findings */
+            verification_findings: components["schemas"]["VerificationFindingResponse"][];
+            /** Verification Status */
+            verification_status: string;
+            /** Verifier Version */
+            verifier_version: string;
+            /** Version */
+            version: number;
+        };
         /** PreparationStrategyResponse */
         PreparationStrategyResponse: {
             /** Claim Intents */
@@ -2373,6 +2503,22 @@ export interface components {
          */
         RiskLevel: "low" | "medium" | "high" | "critical";
         /**
+         * SafeClaimSnapshotResponse
+         * @description Privacy-safe snapshot of a claim grounding an artifact inside a preparation package.
+         */
+        SafeClaimSnapshotResponse: {
+            /** Assertion Hash */
+            assertion_hash?: string | null;
+            /** Claim Id */
+            claim_id: string;
+            /** Claim Status */
+            claim_status: string;
+            /** Claim Version */
+            claim_version: number;
+            /** Support Snapshot Hash */
+            support_snapshot_hash?: string | null;
+        };
+        /**
          * SafeSourceResponse
          * @description Safe source representation omitting private tokens, credentials, and raw metadata.
          */
@@ -2491,6 +2637,24 @@ export interface components {
             type: string;
         };
         /**
+         * VerificationFindingResponse
+         * @description Detailed result of an individual package verification check.
+         */
+        VerificationFindingResponse: {
+            /** Check Name */
+            check_name: string;
+            /** Details */
+            details?: {
+                [key: string]: unknown;
+            };
+            /** Message */
+            message: string;
+            /** Passed */
+            passed: boolean;
+            /** Severity */
+            severity: string;
+        };
+        /**
          * VerificationStatus
          * @description Trust and verification level of a fact.
          * @enum {string}
@@ -2503,6 +2667,34 @@ export interface components {
              * @default user_verified
              */
             status: components["schemas"]["VerificationStatus"];
+        };
+        /**
+         * VerifyPackageRequest
+         * @description Request payload for verifying and freezing a candidate preparation package.
+         */
+        VerifyPackageRequest: {
+            /**
+             * Artifact Set Id
+             * @description Unique ID of the candidate artifact set to verify and freeze.
+             */
+            artifact_set_id: string;
+        };
+        /**
+         * VerifyPackageResponse
+         * @description Response returned upon successful package verification and review preparation.
+         */
+        VerifyPackageResponse: {
+            action: components["schemas"]["ActionResponse"];
+            approval: components["schemas"]["ApprovalResponse"];
+            /** Case Id */
+            case_id: string;
+            /** Case Status */
+            case_status: string;
+            /** Case Version */
+            case_version: number;
+            /** Findings */
+            findings: components["schemas"]["VerificationFindingResponse"][];
+            package: components["schemas"]["PreparationPackageResponse"];
         };
     };
     responses: never;
@@ -3081,6 +3273,104 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["PreparationIntelligenceReportResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_latest_preparation_package_api_v1_cases__case_id__preparation_packages_latest_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                case_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PreparationPackageResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    verify_preparation_package_api_v1_cases__case_id__preparation_packages_verify_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                case_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["VerifyPackageRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VerifyPackageResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_preparation_package_api_v1_cases__case_id__preparation_packages__package_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                case_id: string;
+                package_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PreparationPackageResponse"];
                 };
             };
             /** @description Validation Error */

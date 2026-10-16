@@ -8,6 +8,7 @@ from fastapi import APIRouter, Depends, Request, Response, status
 from caseworker.api.dependencies import (
     PaginationParams,
     get_artifact_service,
+    get_package_service,
     get_case_service,
     get_mission_service,
     get_principal,
@@ -43,6 +44,19 @@ from caseworker.domain.types import to_iso_utc
 from caseworker.services.artifact_service import ArtifactPreparationService
 from caseworker.services.case_service import CaseService
 from caseworker.services.mission_service import MissionService
+from caseworker.api.schemas.action import ActionResponse
+from caseworker.api.schemas.approval import ApprovalResponse
+from caseworker.api.schemas.package import (
+    ArtifactPackageSnapshotResponse,
+    PreparationPackageListResponse,
+    PreparationPackageResponse,
+    SafeClaimSnapshotResponse,
+    VerificationFindingResponse,
+    VerifyPackageRequest,
+    VerifyPackageResponse,
+)
+from caseworker.domain.package import PreparationPackage
+from caseworker.services.package_service import PackageService
 
 router = APIRouter(tags=["cases"])
 
@@ -506,3 +520,207 @@ async def get_artifact_provenance(
 
 
 
+
+
+def _to_package_response(pkg: PreparationPackage) -> PreparationPackageResponse:
+    return PreparationPackageResponse(
+        package_id=pkg.package_id,
+        case_id=pkg.case_id,
+        artifact_set_id=pkg.artifact_set_id,
+        source_report_id=pkg.source_report_id,
+        user_id=pkg.user_id,
+        status=pkg.status.value,
+        artifact_ids=list(pkg.artifact_ids),
+        artifact_versions=dict(pkg.artifact_versions),
+        artifact_snapshots=[
+            ArtifactPackageSnapshotResponse(
+                artifact_id=s.artifact_id,
+                artifact_version=s.artifact_version,
+                material_type=s.material_type,
+                rendered_payload_hash=s.rendered_payload_hash,
+                grounding_snapshot_hash=s.grounding_snapshot_hash,
+                publication_role=s.publication_role,
+            )
+            for s in pkg.artifact_snapshots
+        ],
+        claim_snapshots=[
+            SafeClaimSnapshotResponse(
+                claim_id=c.claim_id,
+                claim_version=c.claim_version,
+                claim_status=c.claim_status,
+                support_snapshot_hash=c.support_snapshot_hash,
+                assertion_hash=c.assertion_hash,
+            )
+            for c in pkg.claim_snapshots
+        ],
+        rendered_payload_hashes=dict(pkg.rendered_payload_hashes),
+        verification_status=pkg.verification_status.value,
+        verification_findings=[
+            VerificationFindingResponse(
+                check_name=f.get("check_name", ""),
+                passed=f.get("passed", True),
+                severity=f.get("severity", "info"),
+                message=f.get("message", ""),
+                details=f.get("details", {}),
+            )
+            if isinstance(f, dict)
+            else VerificationFindingResponse(
+                check_name=f.check_name,
+                passed=f.passed,
+                severity=f.severity,
+                message=f.message,
+                details=f.details,
+            )
+            for f in pkg.verification_findings
+        ],
+        frozen_at=pkg.frozen_at.isoformat().replace("+00:00", "Z"),
+        package_fingerprint=pkg.package_fingerprint,
+        schema_version=pkg.schema_version,
+        verifier_version=pkg.verifier_version,
+        created_at=pkg.created_at.isoformat().replace("+00:00", "Z"),
+        updated_at=pkg.updated_at.isoformat().replace("+00:00", "Z"),
+        reason=pkg.reason,
+        version=pkg.version,
+    )
+
+
+@router.post(
+    "/api/v1/cases/{case_id}/preparation/packages/verify",
+    response_model=VerifyPackageResponse,
+)
+async def verify_preparation_package(
+    case_id: str,
+    req: VerifyPackageRequest,
+    request: Request,
+    response: Response,
+    principal: Annotated[Principal, Depends(get_principal)],
+    case_service: Annotated[CaseService, Depends(get_case_service)],
+    package_service: Annotated[PackageService, Depends(get_package_service)],
+) -> VerifyPackageResponse:
+    """Verify DRAFT candidate artifacts against 7 strict deterministic checks, freeze them, and request approval."""
+    existing_bundle = package_service.get_existing_package_bundle(
+        user_id=principal.user_id,
+        case_id=case_id,
+        artifact_set_id=req.artifact_set_id,
+    )
+    if existing_bundle is not None:
+        package, action, approval, findings, case = existing_bundle
+        set_etag_header(response, "case", case.case_id, case.version)
+    else:
+        case = case_service.get_case_for_user(principal.user_id, case_id)
+        if case is None:
+            raise EntityNotFoundError("Case", case_id)
+
+        check_if_match(request, "case", case.case_id, case.version)
+
+        package, action, approval, findings, case = package_service.verify_and_prepare_package(
+            user_id=principal.user_id,
+            case_id=case_id,
+            artifact_set_id=req.artifact_set_id,
+            expected_case_version=case.version,
+        )
+        set_etag_header(response, "case", case.case_id, case.version)
+
+    pkg_dto = _to_package_response(package)
+    act_dto = ActionResponse(
+        action_id=action.action_id,
+        case_id=action.case_id,
+        action_type=action.action_type_str,
+        description=action.description,
+        parameters=action.parameters,
+        status=action.status,
+        risk_level=action.risk_level,
+        requires_approval=action.requires_approval,
+        fingerprint=action.compute_fingerprint(),
+        created_at=action.created_at.isoformat().replace("+00:00", "Z"),
+        executed_at=action.executed_at.isoformat().replace("+00:00", "Z") if action.executed_at else None,
+        result=action.result,
+        idempotency_key=action.idempotency_key,
+        version=action.version,
+    )
+    appr_dto = ApprovalResponse(
+        approval_id=approval.approval_id,
+        action_id=approval.action_id,
+        case_id=approval.case_id,
+        user_id=approval.user_id,
+        action_fingerprint=approval.action_fingerprint,
+        status=approval.status.value,
+        requested_at=approval.requested_at.isoformat().replace("+00:00", "Z"),
+        decided_at=approval.decided_at.isoformat().replace("+00:00", "Z") if approval.decided_at else None,
+        expires_at=approval.expires_at.isoformat().replace("+00:00", "Z") if approval.expires_at else None,
+        reason=approval.reason,
+        version=approval.version,
+    )
+    findings_dtos = [
+        VerificationFindingResponse(
+            check_name=f.get("check_name", ""),
+            passed=f.get("passed", True),
+            severity=f.get("severity", "info"),
+            message=f.get("message", ""),
+            details=f.get("details", {}),
+        )
+        if isinstance(f, dict)
+        else VerificationFindingResponse(
+            check_name=f.check_name,
+            passed=f.passed,
+            severity=f.severity,
+            message=f.message,
+            details=f.details,
+        )
+        for f in findings
+    ]
+
+    return VerifyPackageResponse(
+        package=pkg_dto,
+        action=act_dto,
+        approval=appr_dto,
+        findings=findings_dtos,
+        case_id=case.case_id,
+        case_status=case.status.value if hasattr(case.status, "value") else str(case.status),
+        case_version=case.version,
+    )
+
+
+@router.get(
+    "/api/v1/cases/{case_id}/preparation/packages/latest",
+    response_model=PreparationPackageResponse,
+)
+async def get_latest_preparation_package(
+    case_id: str,
+    response: Response,
+    principal: Annotated[Principal, Depends(get_principal)],
+    package_service: Annotated[PackageService, Depends(get_package_service)],
+) -> PreparationPackageResponse:
+    """Retrieve the latest verified preparation package for a case."""
+    package = package_service.get_latest_package_for_case(
+        user_id=principal.user_id,
+        case_id=case_id,
+    )
+    if package is None:
+        raise EntityNotFoundError("PreparationPackage", f"case:{case_id}")
+
+    set_etag_header(response, "package", package.package_id, package.version)
+    return _to_package_response(package)
+
+
+@router.get(
+    "/api/v1/cases/{case_id}/preparation/packages/{package_id}",
+    response_model=PreparationPackageResponse,
+)
+async def get_preparation_package(
+    case_id: str,
+    package_id: str,
+    response: Response,
+    principal: Annotated[Principal, Depends(get_principal)],
+    package_service: Annotated[PackageService, Depends(get_package_service)],
+) -> PreparationPackageResponse:
+    """Retrieve a specific preparation package by ID."""
+    package = package_service.get_package(
+        user_id=principal.user_id,
+        package_id=package_id,
+    )
+    if package is None or package.case_id != case_id:
+        raise EntityNotFoundError("PreparationPackage", package_id)
+
+    set_etag_header(response, "package", package.package_id, package.version)
+    return _to_package_response(package)

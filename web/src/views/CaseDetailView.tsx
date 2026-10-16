@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
-import { ArrowLeft, AlertTriangle, CheckCircle2, Search, ChevronDown, FileText, Copy, Check, ShieldCheck, X } from 'lucide-react';
+import { ArrowLeft, AlertTriangle, CheckCircle2, XCircle, Search, ChevronDown, FileText, Copy, Check, ShieldCheck, X, Lock } from 'lucide-react';
 import {
   useCase,
   useCaseActions,
@@ -15,6 +15,8 @@ import {
   useGeneratePreparation,
   useCaseArtifacts,
   useDraftArtifacts,
+  useLatestPreparationPackage,
+  useVerifyPreparationPackage,
 } from '../hooks/useCaseworker';
 import { apiRequest, PreconditionFailedError } from '../api/client';
 import type { Claim } from '../api/types';
@@ -40,6 +42,34 @@ export const CaseDetailView: React.FC = () => {
   const requestApproval = useRequestActionApproval();
   const generatePrep = useGeneratePreparation();
   const draftArtifacts = useDraftArtifacts();
+  const { data: latestPackage, isLoading: _packageLoading } = useLatestPreparationPackage(caseId);
+  const verifyPackage = useVerifyPreparationPackage();
+  const [verificationError, setVerificationError] = useState<string | null>(null);
+  const [copiedFingerprint, setCopiedFingerprint] = useState(false);
+
+  const handleVerifyPackage = async () => {
+    if (!caseId || !caseData || !artifacts || artifacts.length === 0) return;
+    setVerificationError(null);
+    setConcurrencyNotice(null);
+    try {
+      await verifyPackage.mutateAsync({
+        caseId,
+        artifactSetId: artifacts[0].artifact_set_id,
+        etag: caseData.etag,
+      });
+    } catch (err: unknown) {
+      if (err instanceof PreconditionFailedError) {
+        setConcurrencyNotice(
+          'Case was modified concurrently. Reloading current dossier state…'
+        );
+        await refetchCase();
+      } else {
+        setVerificationError(
+          err instanceof Error ? err.message : 'Package pre-verification failed.'
+        );
+      }
+    }
+  };
 
   const [concurrencyNotice, setConcurrencyNotice] = useState<string | null>(null);
   const [resolveOutcome, setResolveOutcome] = useState('');
@@ -257,6 +287,28 @@ export const CaseDetailView: React.FC = () => {
         <div className="p-4 border border-jv-rule bg-jv-surface flex items-center gap-3 text-xs font-machine text-jv-ink">
           <AlertTriangle className="w-4 h-4 shrink-0 text-jv-ink" />
           <span>{concurrencyNotice}</span>
+        </div>
+      )}
+
+      {caseData?.caseItem?.status?.toLowerCase() === 'awaiting_approval' && (
+        <div className="p-4 border-2 border-jv-accent bg-jv-accent/10 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 font-interface animate-fade-in">
+          <div className="flex items-center gap-3">
+            <Lock className="w-5 h-5 text-jv-accent shrink-0" />
+            <div className="space-y-0.5">
+              <div className="font-semibold text-sm text-jv-ink">
+                Preparation Package Frozen · Human Review Required
+              </div>
+              <div className="text-xs text-jv-muted">
+                Materials are frozen under content-addressed cryptographic fingerprint. Review and authorize in Needs You.
+              </div>
+            </div>
+          </div>
+          <Link
+            to="/needs-you"
+            className="px-4 py-2 bg-jv-ink text-jv-bg text-xs font-semibold hover:bg-jv-ink/90 transition-colors flex items-center gap-1.5 shrink-0"
+          >
+            Review in Needs You →
+          </Link>
         </div>
       )}
 
@@ -802,6 +854,122 @@ export const CaseDetailView: React.FC = () => {
                         <span className="font-machine text-xs text-jv-muted">
                           {artifacts.length} ARTIFACTS DRAFTED · ZERO SYNTHETIC CITATIONS
                         </span>
+                      </div>
+
+                      {/* Phase 5.2.3 Preparation Package Verification Gate */}
+                      <div className="p-4 border border-jv-rule bg-jv-surface/50 space-y-4">
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-jv-rule">
+                          <div className="space-y-1">
+                            <div className="font-machine text-xs text-jv-accent uppercase tracking-wider flex items-center gap-2">
+                              <ShieldCheck className="w-4 h-4" />
+                              PHASE 5.2.3 // PACKAGE VERIFICATION & REVIEW GATE
+                            </div>
+                            <div className="font-interface text-sm font-semibold text-jv-ink flex items-center gap-2">
+                              <span>Verification Gate:</span>
+                              <TextureBadge status={latestPackage ? latestPackage.status : 'UNVERIFIED'} />
+                              {latestPackage?.status === 'approved' && (
+                                <span className="font-machine text-[11px] text-jv-accent font-normal border border-jv-accent/30 px-2 py-0.5 bg-jv-accent/10">
+                                  LOCAL APPROVAL ONLY
+                                </span>
+                              )}
+                            </div>
+                          </div>
+
+                          {(!latestPackage || latestPackage.status === 'superseded' || latestPackage.status === 'rejected') && (
+                            <TactileButton
+                              variant="primary"
+                              size="sm"
+                              loading={verifyPackage.isPending}
+                              onClick={handleVerifyPackage}
+                            >
+                              <ShieldCheck className="w-3.5 h-3.5 mr-1.5 inline" />
+                              Verify Package & Request Review →
+                            </TactileButton>
+                          )}
+
+                          {latestPackage?.status === 'frozen' && (
+                            <Link
+                              to="/needs-you"
+                              className="px-3 py-1.5 bg-jv-ink text-jv-bg font-interface text-xs font-semibold hover:bg-jv-ink/90 transition-colors flex items-center gap-1.5"
+                            >
+                              Awaiting Authorization in Needs You →
+                            </Link>
+                          )}
+                        </div>
+
+                        {verificationError && (
+                          <div className="p-3 border border-red-500/30 bg-red-500/10 text-red-600 font-interface text-xs flex items-center gap-2">
+                            <AlertTriangle className="w-4 h-4 shrink-0" />
+                            <span>{verificationError}</span>
+                          </div>
+                        )}
+
+                        {latestPackage && (
+                          <div className="space-y-3">
+                            <div className="p-2.5 border border-jv-rule bg-jv-bg flex flex-col sm:flex-row sm:items-center justify-between gap-2 font-machine text-xs">
+                              <div className="flex items-center gap-2 overflow-hidden">
+                                <span className="text-jv-muted shrink-0">CONTENT FINGERPRINT:</span>
+                                <span className="text-jv-ink font-mono truncate" title={latestPackage.package_fingerprint}>
+                                  {latestPackage.package_fingerprint}
+                                </span>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  navigator.clipboard.writeText(latestPackage.package_fingerprint);
+                                  setCopiedFingerprint(true);
+                                  setTimeout(() => setCopiedFingerprint(false), 2000);
+                                }}
+                                className="text-jv-muted hover:text-jv-ink px-2 py-1 border border-jv-rule bg-jv-surface shrink-0 flex items-center gap-1 text-[11px]"
+                              >
+                                {copiedFingerprint ? <Check className="w-3 h-3 text-jv-accent" /> : <Copy className="w-3 h-3" />}
+                                <span>{copiedFingerprint ? 'COPIED' : 'COPY FP'}</span>
+                              </button>
+                            </div>
+
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                              {(latestPackage.verification_findings || []).map((f: any, idx: number) => {
+                                const isPassed = f.passed;
+                                return (
+                                  <div
+                                    key={idx}
+                                    className={`p-2.5 border text-xs flex items-start gap-2.5 ${
+                                      isPassed
+                                        ? 'border-jv-rule bg-jv-bg/50'
+                                        : 'border-red-500/40 bg-red-500/5'
+                                    }`}
+                                  >
+                                    {isPassed ? (
+                                      <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+                                    ) : (
+                                      <XCircle className="w-4 h-4 text-red-600 shrink-0 mt-0.5" />
+                                    )}
+                                    <div className="space-y-0.5 min-w-0">
+                                      <div className="font-machine uppercase text-[11px] font-semibold text-jv-ink">
+                                        {(f.check_name || '').replace(/_/g, ' ')}
+                                      </div>
+                                      <div className="font-interface text-[11px] text-jv-muted leading-tight">
+                                        {f.message}
+                                      </div>
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+
+                            {latestPackage.status === 'approved' && (
+                              <div className="p-3 border border-emerald-600/40 bg-emerald-600/10 font-interface text-xs text-emerald-800 dark:text-emerald-300 space-y-1">
+                                <div className="font-semibold flex items-center gap-2">
+                                  <ShieldCheck className="w-4 h-4" />
+                                  Approved Locally · Ready for Phase 5.3
+                                </div>
+                                <div>
+                                  This package was approved by human operator for local compilation. In accordance with JackVerse policy, zero external submissions were performed in this phase.
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        )}
                       </div>
 
                       {/* Multi-Tab Selector */}

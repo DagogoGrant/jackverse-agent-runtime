@@ -299,6 +299,45 @@
         "title": "ArtifactBlockResponse",
         "type": "object"
       },
+      "ArtifactPackageSnapshotResponse": {
+        "description": "Immutable snapshot of an artifact frozen inside a preparation package.",
+        "properties": {
+          "artifact_id": {
+            "title": "Artifact Id",
+            "type": "string"
+          },
+          "artifact_version": {
+            "title": "Artifact Version",
+            "type": "integer"
+          },
+          "grounding_snapshot_hash": {
+            "title": "Grounding Snapshot Hash",
+            "type": "string"
+          },
+          "material_type": {
+            "title": "Material Type",
+            "type": "string"
+          },
+          "publication_role": {
+            "title": "Publication Role",
+            "type": "string"
+          },
+          "rendered_payload_hash": {
+            "title": "Rendered Payload Hash",
+            "type": "string"
+          }
+        },
+        "required": [
+          "artifact_id",
+          "artifact_version",
+          "material_type",
+          "rendered_payload_hash",
+          "grounding_snapshot_hash",
+          "publication_role"
+        ],
+        "title": "ArtifactPackageSnapshotResponse",
+        "type": "object"
+      },
       "ArtifactProvenanceResponse": {
         "description": "Block-level grounding provenance map for an artifact.",
         "properties": {
@@ -2406,6 +2445,144 @@
         "title": "PreparationIntelligenceReportResponse",
         "type": "object"
       },
+      "PreparationPackageResponse": {
+        "description": "Verified and frozen preparation package DTO.",
+        "properties": {
+          "artifact_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Artifact Ids",
+            "type": "array"
+          },
+          "artifact_set_id": {
+            "title": "Artifact Set Id",
+            "type": "string"
+          },
+          "artifact_snapshots": {
+            "items": {
+              "$ref": "#/components/schemas/ArtifactPackageSnapshotResponse"
+            },
+            "title": "Artifact Snapshots",
+            "type": "array"
+          },
+          "artifact_versions": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Artifact Versions",
+            "type": "object"
+          },
+          "case_id": {
+            "title": "Case Id",
+            "type": "string"
+          },
+          "claim_snapshots": {
+            "items": {
+              "$ref": "#/components/schemas/SafeClaimSnapshotResponse"
+            },
+            "title": "Claim Snapshots",
+            "type": "array"
+          },
+          "created_at": {
+            "title": "Created At",
+            "type": "string"
+          },
+          "frozen_at": {
+            "title": "Frozen At",
+            "type": "string"
+          },
+          "package_fingerprint": {
+            "title": "Package Fingerprint",
+            "type": "string"
+          },
+          "package_id": {
+            "title": "Package Id",
+            "type": "string"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "rendered_payload_hashes": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Rendered Payload Hashes",
+            "type": "object"
+          },
+          "schema_version": {
+            "title": "Schema Version",
+            "type": "string"
+          },
+          "source_report_id": {
+            "title": "Source Report Id",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "updated_at": {
+            "title": "Updated At",
+            "type": "string"
+          },
+          "user_id": {
+            "title": "User Id",
+            "type": "string"
+          },
+          "verification_findings": {
+            "items": {
+              "$ref": "#/components/schemas/VerificationFindingResponse"
+            },
+            "title": "Verification Findings",
+            "type": "array"
+          },
+          "verification_status": {
+            "title": "Verification Status",
+            "type": "string"
+          },
+          "verifier_version": {
+            "title": "Verifier Version",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "package_id",
+          "case_id",
+          "artifact_set_id",
+          "source_report_id",
+          "user_id",
+          "status",
+          "artifact_ids",
+          "artifact_versions",
+          "artifact_snapshots",
+          "claim_snapshots",
+          "rendered_payload_hashes",
+          "verification_status",
+          "verification_findings",
+          "frozen_at",
+          "package_fingerprint",
+          "schema_version",
+          "verifier_version",
+          "created_at",
+          "updated_at",
+          "version"
+        ],
+        "title": "PreparationPackageResponse",
+        "type": "object"
+      },
       "PreparationStrategyResponse": {
         "properties": {
           "claim_intents": {
@@ -3075,6 +3252,52 @@
         "title": "RiskLevel",
         "type": "string"
       },
+      "SafeClaimSnapshotResponse": {
+        "description": "Privacy-safe snapshot of a claim grounding an artifact inside a preparation package.",
+        "properties": {
+          "assertion_hash": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Assertion Hash"
+          },
+          "claim_id": {
+            "title": "Claim Id",
+            "type": "string"
+          },
+          "claim_status": {
+            "title": "Claim Status",
+            "type": "string"
+          },
+          "claim_version": {
+            "title": "Claim Version",
+            "type": "integer"
+          },
+          "support_snapshot_hash": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Support Snapshot Hash"
+          }
+        },
+        "required": [
+          "claim_id",
+          "claim_version",
+          "claim_status"
+        ],
+        "title": "SafeClaimSnapshotResponse",
+        "type": "object"
+      },
       "SafeSourceResponse": {
         "description": "Safe source representation omitting private tokens, credentials, and raw metadata.",
         "properties": {
@@ -3352,6 +3575,40 @@
         "title": "ValidationError",
         "type": "object"
       },
+      "VerificationFindingResponse": {
+        "description": "Detailed result of an individual package verification check.",
+        "properties": {
+          "check_name": {
+            "title": "Check Name",
+            "type": "string"
+          },
+          "details": {
+            "additionalProperties": true,
+            "title": "Details",
+            "type": "object"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          },
+          "passed": {
+            "title": "Passed",
+            "type": "boolean"
+          },
+          "severity": {
+            "title": "Severity",
+            "type": "string"
+          }
+        },
+        "required": [
+          "check_name",
+          "passed",
+          "severity",
+          "message"
+        ],
+        "title": "VerificationFindingResponse",
+        "type": "object"
+      },
       "VerificationStatus": {
         "description": "Trust and verification level of a fact.",
         "enum": [
@@ -3373,6 +3630,68 @@
           }
         },
         "title": "VerifyFactRequest",
+        "type": "object"
+      },
+      "VerifyPackageRequest": {
+        "additionalProperties": false,
+        "description": "Request payload for verifying and freezing a candidate preparation package.",
+        "properties": {
+          "artifact_set_id": {
+            "description": "Unique ID of the candidate artifact set to verify and freeze.",
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Artifact Set Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "artifact_set_id"
+        ],
+        "title": "VerifyPackageRequest",
+        "type": "object"
+      },
+      "VerifyPackageResponse": {
+        "description": "Response returned upon successful package verification and review preparation.",
+        "properties": {
+          "action": {
+            "$ref": "#/components/schemas/ActionResponse"
+          },
+          "approval": {
+            "$ref": "#/components/schemas/ApprovalResponse"
+          },
+          "case_id": {
+            "title": "Case Id",
+            "type": "string"
+          },
+          "case_status": {
+            "title": "Case Status",
+            "type": "string"
+          },
+          "case_version": {
+            "title": "Case Version",
+            "type": "integer"
+          },
+          "findings": {
+            "items": {
+              "$ref": "#/components/schemas/VerificationFindingResponse"
+            },
+            "title": "Findings",
+            "type": "array"
+          },
+          "package": {
+            "$ref": "#/components/schemas/PreparationPackageResponse"
+          }
+        },
+        "required": [
+          "package",
+          "action",
+          "approval",
+          "findings",
+          "case_id",
+          "case_status",
+          "case_version"
+        ],
+        "title": "VerifyPackageResponse",
         "type": "object"
       }
     }
@@ -4258,6 +4577,154 @@
           }
         },
         "summary": "Generate Preparation Intelligence",
+        "tags": [
+          "cases"
+        ]
+      }
+    },
+    "/api/v1/cases/{case_id}/preparation/packages/latest": {
+      "get": {
+        "description": "Retrieve the latest verified preparation package for a case.",
+        "operationId": "get_latest_preparation_package_api_v1_cases__case_id__preparation_packages_latest_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "case_id",
+            "required": true,
+            "schema": {
+              "title": "Case Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PreparationPackageResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Latest Preparation Package",
+        "tags": [
+          "cases"
+        ]
+      }
+    },
+    "/api/v1/cases/{case_id}/preparation/packages/verify": {
+      "post": {
+        "description": "Verify DRAFT candidate artifacts against 7 strict deterministic checks, freeze them, and request approval.",
+        "operationId": "verify_preparation_package_api_v1_cases__case_id__preparation_packages_verify_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "case_id",
+            "required": true,
+            "schema": {
+              "title": "Case Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VerifyPackageRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VerifyPackageResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Verify Preparation Package",
+        "tags": [
+          "cases"
+        ]
+      }
+    },
+    "/api/v1/cases/{case_id}/preparation/packages/{package_id}": {
+      "get": {
+        "description": "Retrieve a specific preparation package by ID.",
+        "operationId": "get_preparation_package_api_v1_cases__case_id__preparation_packages__package_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "case_id",
+            "required": true,
+            "schema": {
+              "title": "Case Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "package_id",
+            "required": true,
+            "schema": {
+              "title": "Package Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PreparationPackageResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Preparation Package",
         "tags": [
           "cases"
         ]

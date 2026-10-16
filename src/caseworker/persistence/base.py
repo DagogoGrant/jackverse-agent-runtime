@@ -16,6 +16,7 @@ from caseworker.domain.enums import ArtifactStatus, CaseStatus, ClaimStatus, Mis
 from caseworker.domain.events import DomainEvent
 from caseworker.domain.mission import Mission
 from caseworker.domain.opportunity import Opportunity
+from caseworker.domain.package import PreparationPackage
 from caseworker.domain.preparation import PreparationIntelligenceReport
 from caseworker.domain.source import ContextSource
 
@@ -314,6 +315,34 @@ class PreparationArtifactRepository(Protocol):
         ...
 
 
+class PreparationPackageRepository(Protocol):
+    """Repository interface for PreparationPackage entities."""
+
+    def save(self, package: PreparationPackage) -> None:
+        """Save a new preparation package or update mutable fields of an existing one."""
+        ...
+
+    def get_by_id(self, package_id: str) -> PreparationPackage | None:
+        """Retrieve a preparation package by its unique package_id."""
+        ...
+
+    def get_by_fingerprint(self, fingerprint: str) -> PreparationPackage | None:
+        """Retrieve a preparation package by its content-addressed fingerprint."""
+        ...
+
+    def get_latest_for_case(self, case_id: str) -> PreparationPackage | None:
+        """Retrieve the latest preparation package created for a case."""
+        ...
+
+    def list_for_case(self, case_id: str) -> list[PreparationPackage]:
+        """List all preparation packages for a case, newest first."""
+        ...
+
+    def list_by_set(self, artifact_set_id: str) -> list[PreparationPackage]:
+        """List all preparation packages referencing a specific artifact_set_id."""
+        ...
+
+
 @runtime_checkable
 class CaseworkerUnitOfWork(Protocol):
     """Transaction / Unit-of-Work boundary ensuring atomic domain state and event persistence."""
@@ -328,6 +357,7 @@ class CaseworkerUnitOfWork(Protocol):
     claims: ClaimRepository
     preparation_reports: PreparationReportRepository
     preparation_artifacts: PreparationArtifactRepository
+    preparation_packages: PreparationPackageRepository
     events: EventStore
 
     def commit(self) -> None:

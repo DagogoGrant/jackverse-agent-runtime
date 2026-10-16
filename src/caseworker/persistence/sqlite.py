@@ -37,13 +37,16 @@ from caseworker.domain.enums import (
     MissionStatus,
     OpportunityStatus,
     OpportunityType,
+    PackageVerificationStatus,
     PreparationMaterialType,
+    PreparationPackageStatus,
     RiskLevel,
     SensitivityLevel,
     SourceType,
     VerificationStatus,
 )
 from caseworker.domain.errors import (
+    DomainValidationError,
     EntityNotFoundError,
     OptimisticLockError,
     PersistenceError,
@@ -52,6 +55,11 @@ from caseworker.domain.events import DomainEvent
 from caseworker.domain.mission import Mission
 from caseworker.domain.namespaces import matches_namespace_filter
 from caseworker.domain.opportunity import Opportunity
+from caseworker.domain.package import (
+    ArtifactPackageSnapshot,
+    PreparationPackage,
+    SafeClaimSnapshot,
+)
 from caseworker.domain.preparation import (
     EvidenceMappingItem,
     GapItem,
@@ -77,6 +85,7 @@ from caseworker.persistence.base import (
     MissionRepository,
     OpportunityRepository,
     PreparationArtifactRepository,
+    PreparationPackageRepository,
     PreparationReportRepository,
 )
 from caseworker.persistence.migration import SQLiteMigrator
@@ -1825,6 +1834,264 @@ class SQLitePreparationArtifactRepository(PreparationArtifactRepository):
         return cur.rowcount
 
 
+
+class SQLitePreparationPackageRepository(PreparationPackageRepository):
+    def __init__(self, conn: sqlite3.Connection) -> None:
+        self.conn = conn
+
+    def save(self, package: PreparationPackage) -> None:
+        cur = self.conn.cursor()
+        cur.execute(
+            """
+            SELECT version, user_id, case_id, artifact_set_id, source_report_id,
+                   artifact_ids_json, artifact_versions_json, artifact_snapshots_json,
+                   claim_snapshots_json, rendered_payload_hashes_json, verification_findings_json,
+                   frozen_at, package_fingerprint, schema_version, verifier_version
+            FROM preparation_packages
+            WHERE package_id = ?
+            """,
+            (package.package_id,),
+        )
+        row = cur.fetchone()
+
+        artifact_ids_json = canonical_json_dumps(package.artifact_ids)
+        artifact_versions_json = canonical_json_dumps(package.artifact_versions)
+        artifact_snapshots_json = canonical_json_dumps([s.to_dict() for s in package.artifact_snapshots])
+        claim_snapshots_json = canonical_json_dumps([c.to_dict() for c in package.claim_snapshots])
+        rendered_payload_hashes_json = canonical_json_dumps(package.rendered_payload_hashes)
+        verification_findings_json = canonical_json_dumps(
+            [f.to_dict() if hasattr(f, "to_dict") else f for f in package.verification_findings]
+        )
+
+        if row is None:
+            try:
+                cur.execute(
+                    """
+                    INSERT INTO preparation_packages (
+                        package_id, case_id, artifact_set_id, source_report_id,
+                        user_id, status, artifact_ids_json, artifact_versions_json,
+                        artifact_snapshots_json, claim_snapshots_json,
+                        rendered_payload_hashes_json, verification_status,
+                        verification_findings_json, frozen_at, package_fingerprint,
+                        schema_version, verifier_version, created_at, updated_at,
+                        reason, version
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        package.package_id,
+                        package.case_id,
+                        package.artifact_set_id,
+                        package.source_report_id,
+                        package.user_id,
+                        package.status.value,
+                        artifact_ids_json,
+                        artifact_versions_json,
+                        artifact_snapshots_json,
+                        claim_snapshots_json,
+                        rendered_payload_hashes_json,
+                        package.verification_status.value,
+                        verification_findings_json,
+                        to_iso_utc(package.frozen_at),
+                        package.package_fingerprint,
+                        package.schema_version,
+                        package.verifier_version,
+                        to_iso_utc(package.created_at),
+                        to_iso_utc(package.updated_at),
+                        package.reason,
+                        package.version,
+                    ),
+                )
+            except sqlite3.IntegrityError as e:
+                raise PersistenceError(f"Failed to insert PreparationPackage '{package.package_id}': {e}") from e
+        else:
+            existing_version = row[0]
+            existing_user_id = row[1]
+            existing_case_id = row[2]
+            existing_set_id = row[3]
+            existing_source_report_id = row[4]
+            existing_artifact_ids = row[5]
+            existing_artifact_vers = row[6]
+            existing_artifact_snaps = row[7]
+            existing_claim_snaps = row[8]
+            existing_rendered_hashes = row[9]
+            existing_findings = row[10]
+            existing_frozen_at = row[11]
+            existing_fp = row[12]
+            existing_schema_ver = row[13]
+            existing_verifier_ver = row[14]
+
+            expected_version = package.version - 1
+            if expected_version != existing_version:
+                raise OptimisticLockError("PreparationPackage", package.package_id, expected_version)
+
+            if (
+                package.user_id != existing_user_id
+                or package.case_id != existing_case_id
+                or package.artifact_set_id != existing_set_id
+                or package.source_report_id != existing_source_report_id
+                or artifact_ids_json != existing_artifact_ids
+                or artifact_versions_json != existing_artifact_vers
+                or artifact_snapshots_json != existing_artifact_snaps
+                or claim_snapshots_json != existing_claim_snaps
+                or rendered_payload_hashes_json != existing_rendered_hashes
+                or verification_findings_json != existing_findings
+                or to_iso_utc(package.frozen_at) != existing_frozen_at
+                or package.package_fingerprint != existing_fp
+                or package.schema_version != existing_schema_ver
+                or package.verifier_version != existing_verifier_ver
+            ):
+                raise DomainValidationError(
+                    f"Cannot mutate content-addressed fields of PreparationPackage '{package.package_id}'."
+                )
+            cur.execute(
+                """
+                UPDATE preparation_packages SET
+                    status = ?, verification_status = ?,
+                    verification_findings_json = ?, updated_at = ?,
+                    reason = ?, version = ?
+                WHERE package_id = ? AND version = ?
+                """,
+                (
+                    package.status.value,
+                    package.verification_status.value,
+                    verification_findings_json,
+                    to_iso_utc(package.updated_at),
+                    package.reason,
+                    package.version,
+                    package.package_id,
+                    expected_version,
+                ),
+            )
+            if cur.rowcount == 0:
+                raise OptimisticLockError("PreparationPackage", package.package_id, expected_version)
+
+    def _row_to_package(self, row: tuple[Any, ...]) -> PreparationPackage:
+        raw_artifacts = json.loads(row[8])
+        raw_claims = json.loads(row[9])
+        artifact_snaps = [ArtifactPackageSnapshot.from_dict(d) for d in raw_artifacts]
+        claim_snaps = [SafeClaimSnapshot.from_dict(d) for d in raw_claims]
+
+        return PreparationPackage(
+            package_id=row[0],
+            case_id=row[1],
+            artifact_set_id=row[2],
+            source_report_id=row[3],
+            user_id=row[4],
+            status=PreparationPackageStatus(row[5]),
+            artifact_ids=json.loads(row[6]),
+            artifact_versions=json.loads(row[7]),
+            artifact_snapshots=artifact_snaps,
+            claim_snapshots=claim_snaps,
+            rendered_payload_hashes=json.loads(row[10]),
+            verification_status=PackageVerificationStatus(row[11]),
+            verification_findings=json.loads(row[12]),
+            frozen_at=from_iso_utc(row[13]) or now_utc(),
+            package_fingerprint=row[14],
+            schema_version=row[15],
+            verifier_version=row[16],
+            created_at=from_iso_utc(row[17]) or now_utc(),
+            updated_at=from_iso_utc(row[18]) or now_utc(),
+            reason=row[19],
+            version=row[20],
+        )
+
+    def get_by_id(self, package_id: str) -> PreparationPackage | None:
+        cur = self.conn.cursor()
+        cur.execute(
+            """
+            SELECT package_id, case_id, artifact_set_id, source_report_id,
+                   user_id, status, artifact_ids_json, artifact_versions_json,
+                   artifact_snapshots_json, claim_snapshots_json,
+                   rendered_payload_hashes_json, verification_status,
+                   verification_findings_json, frozen_at, package_fingerprint,
+                   schema_version, verifier_version, created_at, updated_at,
+                   reason, version
+            FROM preparation_packages
+            WHERE package_id = ?
+            """,
+            (package_id,),
+        )
+        row = cur.fetchone()
+        return self._row_to_package(row) if row else None
+
+    def get_by_fingerprint(self, fingerprint: str) -> PreparationPackage | None:
+        cur = self.conn.cursor()
+        cur.execute(
+            """
+            SELECT package_id, case_id, artifact_set_id, source_report_id,
+                   user_id, status, artifact_ids_json, artifact_versions_json,
+                   artifact_snapshots_json, claim_snapshots_json,
+                   rendered_payload_hashes_json, verification_status,
+                   verification_findings_json, frozen_at, package_fingerprint,
+                   schema_version, verifier_version, created_at, updated_at,
+                   reason, version
+            FROM preparation_packages
+            WHERE package_fingerprint = ?
+            """,
+            (fingerprint,),
+        )
+        row = cur.fetchone()
+        return self._row_to_package(row) if row else None
+
+    def get_latest_for_case(self, case_id: str) -> PreparationPackage | None:
+        cur = self.conn.cursor()
+        cur.execute(
+            """
+            SELECT package_id, case_id, artifact_set_id, source_report_id,
+                   user_id, status, artifact_ids_json, artifact_versions_json,
+                   artifact_snapshots_json, claim_snapshots_json,
+                   rendered_payload_hashes_json, verification_status,
+                   verification_findings_json, frozen_at, package_fingerprint,
+                   schema_version, verifier_version, created_at, updated_at,
+                   reason, version
+            FROM preparation_packages
+            WHERE case_id = ?
+            ORDER BY created_at DESC, version DESC
+            LIMIT 1
+            """,
+            (case_id,),
+        )
+        row = cur.fetchone()
+        return self._row_to_package(row) if row else None
+
+    def list_for_case(self, case_id: str) -> list[PreparationPackage]:
+        cur = self.conn.cursor()
+        cur.execute(
+            """
+            SELECT package_id, case_id, artifact_set_id, source_report_id,
+                   user_id, status, artifact_ids_json, artifact_versions_json,
+                   artifact_snapshots_json, claim_snapshots_json,
+                   rendered_payload_hashes_json, verification_status,
+                   verification_findings_json, frozen_at, package_fingerprint,
+                   schema_version, verifier_version, created_at, updated_at,
+                   reason, version
+            FROM preparation_packages
+            WHERE case_id = ?
+            ORDER BY created_at DESC, version DESC
+            """,
+            (case_id,),
+        )
+        return [self._row_to_package(row) for row in cur.fetchall()]
+
+    def list_by_set(self, artifact_set_id: str) -> list[PreparationPackage]:
+        cur = self.conn.cursor()
+        cur.execute(
+            """
+            SELECT package_id, case_id, artifact_set_id, source_report_id,
+                   user_id, status, artifact_ids_json, artifact_versions_json,
+                   artifact_snapshots_json, claim_snapshots_json,
+                   rendered_payload_hashes_json, verification_status,
+                   verification_findings_json, frozen_at, package_fingerprint,
+                   schema_version, verifier_version, created_at, updated_at,
+                   reason, version
+            FROM preparation_packages
+            WHERE artifact_set_id = ?
+            ORDER BY created_at DESC, version DESC
+            """,
+            (artifact_set_id,),
+        )
+        return [self._row_to_package(row) for row in cur.fetchall()]
+
 class SQLiteCaseworkerUnitOfWork(CaseworkerUnitOfWork):
     """Transaction / Unit-of-Work boundary using SQLite."""
 
@@ -1841,6 +2108,7 @@ class SQLiteCaseworkerUnitOfWork(CaseworkerUnitOfWork):
         self.claims = SQLiteClaimRepository(conn)
         self.preparation_reports = SQLitePreparationReportRepository(conn)
         self.preparation_artifacts = SQLitePreparationArtifactRepository(conn)
+        self.preparation_packages = SQLitePreparationPackageRepository(conn)
         self.events = SQLiteEventStore(conn)
         self._in_transaction = False
 

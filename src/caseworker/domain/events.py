@@ -634,3 +634,102 @@ def make_preparation_artifact_prepared_event(
         },
     )
 
+
+def make_preparation_package_verified_event(
+    package_id: str,
+    case_id: str,
+    artifact_set_id: str,
+    source_report_id: str,
+    package_fingerprint: str,
+    user_id: str,
+    aggregate_version: int = 1,
+    artifact_count: int = 0,
+    claim_count: int = 0,
+) -> DomainEvent:
+    return DomainEvent(
+        event_type="preparation.package_verified",
+        aggregate_type="preparation_package",
+        aggregate_id=package_id,
+        aggregate_version=aggregate_version,
+        user_id=user_id,
+        payload={
+            "package_id": package_id,
+            "case_id": case_id,
+            "artifact_set_id": artifact_set_id,
+            "source_report_id": source_report_id,
+            "package_fingerprint": package_fingerprint,
+            "artifact_count": artifact_count,
+            "claim_count": claim_count,
+        },
+    )
+
+
+def make_preparation_package_approved_event(
+    package_id: str,
+    case_id: str,
+    package_fingerprint: str,
+    user_id: str,
+    aggregate_version: int = 2,
+    reason: str | None = None,
+) -> DomainEvent:
+    return DomainEvent(
+        event_type="preparation.package_approved",
+        aggregate_type="preparation_package",
+        aggregate_id=package_id,
+        aggregate_version=aggregate_version,
+        user_id=user_id,
+        payload={
+            "package_id": package_id,
+            "case_id": case_id,
+            "package_fingerprint": package_fingerprint,
+            "reason": reason,
+        },
+    )
+
+
+def make_preparation_package_rejected_event(
+    package_id: str,
+    case_id: str,
+    package_fingerprint: str,
+    user_id: str,
+    aggregate_version: int = 2,
+    reason: str | None = None,
+) -> DomainEvent:
+    return DomainEvent(
+        event_type="preparation.package_rejected",
+        aggregate_type="preparation_package",
+        aggregate_id=package_id,
+        aggregate_version=aggregate_version,
+        user_id=user_id,
+        payload={
+            "package_id": package_id,
+            "case_id": case_id,
+            "package_fingerprint": package_fingerprint,
+            "reason": reason,
+        },
+    )
+
+
+def make_preparation_package_superseded_event(
+    package_id: str,
+    case_id: str,
+    package_fingerprint: str,
+    user_id: str,
+    aggregate_version: int = 2,
+    reason: str | None = None,
+) -> DomainEvent:
+    return DomainEvent(
+        event_type="preparation.package_superseded",
+        aggregate_type="preparation_package",
+        aggregate_id=package_id,
+        aggregate_version=aggregate_version,
+        user_id=user_id,
+        payload={
+            "package_id": package_id,
+            "case_id": case_id,
+            "package_fingerprint": package_fingerprint,
+            "reason": reason,
+        },
+    )
+
+

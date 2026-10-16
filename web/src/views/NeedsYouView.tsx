@@ -5,11 +5,13 @@ import {
   useAction,
   useApproveApproval,
   useRejectApproval,
+  useCaseArtifacts,
+  useLatestPreparationPackage,
 } from '../hooks/useCaseworker';
 import { DragToAuthorize } from '../components/ui/DragToAuthorize';
 import { TactileButton } from '../components/ui/TactileButton';
 import { TextureBadge } from '../components/ui/TextureBadge';
-import { ShieldCheck, AlertTriangle, ChevronDown, ChevronUp } from 'lucide-react';
+import { ShieldCheck, AlertTriangle, ChevronDown, ChevronUp, Lock, FileText } from 'lucide-react';
 import type { Approval } from '../api/types';
 
 export const NeedsYouView: React.FC = () => {
@@ -22,6 +24,7 @@ export const NeedsYouView: React.FC = () => {
   const [concurrencyNotice, setConcurrencyNotice] = useState<string | null>(null);
   const [filter, setFilter] = useState<'pending' | 'all'>('pending');
   const [authorizedNotice, setAuthorizedNotice] = useState<string | null>(null);
+  const [selectedPreviewArtifactId, setSelectedPreviewArtifactId] = useState<string | null>(null);
 
   const allApprovals = approvals || [];
   const filtered = allApprovals.filter((a) => {
@@ -51,6 +54,10 @@ export const NeedsYouView: React.FC = () => {
     refetch: refetchAction,
   } = useAction(activeApproval?.action_id);
   const action = actionData?.action;
+
+  const { data: caseArtifacts } = useCaseArtifacts(activeApproval?.case_id);
+  const { data: prepPackage } = useLatestPreparationPackage(activeApproval?.case_id);
+  const isPrepPackageApproval = action?.action_type === 'approve_preparation_package';
 
   const handleApprove = async () => {
     if (!activeApproval || !approvalEtag) return;
@@ -248,27 +255,94 @@ export const NeedsYouView: React.FC = () => {
                     </div>
                   </div>
 
-                  {/* Constitutional Rationale */}
-                  <div className="border-l-2 border-jv-ink pl-4 py-1 text-sm text-jv-ink-soft leading-relaxed space-y-1 font-interface">
-                    <div className="font-medium text-jv-ink">Constitutional boundary:</div>
-                    <div>
-                      This action was categorized with risk level{' '}
-                      <span className="font-machine text-xs text-jv-ink uppercase font-semibold">
-                        {action?.risk_level || 'standard'}
-                      </span>
-                      . Under JackVerse security policy, consequential mutations and third-party
-                      transmissions require explicit human authorization before execution.
+                  {/* Constitutional Rationale / Guardrail Notice */}
+                  {isPrepPackageApproval ? (
+                    <div className="border-l-4 border-amber-600 bg-amber-500/10 p-4 text-xs font-interface text-amber-900 dark:text-amber-200 space-y-1">
+                      <div className="font-semibold uppercase tracking-wider font-machine text-[11px] text-amber-700 dark:text-amber-400 flex items-center gap-2">
+                        <Lock className="w-3.5 h-3.5" />
+                        Constitutional Boundary // Local Verification Only
+                      </div>
+                      <p className="leading-relaxed">
+                        Authorizing this decision approves these exact frozen materials <strong>locally</strong> for preparation. This does <strong>NOT</strong> grant authorization to submit or transmit them externally. Zero external transmission will occur in this phase.
+                      </p>
                     </div>
-                  </div>
+                  ) : (
+                    <div className="border-l-2 border-jv-ink pl-4 py-1 text-sm text-jv-ink-soft leading-relaxed space-y-1 font-interface">
+                      <div className="font-medium text-jv-ink">Constitutional boundary:</div>
+                      <div>
+                        This action was categorized with risk level{' '}
+                        <span className="font-machine text-xs text-jv-ink uppercase font-semibold">
+                          {action?.risk_level || 'standard'}
+                        </span>
+                        . Under JackVerse security policy, consequential mutations and third-party
+                        transmissions require explicit human authorization before execution.
+                      </div>
+                    </div>
+                  )}
 
-                  {/* Action Parameters Inspector */}
+                  {/* Specialized Human Review for Preparation Packages: Exact Material Previews */}
+                  {isPrepPackageApproval && caseArtifacts && caseArtifacts.length > 0 && (
+                    <div className="space-y-3 border border-jv-rule bg-jv-bg/50 p-4">
+                      <div className="flex items-center justify-between pb-2 border-b border-jv-rule">
+                        <div className="font-machine text-xs uppercase font-semibold text-jv-ink flex items-center gap-2">
+                          <FileText className="w-4 h-4 text-jv-accent" />
+                          Exact Frozen Materials Previews ({caseArtifacts.length})
+                        </div>
+                        <span className="font-machine text-[11px] text-jv-muted">
+                          FROZEN FOR REVIEW
+                        </span>
+                      </div>
+
+                      {/* Preview Tabs */}
+                      <div className="flex flex-wrap gap-2">
+                        {caseArtifacts.map((art) => {
+                          const activeArtId = selectedPreviewArtifactId || caseArtifacts[0]?.artifact_id;
+                          const isSelected = activeArtId === art.artifact_id;
+                          return (
+                            <button
+                              key={art.artifact_id}
+                              type="button"
+                              onClick={() => setSelectedPreviewArtifactId(art.artifact_id)}
+                              className={`px-3 py-1 font-machine text-xs uppercase border transition-colors ${
+                                isSelected
+                                  ? 'border-jv-ink bg-jv-ink text-jv-bg font-semibold'
+                                  : 'border-jv-rule bg-jv-surface text-jv-muted hover:text-jv-ink'
+                              }`}
+                            >
+                              {art.material_type.replace(/_/g, ' ')}
+                            </button>
+                          );
+                        })}
+                      </div>
+
+                      {/* Active Material Text Preview */}
+                      {(() => {
+                        const activeArtId = selectedPreviewArtifactId || caseArtifacts[0]?.artifact_id;
+                        const art = caseArtifacts.find((a) => a.artifact_id === activeArtId) || caseArtifacts[0];
+                        if (!art) return null;
+                        return (
+                          <div className="space-y-2">
+                            <div className="flex items-center justify-between font-machine text-[11px] text-jv-muted">
+                              <span>TITLE: {art.title}</span>
+                              <span>STATUS: {art.status.toUpperCase()} (v{art.version})</span>
+                            </div>
+                            <div className="p-3 border border-jv-rule bg-jv-surface text-xs font-interface text-jv-ink max-h-72 overflow-y-auto whitespace-pre-wrap leading-relaxed">
+                              {art.rendered_markdown}
+                            </div>
+                          </div>
+                        );
+                      })()}
+                    </div>
+                  )}
+
+                  {/* Action Parameters & Cryptographic Binding Inspector */}
                   <div className="border border-jv-rule">
                     <button
                       type="button"
                       onClick={() => setShowParameters(!showParameters)}
                       className="w-full flex items-center justify-between px-4 py-3 bg-jv-bg text-sm font-interface text-jv-ink hover:text-jv-ink-soft border-b border-jv-rule"
                     >
-                      <span>Inspect action parameters & fingerprint</span>
+                      <span>{isPrepPackageApproval ? 'Inspect cryptographic binding & fingerprints' : 'Inspect action parameters & fingerprint'}</span>
                       {showParameters ? (
                         <ChevronUp className="w-4 h-4" />
                       ) : (
@@ -278,15 +352,24 @@ export const NeedsYouView: React.FC = () => {
 
                     {showParameters && (
                       <div className="p-4 space-y-3 font-machine text-xs bg-jv-bg/60">
+                        {isPrepPackageApproval && prepPackage && (
+                          <div className="space-y-1">
+                            <span className="font-interface text-xs text-jv-muted">Package Content Fingerprint:</span>
+                            <div className="p-2 border border-jv-rule bg-jv-surface text-jv-ink break-all text-[11px] font-machine">
+                              {prepPackage.package_fingerprint}
+                            </div>
+                          </div>
+                        )}
+
                         <div className="space-y-1">
-                          <span className="font-interface text-xs text-jv-muted">Cryptographic fingerprint:</span>
+                          <span className="font-interface text-xs text-jv-muted">Action Fingerprint:</span>
                           <div className="p-2 border border-jv-rule bg-jv-surface text-jv-ink break-all text-[11px] font-machine">
                             {activeApproval.action_fingerprint}
                           </div>
                         </div>
 
                         <div className="space-y-1">
-                          <span className="font-interface text-xs text-jv-muted">Parameters:</span>
+                          <span className="font-interface text-xs text-jv-muted">Action Parameters:</span>
                           <pre className="p-2 border border-jv-rule bg-jv-surface text-jv-ink text-[11px] font-machine overflow-x-auto max-h-28 overflow-y-auto leading-relaxed">
                             {JSON.stringify(action?.parameters || {}, null, 2)}
                           </pre>
@@ -301,8 +384,12 @@ export const NeedsYouView: React.FC = () => {
                       <div className="space-y-4">
                         {isHighConsequential ? (
                           <DragToAuthorize
-                            label="Slide to authorize action"
-                            consequentialDescription="Consequential operation: Authorizing binds your explicit consent under cryptographic fingerprint verification."
+                            label={isPrepPackageApproval ? "Slide to approve preparation package locally" : "Slide to authorize action"}
+                            consequentialDescription={
+                              isPrepPackageApproval
+                                ? "Local compilation authorization: Approving binds your explicit consent of these exact materials. No external submission will be initiated."
+                                : "Consequential operation: Authorizing binds your explicit consent under cryptographic fingerprint verification."
+                            }
                             onAuthorize={handleApprove}
                           />
                         ) : (

@@ -17,6 +17,7 @@ from caseworker.domain.errors import (
     InvalidStateTransitionError,
     MissionArchivalConflictError,
     OptimisticLockError,
+    PackageVerificationError,
 )
 
 logger = logging.getLogger("caseworker.api.errors")
@@ -200,12 +201,28 @@ async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONR
     return problem.to_response()
 
 
+
+async def package_verification_handler(request: Request, exc: PackageVerificationError) -> JSONResponse:
+    problem = ProblemDetail(
+        type="urn:caseworker:error:conflict",
+        title="Package Verification Failed",
+        status=409,
+        detail=str(exc),
+        instance=_get_request_instance(request),
+        extensions={
+            "findings": [f.to_dict() if hasattr(f, "to_dict") else f for f in getattr(exc, "findings", [])],
+        },
+    )
+    return problem.to_response()
+
+
 def register_error_handlers(app: FastAPI) -> None:
     """Register all domain and framework exception handlers to produce RFC 9457 responses."""
     app.add_exception_handler(EntityNotFoundError, entity_not_found_handler)
     app.add_exception_handler(InvalidStateTransitionError, invalid_transition_handler)
     app.add_exception_handler(OptimisticLockError, optimistic_lock_handler)
     app.add_exception_handler(ApprovalValidationError, approval_validation_handler)
+    app.add_exception_handler(PackageVerificationError, package_verification_handler)
     app.add_exception_handler(MissionArchivalConflictError, archival_conflict_handler)
     app.add_exception_handler(DomainValidationError, domain_validation_handler)
     app.add_exception_handler(RequestValidationError, request_validation_handler)

@@ -112,6 +112,7 @@ class ActionType(StrEnum):
     REQUEST_REFUND = "request_refund"
     ESCALATE = "escalate"
     FOLLOW_UP = "follow_up"
+    APPROVE_PREPARATION_PACKAGE = "approve_preparation_package"
     CUSTOM = "custom"
 
 
@@ -304,4 +305,30 @@ class AssertionKind(StrEnum):
     PROJECT_EXPERIENCE = "project_experience"
     WORK_AUTHORIZATION = "work_authorization"
     LANGUAGE_PROFICIENCY = "language_proficiency"
+
+
+class PackageVerificationStatus(StrEnum):
+    """Result of package pre-verification checks."""
+
+    UNVERIFIED = "unverified"
+    VERIFIED = "verified"
+    FAILED = "failed"
+
+
+class PreparationPackageStatus(StrEnum):
+    """Lifecycle status of a verified preparation package."""
+
+    FROZEN = "frozen"
+    APPROVED = "approved"
+    REJECTED = "rejected"
+    SUPERSEDED = "superseded"
+
+
+class ArtifactPublicationRole(StrEnum):
+    """Publication and transmission role for prepared artifacts."""
+
+    SUBMISSION_MATERIAL = "submission_material"
+    FIELD_RESPONSE = "field_response"
+    INTERNAL_PREPARATION = "internal_preparation"
+
 

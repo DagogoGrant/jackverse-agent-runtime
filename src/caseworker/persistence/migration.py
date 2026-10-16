@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import sqlite3
 
-LATEST_SCHEMA_VERSION = 7
+LATEST_SCHEMA_VERSION = 8
 
 MIGRATION_V1_DDL = """
 CREATE TABLE IF NOT EXISTS missions (
@@ -212,6 +212,40 @@ CREATE INDEX IF NOT EXISTS idx_prep_reports_case ON preparation_intelligence_rep
 CREATE INDEX IF NOT EXISTS idx_prep_reports_user ON preparation_intelligence_reports(user_id);
 """
 
+
+MIGRATION_V8_TABLES_DDL = """
+CREATE TABLE IF NOT EXISTS preparation_packages (
+    package_id TEXT PRIMARY KEY,
+    case_id TEXT NOT NULL,
+    artifact_set_id TEXT NOT NULL,
+    source_report_id TEXT NOT NULL,
+    user_id TEXT NOT NULL,
+    status TEXT NOT NULL,
+    artifact_ids_json TEXT NOT NULL,
+    artifact_versions_json TEXT NOT NULL,
+    artifact_snapshots_json TEXT NOT NULL,
+    claim_snapshots_json TEXT NOT NULL,
+    rendered_payload_hashes_json TEXT NOT NULL,
+    verification_status TEXT NOT NULL,
+    verification_findings_json TEXT NOT NULL,
+    frozen_at TEXT NOT NULL,
+    package_fingerprint TEXT NOT NULL UNIQUE,
+    schema_version TEXT NOT NULL,
+    verifier_version TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    reason TEXT,
+    version INTEGER NOT NULL DEFAULT 1,
+    FOREIGN KEY (case_id) REFERENCES cases(case_id) ON DELETE CASCADE,
+    FOREIGN KEY (source_report_id) REFERENCES preparation_intelligence_reports(report_id) ON DELETE RESTRICT
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_prep_packages_fingerprint ON preparation_packages(package_fingerprint);
+CREATE INDEX IF NOT EXISTS idx_prep_packages_case ON preparation_packages(case_id, status);
+CREATE INDEX IF NOT EXISTS idx_prep_packages_set ON preparation_packages(artifact_set_id);
+CREATE INDEX IF NOT EXISTS idx_prep_packages_user ON preparation_packages(user_id);
+"""
+
 MIGRATION_V7_TABLES_DDL = """
 CREATE TABLE IF NOT EXISTS preparation_artifacts (
     artifact_id TEXT PRIMARY KEY,
@@ -403,6 +437,12 @@ class SQLiteMigrator:
 
             conn.execute("PRAGMA user_version = 7;")
             current_version = 7
+
+        # Migrate 7 -> 8 (Phase 5.2.3: Preparation Package Verification & Review)
+        if current_version < 8:
+            conn.executescript(MIGRATION_V8_TABLES_DDL)
+            conn.execute("PRAGMA user_version = 8;")
+            current_version = 8
 
         return current_version
 
