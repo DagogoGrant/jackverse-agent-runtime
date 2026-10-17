@@ -45,6 +45,9 @@ from caseworker.domain.enums import (
     RiskLevel,
     SensitivityLevel,
     SourceType,
+    TargetAnswerType,
+    TargetFieldType,
+    TargetSchemaProvenance,
     VerificationStatus,
 )
 from caseworker.domain.package import (
@@ -127,6 +130,7 @@ from caseworker.domain.types import (
     JSONValue,
     canonical_json_dumps,
     compute_sha256,
+    compute_sha256_bytes,
     ensure_utc,
     from_iso_utc,
     now_utc,

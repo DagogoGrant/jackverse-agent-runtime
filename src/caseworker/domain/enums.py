@@ -358,4 +358,34 @@ class ExternalExecutionPlanStatus(StrEnum):
     SUPERSEDED = "superseded"
 
 
+class TargetSchemaProvenance(StrEnum):
+    """Provenance origin verifying authenticity of target interaction schema."""
+
+    USER_PROVIDED = "user_provided"
+    VERIFIED_PROVIDER_METADATA = "verified_provider_metadata"
+
+
+class TargetFieldType(StrEnum):
+    """Supported field data types for target interaction schema fields."""
+
+    TEXT = "text"
+    EMAIL = "email"
+    PHONE = "phone"
+    SELECT = "select"
+    BOOLEAN = "boolean"
+    DATE = "date"
+    NUMBER = "number"
+    URL = "url"
+
+
+class TargetAnswerType(StrEnum):
+    """Supported answer data types for target screening questions."""
+
+    TEXT = "text"
+    SELECT = "select"
+    BOOLEAN = "boolean"
+    DATE = "date"
+    NUMBER = "number"
+
+
 

@@ -2116,32 +2116,63 @@ class SQLiteExecutionUploadAssetRepository(ExecutionUploadAssetRepository):
         cur = self.conn.cursor()
         cur.execute(
             """
-            INSERT INTO execution_upload_assets (
-                asset_id, plan_id, case_id, user_id, source_artifact_id,
-                source_artifact_version, role, filename, mime_type,
-                byte_size, content_sha256, content_bytes, created_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            ON CONFLICT(asset_id) DO UPDATE SET
-                byte_size = excluded.byte_size,
-                content_sha256 = excluded.content_sha256,
-                content_bytes = excluded.content_bytes
+            SELECT plan_id, case_id, user_id, source_artifact_id,
+                   source_artifact_version, role, filename, mime_type,
+                   byte_size, content_sha256, content_bytes
+            FROM execution_upload_assets
+            WHERE asset_id = ?
             """,
-            (
-                asset.asset_id,
-                asset.plan_id,
-                asset.case_id,
-                asset.user_id,
-                asset.source_artifact_id,
-                asset.source_artifact_version,
-                asset.role,
-                asset.filename,
-                asset.mime_type,
-                asset.byte_size,
-                asset.content_sha256,
-                asset.content_bytes or b"",
-                to_iso_utc(asset.created_at),
-            ),
+            (asset.asset_id,),
         )
+        row = cur.fetchone()
+        if row is not None:
+            existing_bytes = row[10] if isinstance(row[10], bytes) else (row[10].encode("utf-8") if row[10] else b"")
+            incoming_bytes = asset.content_bytes or b""
+            if (
+                row[0] == asset.plan_id
+                and row[1] == asset.case_id
+                and row[2] == asset.user_id
+                and row[3] == asset.source_artifact_id
+                and row[4] == asset.source_artifact_version
+                and row[5] == asset.role
+                and row[6] == asset.filename
+                and row[7] == asset.mime_type
+                and row[8] == asset.byte_size
+                and row[9] == asset.content_sha256
+                and existing_bytes == incoming_bytes
+            ):
+                return
+            raise PersistenceError(
+                f"ExecutionUploadAsset '{asset.asset_id}' already exists with differing immutable contents."
+            )
+
+        try:
+            cur.execute(
+                """
+                INSERT INTO execution_upload_assets (
+                    asset_id, plan_id, case_id, user_id, source_artifact_id,
+                    source_artifact_version, role, filename, mime_type,
+                    byte_size, content_sha256, content_bytes, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    asset.asset_id,
+                    asset.plan_id,
+                    asset.case_id,
+                    asset.user_id,
+                    asset.source_artifact_id,
+                    asset.source_artifact_version,
+                    asset.role,
+                    asset.filename,
+                    asset.mime_type,
+                    asset.byte_size,
+                    asset.content_sha256,
+                    asset.content_bytes or b"",
+                    to_iso_utc(asset.created_at),
+                ),
+            )
+        except sqlite3.IntegrityError as e:
+            raise PersistenceError(f"Failed to insert ExecutionUploadAsset '{asset.asset_id}': {e}") from e
 
     def _row_to_asset(self, row: tuple[Any, ...]) -> ExecutionUploadAsset:
         return ExecutionUploadAsset(
@@ -2348,36 +2379,29 @@ class SQLiteExternalExecutionPlanRepository(ExternalExecutionPlanRepository):
             if cur.rowcount == 0:
                 raise OptimisticLockError("ExternalExecutionPlan", plan.plan_id, expected_version)
 
-        # Durable upload byte asset persistence (Clarification 2)
-        for u in plan.upload_mappings:
-            cur.execute(
-                """
-                INSERT INTO execution_upload_assets (
-                    asset_id, plan_id, case_id, user_id, source_artifact_id,
-                    source_artifact_version, role, filename, mime_type,
-                    byte_size, content_sha256, content_bytes, created_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                ON CONFLICT(asset_id) DO UPDATE SET
-                    byte_size = excluded.byte_size,
-                    content_sha256 = excluded.content_sha256,
-                    content_bytes = excluded.content_bytes
-                """,
-                (
-                    u.asset_id,
-                    u.plan_id or plan.plan_id,
-                    u.case_id or plan.case_id,
-                    u.user_id or plan.user_id,
-                    u.source_artifact_id,
-                    u.source_artifact_version,
-                    u.role,
-                    u.filename,
-                    u.mime_type,
-                    u.byte_size,
-                    u.content_sha256,
-                    u.content_bytes or b"",
-                    to_iso_utc(u.created_at),
-                ),
-            )
+        # Durable upload byte asset persistence on initial plan insert (Clarification 2)
+        if row is None:
+            asset_repo = SQLiteExecutionUploadAssetRepository(self.conn)
+            for u in plan.upload_mappings:
+                asset_to_save = u
+                if not u.plan_id or not u.case_id or not u.user_id:
+                    asset_to_save = ExecutionUploadAsset(
+                        asset_id=u.asset_id,
+                        role=u.role,
+                        source_artifact_id=u.source_artifact_id,
+                        source_artifact_version=u.source_artifact_version,
+                        filename=u.filename,
+                        mime_type=u.mime_type,
+                        content_sha256=u.content_sha256,
+                        byte_size=u.byte_size,
+                        materialized=u.materialized,
+                        content_bytes=u.content_bytes,
+                        plan_id=u.plan_id or plan.plan_id,
+                        case_id=u.case_id or plan.case_id,
+                        user_id=u.user_id or plan.user_id,
+                        created_at=u.created_at,
+                    )
+                asset_repo.save(asset_to_save)
 
     def _row_to_plan(self, row: tuple[Any, ...]) -> ExternalExecutionPlan:
         destination_provenance = row[7]

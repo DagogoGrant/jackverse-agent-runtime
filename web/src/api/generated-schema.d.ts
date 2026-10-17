@@ -1557,6 +1557,8 @@ export interface components {
                 [key: string]: unknown;
             } | null;
             destination_override?: components["schemas"]["ExecutionDestinationSchema"] | null;
+            /** Field Bindings */
+            field_bindings?: components["schemas"]["TargetFieldBindingSchema"][];
             final_submit_control?: components["schemas"]["TargetSubmitControlSpecSchema"] | null;
             /** Package Id */
             package_id?: string | null;
@@ -1852,6 +1854,8 @@ export interface components {
         };
         /** ExecutionFieldMappingResponse */
         ExecutionFieldMappingResponse: {
+            /** Allowed Purposes */
+            allowed_purposes?: string[];
             /** Field Name */
             field_name: string;
             /** Field Value */
@@ -1896,6 +1900,16 @@ export interface components {
             question_id: string;
             /** Source Artifact Id */
             source_artifact_id: string;
+            /**
+             * Source Artifact Version
+             * @default 1
+             */
+            source_artifact_version: number;
+            /**
+             * Source Payload Hash
+             * @default
+             */
+            source_payload_hash: string;
         };
         /** ExecutionUploadAssetResponse */
         ExecutionUploadAssetResponse: {
@@ -2856,6 +2870,13 @@ export interface components {
              */
             reason?: string | null;
         };
+        /** TargetFieldBindingSchema */
+        TargetFieldBindingSchema: {
+            /** Source Fact Id */
+            source_fact_id: string;
+            /** Target Field Id */
+            target_field_id: string;
+        };
         /** TargetInteractionSchemaSchema */
         TargetInteractionSchemaSchema: {
             /**
@@ -2875,6 +2896,11 @@ export interface components {
             schema_id: string;
             /** Screening Questions */
             screening_questions?: components["schemas"]["TargetSchemaQuestionSchema"][];
+            /**
+             * Target Schema Provenance
+             * @default USER_PROVIDED
+             */
+            target_schema_provenance: string;
             /** Upload Slots */
             upload_slots?: components["schemas"]["TargetSchemaUploadSlotSchema"][];
         };
@@ -2899,6 +2925,8 @@ export interface components {
         };
         /** TargetSchemaQuestionSchema */
         TargetSchemaQuestionSchema: {
+            /** Allowed Options */
+            allowed_options?: string[];
             /**
              * Answer Type
              * @default text
@@ -2932,6 +2960,16 @@ export interface components {
         };
         /** TargetSubmitControlSpecSchema */
         TargetSubmitControlSpecSchema: {
+            /**
+             * Control Id
+             * @default
+             */
+            control_id: string;
+            /**
+             * Control Provenance
+             * @default
+             */
+            control_provenance: string;
             /**
              * Control Type
              * @default button_submit

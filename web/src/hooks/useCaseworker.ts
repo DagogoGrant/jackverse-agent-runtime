@@ -27,6 +27,7 @@ import type {
   ExternalExecutionPlan,
   ExecutionDestination,
   TargetInteractionSchema,
+  TargetFieldBinding,
 } from '../api/types';
 
 // Invalidate on dev user switch
@@ -484,6 +485,7 @@ export function useCreateExecutionPlan() {
       packageId,
       destinationOverride,
       targetSchema,
+      fieldBindings,
       channelMetadata,
       finalSubmitControl,
       etag,
@@ -492,6 +494,7 @@ export function useCreateExecutionPlan() {
       packageId?: string | null;
       destinationOverride?: ExecutionDestination | null;
       targetSchema?: TargetInteractionSchema | null;
+      fieldBindings?: TargetFieldBinding[] | null;
       channelMetadata?: Record<string, unknown> | null;
       finalSubmitControl?: Record<string, unknown> | null;
       etag?: string | null;
@@ -504,6 +507,7 @@ export function useCreateExecutionPlan() {
             package_id: packageId || null,
             destination_override: destinationOverride || null,
             target_schema: targetSchema || null,
+            field_bindings: fieldBindings || [],
             channel_metadata: channelMetadata || null,
             final_submit_control: finalSubmitControl || null,
           }),

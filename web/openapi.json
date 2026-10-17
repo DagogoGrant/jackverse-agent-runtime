@@ -955,6 +955,13 @@
               }
             ]
           },
+          "field_bindings": {
+            "items": {
+              "$ref": "#/components/schemas/TargetFieldBindingSchema"
+            },
+            "title": "Field Bindings",
+            "type": "array"
+          },
           "final_submit_control": {
             "anyOf": [
               {
@@ -1596,6 +1603,13 @@
       },
       "ExecutionFieldMappingResponse": {
         "properties": {
+          "allowed_purposes": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Allowed Purposes",
+            "type": "array"
+          },
           "field_name": {
             "title": "Field Name",
             "type": "string"
@@ -1697,6 +1711,16 @@
           },
           "source_artifact_id": {
             "title": "Source Artifact Id",
+            "type": "string"
+          },
+          "source_artifact_version": {
+            "default": 1,
+            "title": "Source Artifact Version",
+            "type": "integer"
+          },
+          "source_payload_hash": {
+            "default": "",
+            "title": "Source Payload Hash",
             "type": "string"
           }
         },
@@ -3916,6 +3940,25 @@
         "title": "SupersedeFactRequest",
         "type": "object"
       },
+      "TargetFieldBindingSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "source_fact_id": {
+            "title": "Source Fact Id",
+            "type": "string"
+          },
+          "target_field_id": {
+            "title": "Target Field Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "target_field_id",
+          "source_fact_id"
+        ],
+        "title": "TargetFieldBindingSchema",
+        "type": "object"
+      },
       "TargetInteractionSchemaSchema": {
         "additionalProperties": false,
         "properties": {
@@ -3956,6 +3999,11 @@
             },
             "title": "Screening Questions",
             "type": "array"
+          },
+          "target_schema_provenance": {
+            "default": "USER_PROVIDED",
+            "title": "Target Schema Provenance",
+            "type": "string"
           },
           "upload_slots": {
             "items": {
@@ -4010,6 +4058,13 @@
       "TargetSchemaQuestionSchema": {
         "additionalProperties": false,
         "properties": {
+          "allowed_options": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Allowed Options",
+            "type": "array"
+          },
           "answer_type": {
             "default": "text",
             "title": "Answer Type",
@@ -4075,6 +4130,16 @@
       "TargetSubmitControlSpecSchema": {
         "additionalProperties": false,
         "properties": {
+          "control_id": {
+            "default": "",
+            "title": "Control Id",
+            "type": "string"
+          },
+          "control_provenance": {
+            "default": "",
+            "title": "Control Provenance",
+            "type": "string"
+          },
           "control_type": {
             "default": "button_submit",
             "title": "Control Type",

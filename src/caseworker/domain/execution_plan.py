@@ -15,12 +15,16 @@ from caseworker.domain.enums import (
     ExecutionDestinationType,
     ExternalExecutionPlanStatus,
     PreparationPackageStatus,
+    TargetAnswerType,
+    TargetFieldType,
+    TargetSchemaProvenance,
     VerificationStatus,
 )
 from caseworker.domain.errors import DomainValidationError
 from caseworker.domain.types import (
     canonical_json_dumps,
     compute_sha256,
+    compute_sha256_bytes,
     ensure_utc,
     from_iso_utc,
     now_utc,
@@ -30,43 +34,96 @@ from caseworker.domain.types import (
 EXEC_PLAN_SCHEMA_VERSION = "exec_plan_v1"
 EXEC_ACTION_PLANNER_VERSION = "action_planner_v1"
 
+ALLOWED_CHANNEL_METADATA_KEYS = {
+    "browser_engine",
+    "form_id",
+    "portal_type",
+    "viewport",
+    "render_mode",
+    "user_agent_category",
+    "wait_selector",
+    "page_title",
+    "notes",
+}
+
 FORBIDDEN_METADATA_PATTERN = re.compile(
-    r"(pass(word)?|cookie|auth(orization)?|token|secret|api_?key|session|csrf|credential)",
+    r"(pass(word)?|cookie|auth(orization)?|token|secret|api_?key|session|csrf|credential|bearer|eyj)",
+    re.IGNORECASE,
+)
+
+FORBIDDEN_SECRET_VALUE_PATTERN = re.compile(
+    r"(bearer\s+[a-zA-Z0-9_\-\.]+|eyj[a-zA-Z0-9_\-\.]+|ghp_[a-zA-Z0-9]+|ak_[a-zA-Z0-9]+|sk_[a-zA-Z0-9]+|-----BEGIN[ A-Z0-9_-]*PRIVATE KEY-----)",
+    re.IGNORECASE,
+)
+
+FORBIDDEN_PARAM_PATTERN = re.compile(
+    r"^(pass(word)?|cookie|auth(orization)?|token|secret|api_?key|session|csrf|sig(nature)?|jwt|credential|access_token|refresh_token)$",
+    re.IGNORECASE,
+)
+
+FORBIDDEN_FIELD_PATTERN = re.compile(
+    r"(pass(word)?|passwd|auth_token|access_token|refresh_token|api_?key|session_token|session_id|cookie|csrf|credential|otp|secret_key|bearer_token)",
     re.IGNORECASE,
 )
 
 
 def assert_safe_channel_metadata(metadata: dict[str, Any]) -> None:
-    """Validate that channel metadata does not contain sensitive secrets or tokens."""
-    for key in metadata.keys():
+    """Validate that channel metadata conforms to strict technical allowlist and does not contain secrets."""
+    def _inspect_val(v: Any, path: str) -> None:
+        if isinstance(v, str):
+            if FORBIDDEN_SECRET_VALUE_PATTERN.search(v):
+                raise DomainValidationError(
+                    f"Secret or token pattern detected in channel_metadata value for '{path}'."
+                )
+        elif isinstance(v, dict):
+            for sub_k, sub_v in v.items():
+                if FORBIDDEN_METADATA_PATTERN.search(str(sub_k)):
+                    raise DomainValidationError(
+                        f"Forbidden key '{sub_k}' in channel_metadata at '{path}'."
+                    )
+                _inspect_val(sub_v, f"{path}.{sub_k}")
+        elif isinstance(v, (list, tuple, set)):
+            for idx, item in enumerate(v):
+                _inspect_val(item, f"{path}[{idx}]")
+
+    for key, val in metadata.items():
+        if key not in ALLOWED_CHANNEL_METADATA_KEYS:
+            raise DomainValidationError(
+                f"Key '{key}' is not in allowed channel_metadata keys ({sorted(ALLOWED_CHANNEL_METADATA_KEYS)})."
+            )
         if FORBIDDEN_METADATA_PATTERN.search(key):
             raise DomainValidationError(
                 f"Secret or credential key '{key}' is forbidden in channel_metadata."
             )
+        _inspect_val(val, key)
 
 
 def assert_safe_destination(
     canonical_url: str,
     destination_type: str,
     channel_metadata: dict[str, Any] | None = None,
+    is_exact_destination: bool = True,
 ) -> tuple[str, str]:
     """Validate destination security boundaries and return (normalized_origin, normalized_hostname).
 
-    Security Rules (Clarification 4):
+    Security Rules (Clarification 4 & Hardening 5/6):
     - Rejects embedded username/password credentials.
     - Rejects dangerous non-web schemes (javascript:, data:, file:, etc.).
     - For ATS_FORM and DIRECT_PORTAL, strictly requires HTTPS.
-    - Rejects credentials and secrets in channel_metadata.
+    - Rejects credentials and secrets in channel_metadata and URL query/fragment parameters.
     - Preserves exact path and query components.
+    - For non-exact destinations, empty canonical_url returns ("", "").
     - Computes and returns canonical (origin, hostname).
     """
     if channel_metadata:
         assert_safe_channel_metadata(channel_metadata)
 
-    if not canonical_url or not canonical_url.strip():
-        raise DomainValidationError("Destination canonical_url cannot be empty.")
+    clean_url = canonical_url.strip() if canonical_url else ""
+    if not clean_url:
+        if not is_exact_destination:
+            return "", ""
+        raise DomainValidationError("Destination canonical_url cannot be empty for exact destination.")
 
-    clean_url = canonical_url.strip()
     parsed = urllib.parse.urlparse(clean_url)
 
     scheme = (parsed.scheme or "").lower()
@@ -87,8 +144,138 @@ def assert_safe_destination(
     if not hostname:
         raise DomainValidationError("Destination URL must include a valid hostname.")
 
+    # URL parameter and fragment secret inspection (Hardening Point 6)
+    query_params = urllib.parse.parse_qsl(parsed.query, keep_blank_values=True)
+    fragment_params = urllib.parse.parse_qsl(parsed.fragment, keep_blank_values=True)
+    for p_name, p_val in query_params + fragment_params:
+        if FORBIDDEN_PARAM_PATTERN.match(p_name):
+            raise DomainValidationError(
+                f"Secret-bearing parameter '{p_name}' detected in destination URL query/fragment."
+            )
+        if FORBIDDEN_SECRET_VALUE_PATTERN.search(p_val) or FORBIDDEN_SECRET_VALUE_PATTERN.search(p_name):
+            raise DomainValidationError(
+                f"Secret or credential value detected in destination URL parameter '{p_name}'."
+            )
+
     origin = f"{scheme}://{parsed.netloc}".lower()
     return origin, hostname
+
+
+def validate_and_normalize_field_value(tf: TargetSchemaField, raw_value: Any) -> tuple[bool, Any, str]:
+    """Validate and normalize a ContextFact value to match target field semantics (Clarification 5).
+
+    Rules:
+    - select: exact match to declared allowed_options (or case-insensitive exact single match).
+      If allowed_options are yes/no and value is boolean-equivalent, maps canonically.
+      Ambiguous free text is never guessed.
+    - boolean: deterministic boolean (bool, or true/false/yes/no/1/0). Ambiguous text rejected.
+    - date: canonical YYYY-MM-DD. Unstructured text rejected.
+    - email: RFC-valid email syntax.
+    - phone: valid standard phone syntax (>= 7 digits, no alphabetic characters).
+    - url: valid standard HTTP/HTTPS syntax.
+    - number: valid int or float.
+    - text: string representation.
+    """
+    ftype = (tf.field_type or TargetFieldType.TEXT.value).strip().lower()
+
+    if ftype == TargetFieldType.EMAIL.value:
+        val = str(raw_value).strip()
+        email_re = re.compile(r"^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$")
+        if email_re.match(val):
+            return True, val, ""
+        return False, None, f"Value '{raw_value}' is not a valid email address."
+
+    if ftype == TargetFieldType.PHONE.value:
+        val = str(raw_value).strip()
+        if any(c.isalpha() for c in val):
+            return False, None, f"Phone value '{raw_value}' contains forbidden alphabetic characters."
+        digit_count = sum(c.isdigit() for c in val)
+        phone_re = re.compile(r"^\+?[0-9\s\-\(\)\.]+$")
+        if digit_count >= 7 and phone_re.match(val):
+            return True, val, ""
+        return False, None, f"Phone value '{raw_value}' does not match standard phone format (at least 7 digits required)."
+
+    if ftype == TargetFieldType.URL.value:
+        val = str(raw_value).strip()
+        parsed = urllib.parse.urlparse(val)
+        if parsed.scheme in ("http", "https") and parsed.netloc:
+            return True, val, ""
+        return False, None, f"Value '{raw_value}' is not a valid HTTP/HTTPS URL."
+
+    if ftype == TargetFieldType.SELECT.value:
+        allowed = tf.allowed_options or []
+        if not allowed:
+            return False, None, "Target select field has no declared allowed_options."
+        val = str(raw_value).strip()
+        # Direct exact match
+        if val in allowed:
+            return True, val, ""
+        # Case-insensitive single match
+        ci_matches = [opt for opt in allowed if opt.lower() == val.lower()]
+        if len(ci_matches) == 1:
+            return True, ci_matches[0], ""
+        # Deterministic yes/no boolean equivalence
+        allowed_lower_set = {opt.lower() for opt in allowed}
+        if allowed_lower_set == {"yes", "no"}:
+            if val.lower() in ("true", "1", "yes"):
+                canonical = [opt for opt in allowed if opt.lower() == "yes"][0]
+                return True, canonical, ""
+            if val.lower() in ("false", "0", "no"):
+                canonical = [opt for opt in allowed if opt.lower() == "no"][0]
+                return True, canonical, ""
+        # Free-text or unresolvable option -> do not guess
+        return False, None, f"Value '{raw_value}' does not match any declared option in {allowed}."
+
+    if ftype == TargetFieldType.BOOLEAN.value:
+        if isinstance(raw_value, bool):
+            return True, raw_value, ""
+        val = str(raw_value).strip().lower()
+        if val in ("true", "yes", "1"):
+            return True, True, ""
+        if val in ("false", "no", "0"):
+            return True, False, ""
+        return False, None, f"Value '{raw_value}' cannot be deterministically converted to boolean."
+
+    if ftype == TargetFieldType.DATE.value:
+        val = str(raw_value).strip()
+        date_re = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+        if date_re.match(val):
+            return True, val, ""
+        return False, None, f"Date value '{raw_value}' does not conform to canonical format YYYY-MM-DD."
+
+    if ftype == TargetFieldType.NUMBER.value:
+        try:
+            if isinstance(raw_value, (int, float)):
+                return True, raw_value, ""
+            s = str(raw_value).strip()
+            if "." in s:
+                return True, float(s), ""
+            return True, int(s), ""
+        except ValueError:
+            return False, None, f"Value '{raw_value}' is not a valid number."
+
+    return True, str(raw_value).strip(), ""
+
+
+@dataclass(frozen=True)
+class TargetFieldBinding:
+    """Explicit binding of an external target field ID to an internal ContextFact fact_id."""
+
+    target_field_id: str
+    source_fact_id: str
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "target_field_id": self.target_field_id,
+            "source_fact_id": self.source_fact_id,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> TargetFieldBinding:
+        return cls(
+            target_field_id=data["target_field_id"],
+            source_fact_id=data["source_fact_id"],
+        )
 
 
 @dataclass(frozen=True)
@@ -97,9 +284,18 @@ class TargetSchemaField:
 
     target_field_id: str
     label: str
-    field_type: str = "text"
+    field_type: str = TargetFieldType.TEXT.value
     required: bool = True
     allowed_options: list[str] = field(default_factory=list)
+
+    def __post_init__(self) -> None:
+        ftype = (self.field_type or TargetFieldType.TEXT.value).strip().lower()
+        if ftype not in TargetFieldType._value2member_map_:
+            raise DomainValidationError(
+                f"Unsupported field_type '{self.field_type}'. Must be one of {[e.value for e in TargetFieldType]}."
+            )
+        if ftype != self.field_type:
+            object.__setattr__(self, "field_type", ftype)
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -115,7 +311,7 @@ class TargetSchemaField:
         return cls(
             target_field_id=data["target_field_id"],
             label=data["label"],
-            field_type=data.get("field_type", "text"),
+            field_type=data.get("field_type", TargetFieldType.TEXT.value),
             required=bool(data.get("required", True)),
             allowed_options=list(data.get("allowed_options", [])),
         )
@@ -158,7 +354,17 @@ class TargetSchemaQuestion:
     question_id: str
     question_text: str
     required: bool = True
-    answer_type: str = "text"
+    answer_type: str = TargetAnswerType.TEXT.value
+    allowed_options: list[str] = field(default_factory=list)
+
+    def __post_init__(self) -> None:
+        atype = (self.answer_type or TargetAnswerType.TEXT.value).strip().lower()
+        if atype not in TargetAnswerType._value2member_map_:
+            raise DomainValidationError(
+                f"Unsupported answer_type '{self.answer_type}'. Must be one of {[e.value for e in TargetAnswerType]}."
+            )
+        if atype != self.answer_type:
+            object.__setattr__(self, "answer_type", atype)
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -166,6 +372,7 @@ class TargetSchemaQuestion:
             "question_text": self.question_text,
             "required": self.required,
             "answer_type": self.answer_type,
+            "allowed_options": list(self.allowed_options),
         }
 
     @classmethod
@@ -174,7 +381,8 @@ class TargetSchemaQuestion:
             question_id=data["question_id"],
             question_text=data["question_text"],
             required=bool(data.get("required", True)),
-            answer_type=data.get("answer_type", "text"),
+            answer_type=data.get("answer_type", TargetAnswerType.TEXT.value),
+            allowed_options=list(data.get("allowed_options", [])),
         )
 
 
@@ -182,28 +390,40 @@ class TargetSchemaQuestion:
 class TargetSubmitControlSpec:
     """Specification of the final submission control on the target destination."""
 
-    control_type: str = "button_submit"
-    semantic_target: str = "Submit Application"
+    control_type: str
+    semantic_target: str
     selector: str = ""
+    control_id: str = ""
     method: str = "POST"
+    control_provenance: str = TargetSchemaProvenance.USER_PROVIDED.value
     requires_double_confirmation: bool = True
+
+    def __post_init__(self) -> None:
+        if not self.control_type or not self.control_type.strip():
+            raise DomainValidationError("TargetSubmitControlSpec control_type cannot be empty.")
+        if not self.semantic_target or not self.semantic_target.strip():
+            raise DomainValidationError("TargetSubmitControlSpec semantic_target cannot be empty.")
 
     def to_dict(self) -> dict[str, Any]:
         return {
             "control_type": self.control_type,
             "semantic_target": self.semantic_target,
             "selector": self.selector,
+            "control_id": self.control_id,
             "method": self.method,
+            "control_provenance": self.control_provenance,
             "requires_double_confirmation": self.requires_double_confirmation,
         }
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> TargetSubmitControlSpec:
         return cls(
-            control_type=data.get("control_type", "button_submit"),
-            semantic_target=data.get("semantic_target", "Submit Application"),
+            control_type=data.get("control_type", ""),
+            semantic_target=data.get("semantic_target", ""),
             selector=data.get("selector", ""),
+            control_id=data.get("control_id", ""),
             method=data.get("method", "POST"),
+            control_provenance=data.get("control_provenance", TargetSchemaProvenance.USER_PROVIDED.value),
             requires_double_confirmation=bool(data.get("requires_double_confirmation", True)),
         )
 
@@ -214,6 +434,7 @@ class TargetInteractionSchema:
 
     schema_id: str
     destination_type: str
+    target_schema_provenance: str = TargetSchemaProvenance.USER_PROVIDED.value
     fields: list[TargetSchemaField] = field(default_factory=list)
     upload_slots: list[TargetSchemaUploadSlot] = field(default_factory=list)
     screening_questions: list[TargetSchemaQuestion] = field(default_factory=list)
@@ -221,6 +442,16 @@ class TargetInteractionSchema:
     schema_hash: str = ""
 
     def __post_init__(self) -> None:
+        f_ids = [f.target_field_id for f in self.fields]
+        if len(f_ids) != len(set(f_ids)):
+            raise DomainValidationError("Duplicate target_field_id found in TargetInteractionSchema fields.")
+        s_ids = [s.slot_id for s in self.upload_slots]
+        if len(s_ids) != len(set(s_ids)):
+            raise DomainValidationError("Duplicate slot_id found in TargetInteractionSchema upload_slots.")
+        q_ids = [q.question_id for q in self.screening_questions]
+        if len(q_ids) != len(set(q_ids)):
+            raise DomainValidationError("Duplicate question_id found in TargetInteractionSchema screening_questions.")
+
         computed = self.compute_hash()
         if not self.schema_hash:
             object.__setattr__(self, "schema_hash", computed)
@@ -239,13 +470,14 @@ class TargetInteractionSchema:
             for s in sorted(self.upload_slots, key=lambda s: s.slot_id)
         ]
         canonical_questions = [
-            [q.question_id, q.question_text, q.required, q.answer_type]
+            [q.question_id, q.question_text, q.required, q.answer_type, sorted(q.allowed_options)]
             for q in sorted(self.screening_questions, key=lambda q: q.question_id)
         ]
         canonical_control = self.final_submit_control.to_dict() if self.final_submit_control else {}
         payload = [
             self.schema_id,
             self.destination_type,
+            self.target_schema_provenance,
             canonical_fields,
             canonical_slots,
             canonical_questions,
@@ -257,6 +489,7 @@ class TargetInteractionSchema:
         return {
             "schema_id": self.schema_id,
             "destination_type": self.destination_type,
+            "target_schema_provenance": self.target_schema_provenance,
             "fields": [f.to_dict() for f in self.fields],
             "upload_slots": [s.to_dict() for s in self.upload_slots],
             "screening_questions": [q.to_dict() for q in self.screening_questions],
@@ -274,6 +507,7 @@ class TargetInteractionSchema:
         return cls(
             schema_id=data["schema_id"],
             destination_type=data.get("destination_type", "ats_form"),
+            target_schema_provenance=data.get("target_schema_provenance", TargetSchemaProvenance.USER_PROVIDED.value),
             fields=[TargetSchemaField.from_dict(f) for f in data.get("fields", [])],
             upload_slots=[TargetSchemaUploadSlot.from_dict(s) for s in data.get("upload_slots", [])],
             screening_questions=[TargetSchemaQuestion.from_dict(q) for q in data.get("screening_questions", [])],
@@ -300,6 +534,7 @@ class ExecutionDestination:
             canonical_url=self.canonical_url,
             destination_type=self.destination_type,
             channel_metadata=self.channel_metadata,
+            is_exact_destination=self.is_exact_destination,
         )
         if not self.normalized_origin:
             object.__setattr__(self, "normalized_origin", origin)
@@ -343,6 +578,7 @@ class ExecutionFieldMapping:
     source_fact_version: int
     verification_status: str
     required: bool = True
+    allowed_purposes: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -353,6 +589,7 @@ class ExecutionFieldMapping:
             "source_fact_version": self.source_fact_version,
             "verification_status": self.verification_status,
             "required": self.required,
+            "allowed_purposes": list(self.allowed_purposes),
         }
 
     @classmethod
@@ -365,6 +602,7 @@ class ExecutionFieldMapping:
             source_fact_version=int(data["source_fact_version"]),
             verification_status=data["verification_status"],
             required=bool(data.get("required", True)),
+            allowed_purposes=list(data.get("allowed_purposes", [])),
         )
 
 
@@ -436,6 +674,8 @@ class ExecutionScreeningResponse:
     answer: str
     source_artifact_id: str
     grounding_claim_ids: list[str] = field(default_factory=list)
+    source_artifact_version: int = 1
+    source_payload_hash: str = ""
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -444,6 +684,8 @@ class ExecutionScreeningResponse:
             "answer": self.answer,
             "source_artifact_id": self.source_artifact_id,
             "grounding_claim_ids": list(self.grounding_claim_ids),
+            "source_artifact_version": self.source_artifact_version,
+            "source_payload_hash": self.source_payload_hash,
         }
 
     @classmethod
@@ -454,6 +696,8 @@ class ExecutionScreeningResponse:
             answer=data["answer"],
             source_artifact_id=data["source_artifact_id"],
             grounding_claim_ids=list(data.get("grounding_claim_ids", [])),
+            source_artifact_version=int(data.get("source_artifact_version", 1)),
+            source_payload_hash=data.get("source_payload_hash", ""),
         )
 
 
@@ -491,9 +735,9 @@ class ExecutionPlanFinding:
 
 
 def compute_execution_input_hash(field_mappings: list[ExecutionFieldMapping]) -> str:
-    """Compute deterministic dependency hash across all backing ContextFacts."""
+    """Compute deterministic dependency hash across all backing ContextFacts including purpose authorization state."""
     canonical_deps = [
-        [m.source_fact_id, m.source_fact_version, str(m.verification_status)]
+        [m.source_fact_id, m.source_fact_version, str(m.verification_status), sorted(m.allowed_purposes)]
         for m in sorted(field_mappings, key=lambda m: (m.source_fact_id, m.target_field_id))
     ]
     return compute_sha256(canonical_json_dumps(canonical_deps))
@@ -558,6 +802,8 @@ def compute_execution_plan_fingerprint(
             s.question,
             s.answer,
             s.source_artifact_id,
+            s.source_artifact_version,
+            s.source_payload_hash,
             sorted(s.grounding_claim_ids),
         ]
         for s in sorted(screening_responses, key=lambda s: s.question_id)
@@ -817,8 +1063,11 @@ def compute_execution_plan_staleness(
         if not plan.destination.canonical_url.startswith("https://"):
             reasons.append("Destination URL does not use HTTPS.")
 
-    # 4. ContextFact ID / version / verification / purpose state
+    # 4. ContextFact ID / version / verification / purpose / value state (Correction 3 & 5)
     facts_by_id = {f.fact_id: f for f in current_facts}
+    schema_fields_by_id = {
+        f.target_field_id: f for f in (plan.target_schema.fields if plan.target_schema else [])
+    }
     for m in plan.field_mappings:
         fact = facts_by_id.get(m.source_fact_id)
         if fact is None:
@@ -833,28 +1082,58 @@ def compute_execution_plan_staleness(
                 reasons.append(f"ContextFact '{m.source_fact_id}' lacks purpose 'job_application'.")
             if getattr(fact, "superseded_by_fact_id", None) is not None:
                 reasons.append(f"ContextFact '{m.source_fact_id}' is superseded.")
+            # Check purpose authorization state
+            if sorted(fact.allowed_purposes or []) != sorted(m.allowed_purposes):
+                reasons.append(f"ContextFact '{m.source_fact_id}' allowed purposes changed.")
+            # Rerun deterministic normalization and check value equality (Correction 3)
+            tf = schema_fields_by_id.get(m.target_field_id)
+            if tf is not None:
+                is_valid, norm_val, _ = validate_and_normalize_field_value(tf, fact.value)
+                if not is_valid or norm_val != m.field_value:
+                    reasons.append(f"ContextFact '{m.source_fact_id}' for field '{m.target_field_id}' resolved value changed.")
+            else:
+                if fact.value != m.field_value:
+                    reasons.append(f"ContextFact '{m.source_fact_id}' value changed.")
 
-    # 5. Upload asset byte hashes
+    # 5. Upload asset byte hashes and durable existence (Hardening Point 1, 2, 3)
     upload_assets_by_id = {u.asset_id: u for u in (upload_assets or [])}
     for u in plan.upload_mappings:
         if not u.materialized:
             reasons.append(f"Upload asset '{u.role}' is not materialized.")
         if u.byte_size <= 0:
             reasons.append(f"Upload asset '{u.role}' has empty byte payload.")
-        if upload_assets is not None and u.asset_id in upload_assets_by_id:
-            stored_asset = upload_assets_by_id[u.asset_id]
-            if stored_asset.content_bytes:
-                actual_hash = compute_sha256(stored_asset.content_bytes.decode("utf-8", errors="replace"))
-                if actual_hash != u.content_sha256:
-                    reasons.append(f"Upload asset '{u.role}' byte hash mismatch.")
+        if upload_assets is not None:
+            stored_asset = upload_assets_by_id.get(u.asset_id)
+            if stored_asset is None:
+                reasons.append(f"Durable upload asset '{u.asset_id}' for slot '{u.role}' is missing from database.")
+            else:
+                if (
+                    stored_asset.source_artifact_id != u.source_artifact_id
+                    or stored_asset.source_artifact_version != u.source_artifact_version
+                    or stored_asset.role != u.role
+                    or stored_asset.filename != u.filename
+                    or stored_asset.mime_type != u.mime_type
+                    or stored_asset.byte_size != u.byte_size
+                    or stored_asset.content_sha256 != u.content_sha256
+                ):
+                    reasons.append(f"Upload asset '{u.role}' metadata mismatch in database.")
+                actual_bytes = stored_asset.content_bytes or b""
+                actual_hash = compute_sha256_bytes(actual_bytes)
+                if actual_hash != u.content_sha256 or len(actual_bytes) != u.byte_size:
+                    reasons.append(f"Upload asset '{u.role}' content bytes or byte hash mismatch.")
 
-    # 6. Screening source artifact version & grounding claims
+    # 6. Screening source artifact version, rendered hash & grounding claims (Hardening Point 7, 8)
     artifacts_by_id = {a.artifact_id: a for a in artifacts}
     claims_by_id = {c.claim_id: c for c in claims}
     for s in plan.screening_responses:
         art = artifacts_by_id.get(s.source_artifact_id)
         if art is None:
             reasons.append(f"Screening artifact '{s.source_artifact_id}' no longer exists.")
+        else:
+            if art.version != s.source_artifact_version:
+                reasons.append(f"Screening artifact '{s.source_artifact_id}' version changed ({art.version} != {s.source_artifact_version}).")
+            if s.source_payload_hash and art.compute_rendered_payload_hash() != s.source_payload_hash:
+                reasons.append(f"Screening artifact '{s.source_artifact_id}' rendered payload hash changed.")
         for cid in s.grounding_claim_ids:
             claim = claims_by_id.get(cid)
             c_status = claim.status.value if hasattr(claim.status, "value") else str(claim.status) if claim else ""

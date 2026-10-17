@@ -57,3 +57,8 @@ def canonical_json_dumps(data: Any) -> str:
 def compute_sha256(canonical_text: str) -> str:
     """Compute SHA-256 hex digest for a canonical string."""
     return hashlib.sha256(canonical_text.encode("utf-8")).hexdigest()
+
+
+def compute_sha256_bytes(data: bytes) -> str:
+    """Compute SHA-256 hex digest directly for arbitrary binary data."""
+    return hashlib.sha256(data).hexdigest()

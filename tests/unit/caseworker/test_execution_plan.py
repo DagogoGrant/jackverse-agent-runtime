@@ -6,6 +6,7 @@ shared package integrity validation, idempotency, supersession, and zero-transmi
 
 from __future__ import annotations
 
+import json
 import unittest
 from datetime import datetime, timezone
 
@@ -35,6 +36,9 @@ from caseworker.domain.enums import (
     PackageVerificationStatus,
     PreparationMaterialType,
     PreparationPackageStatus,
+    TargetAnswerType,
+    TargetFieldType,
+    TargetSchemaProvenance,
     VerificationStatus,
 )
 from caseworker.domain.errors import (
@@ -42,6 +46,7 @@ from caseworker.domain.errors import (
     EntityNotFoundError,
     InvalidStateTransitionError,
     PackageVerificationError,
+    PersistenceError,
 )
 from caseworker.domain.events import (
     make_external_execution_plan_created_event,
@@ -54,12 +59,14 @@ from caseworker.domain.execution_plan import (
     ExecutionScreeningResponse,
     ExecutionUploadAsset,
     ExternalExecutionPlan,
+    TargetFieldBinding,
     TargetInteractionSchema,
     TargetSchemaField,
     TargetSchemaQuestion,
     TargetSchemaUploadSlot,
     TargetSubmitControlSpec,
     assert_safe_channel_metadata,
+    assert_safe_destination,
     compute_execution_input_hash,
     compute_execution_plan_fingerprint,
     compute_execution_plan_staleness,
@@ -73,7 +80,7 @@ from caseworker.domain.package import (
 )
 from caseworker.domain.package_integrity import PreparationPackageIntegrityValidator
 from caseworker.domain.preparation import PreparationIntelligenceReport
-from caseworker.domain.types import now_utc
+from caseworker.domain.types import compute_sha256_bytes, now_utc
 from caseworker.persistence.sqlite import SQLiteCaseworkerStorage
 from caseworker.services.approval_service import ApprovalService
 from caseworker.services.execution_plan_service import ExecutionPlanService
@@ -430,6 +437,10 @@ class TestExecutionPlanCompiler(unittest.TestCase):
             claims=[self.claim],
             facts=[self.fact_name, self.fact_email],
             target_schema=schema,
+            field_bindings=[
+                TargetFieldBinding(target_field_id="full_name", source_fact_id=self.fact_name.fact_id),
+                TargetFieldBinding(target_field_id="email", source_fact_id=self.fact_email.fact_id),
+            ],
             destination_override=dest_override,
         )
         self.assertEqual(plan.status, ExternalExecutionPlanStatus.READY_FOR_AUTHORIZATION)
@@ -481,6 +492,10 @@ class TestExecutionPlanCompiler(unittest.TestCase):
             claims=[self.claim],
             facts=[unverified_fact, wrong_purpose_fact],
             target_schema=schema,
+            field_bindings=[
+                TargetFieldBinding(target_field_id="phone", source_fact_id=unverified_fact.fact_id),
+                TargetFieldBinding(target_field_id="address", source_fact_id=wrong_purpose_fact.fact_id),
+            ],
             destination_override=dest_override,
         )
         self.assertEqual(plan.status, ExternalExecutionPlanStatus.DRAFT)
@@ -717,6 +732,9 @@ class TestExecutionPlanServiceAndIntegration(unittest.TestCase):
                 selector="#submit",
             ),
         )
+        self.bindings = [
+            TargetFieldBinding(target_field_id="name", source_fact_id=self.fact_name.fact_id)
+        ]
 
     def tearDown(self) -> None:
         self.storage.close()
@@ -795,6 +813,7 @@ class TestExecutionPlanServiceAndIntegration(unittest.TestCase):
             user_id=self.user_id,
             case_id=self.case.case_id,
             target_schema=self.schema,
+            field_bindings=self.bindings,
         )
         self.assertEqual(plan1.status, ExternalExecutionPlanStatus.READY_FOR_AUTHORIZATION)
 
@@ -803,13 +822,14 @@ class TestExecutionPlanServiceAndIntegration(unittest.TestCase):
             user_id=self.user_id,
             case_id=self.case.case_id,
             target_schema=self.schema,
+            field_bindings=self.bindings,
         )
         self.assertEqual(plan1.plan_id, plan2.plan_id)
         self.assertEqual(plan1.execution_plan_fingerprint, plan2.execution_plan_fingerprint)
 
         # Create with destination override (changed input)
         dest_override = ExecutionDestination(
-            destination_type=ExecutionDestinationType.DIRECT_PORTAL.value,
+            destination_type=ExecutionDestinationType.ATS_FORM.value,
             destination_provenance=DestinationProvenance.USER_PROVIDED.value,
             canonical_url="https://portal.apex.com/apply",
             organization="Apex Direct",
@@ -818,6 +838,7 @@ class TestExecutionPlanServiceAndIntegration(unittest.TestCase):
             user_id=self.user_id,
             case_id=self.case.case_id,
             target_schema=self.schema,
+            field_bindings=self.bindings,
             destination_override=dest_override,
         )
         self.assertNotEqual(plan1.plan_id, plan3.plan_id)
@@ -888,6 +909,7 @@ class TestExecutionPlanServiceAndIntegration(unittest.TestCase):
             user_id=self.user_id,
             case_id=self.case.case_id,
             target_schema=self.schema,
+            field_bindings=self.bindings,
         )
         with self.storage.unit_of_work() as uow:
             loaded = uow.execution_plans.get_by_id(plan.plan_id)
@@ -915,6 +937,7 @@ class TestExecutionPlanServiceAndIntegration(unittest.TestCase):
             user_id=self.user_id,
             case_id=self.case.case_id,
             target_schema=modified_schema,
+            field_bindings=self.bindings,
         )
         self.assertNotEqual(plan.execution_plan_fingerprint, plan_mod.execution_plan_fingerprint)
 
@@ -924,6 +947,7 @@ class TestExecutionPlanServiceAndIntegration(unittest.TestCase):
             user_id=self.user_id,
             case_id=self.case.case_id,
             target_schema=self.schema,
+            field_bindings=self.bindings,
         )
         self.assertEqual(plan.status, ExternalExecutionPlanStatus.READY_FOR_AUTHORIZATION)
         self.assertEqual(len(plan.upload_mappings), 1)
@@ -955,6 +979,7 @@ class TestExecutionPlanServiceAndIntegration(unittest.TestCase):
             user_id=self.user_id,
             case_id=self.case.case_id,
             target_schema=self.schema,
+            field_bindings=self.bindings,
         )
         # Newly created plan is not stale
         fetched = self.service.get_latest_execution_plan(self.user_id, self.case.case_id)
@@ -1105,15 +1130,221 @@ class TestExecutionPlanServiceAndIntegration(unittest.TestCase):
 
         # When compiling, select field "work_auth" cannot guess between "Yes" and "No"
         # Plan MUST stay DRAFT with INVALID_FIELD_TYPE_CONVERSION finding
+        typed_bindings = [
+            TargetFieldBinding(target_field_id="work_auth", source_fact_id="fact-auth-ambiguous"),
+            TargetFieldBinding(target_field_id="remote_ok", source_fact_id="fact-remote"),
+            TargetFieldBinding(target_field_id="start_date", source_fact_id="fact-date"),
+            TargetFieldBinding(target_field_id="contact_email", source_fact_id="fact-email"),
+            TargetFieldBinding(target_field_id="contact_phone", source_fact_id="fact-phone"),
+        ]
         plan_draft = self.service.create_execution_plan(
             user_id=self.user_id,
             case_id=self.case.case_id,
             target_schema=typed_schema,
+            field_bindings=typed_bindings,
         )
         self.assertEqual(plan_draft.status, ExternalExecutionPlanStatus.DRAFT)
         err_findings = [f for f in plan_draft.findings if f.code == "INVALID_FIELD_TYPE_CONVERSION"]
         self.assertTrue(len(err_findings) > 0)
         self.assertIn("work_auth", [f.details.get("target_field_id") for f in err_findings])
+
+    def test_immutable_upload_asset_collision_and_idempotent_replay(self) -> None:
+        """Correction 1: Asset collision raises PersistenceError if different, replays if identical."""
+        plan = self.service.create_execution_plan(
+            user_id=self.user_id,
+            case_id=self.case.case_id,
+            target_schema=self.schema,
+            field_bindings=self.bindings,
+        )
+        content = b"PDF-EXACT-APPLICATION-CONTENT"
+        c_hash = compute_sha256_bytes(content)
+        asset = ExecutionUploadAsset(
+            asset_id="asset-test-collision-1",
+            role="RESUME",
+            source_artifact_id=self.art_resume.artifact_id,
+            source_artifact_version=1,
+            filename="resume.pdf",
+            mime_type="application/pdf",
+            content_sha256=c_hash,
+            byte_size=len(content),
+            content_bytes=content,
+            plan_id=plan.plan_id,
+            case_id=self.case.case_id,
+            user_id=self.user_id,
+        )
+
+        with self.storage.unit_of_work() as uow:
+            uow.upload_assets.save(asset)
+            uow.commit()
+
+        # Idempotent replay with exact same content bytes & fields
+        with self.storage.unit_of_work() as uow:
+            uow.upload_assets.save(asset)
+            uow.commit()
+
+        # Differing contents with same asset_id must raise PersistenceError
+        tampered_content = b"TAMPERED-CONTENT-DIFFERING"
+        tampered_asset = ExecutionUploadAsset(
+            asset_id="asset-test-collision-1",
+            role="RESUME",
+            source_artifact_id=self.art_resume.artifact_id,
+            source_artifact_version=1,
+            filename="resume.pdf",
+            mime_type="application/pdf",
+            content_sha256=compute_sha256_bytes(tampered_content),
+            byte_size=len(tampered_content),
+            content_bytes=tampered_content,
+            plan_id=plan.plan_id,
+            case_id=self.case.case_id,
+            user_id=self.user_id,
+        )
+        with self.storage.unit_of_work() as uow:
+            with self.assertRaises(PersistenceError):
+                uow.upload_assets.save(tampered_asset)
+
+    def test_destination_security_query_and_fragment_secrets(self) -> None:
+        """Correction 5 & Hardening Point 4: Query parameters and fragments inspected for authentication secrets."""
+        # Forbidden param in query
+        with self.assertRaises(DomainValidationError):
+            assert_safe_destination(
+                canonical_url="https://hyperscale.apply.workable.com/roles/123?api_key=secret-token",
+                destination_type="ats_form",
+                is_exact_destination=True,
+            )
+
+        # Forbidden secret pattern in fragment
+        with self.assertRaises(DomainValidationError):
+            assert_safe_destination(
+                canonical_url="https://hyperscale.apply.workable.com/roles/123#access_token=eyJh12345",
+                destination_type="ats_form",
+                is_exact_destination=True,
+            )
+
+        # Token parameter in query
+        with self.assertRaises(DomainValidationError):
+            assert_safe_destination(
+                canonical_url="https://hyperscale.apply.workable.com/roles/123?token=bearer-token-123",
+                destination_type="ats_form",
+                is_exact_destination=True,
+            )
+
+    def test_staleness_reruns_normalization_and_detects_value_alteration(self) -> None:
+        """Correction 3: Staleness revalidates normalized value even if ContextFact version did not increment."""
+        plan = self.service.create_execution_plan(
+            user_id=self.user_id,
+            case_id=self.case.case_id,
+            target_schema=self.schema,
+            field_bindings=self.bindings,
+        )
+        self.assertEqual(plan.status, ExternalExecutionPlanStatus.READY_FOR_AUTHORIZATION)
+
+        # Silently alter the fact value in the database WITHOUT incrementing version
+        with self.storage.unit_of_work() as uow:
+            fact = uow.context.get_by_id(self.fact_name.fact_id)
+            self.assertIsNotNone(fact)
+            cur = uow.conn.cursor()
+            cur.execute(
+                "UPDATE context_facts SET value = ? WHERE fact_id = ?",
+                (json.dumps("Silently Altered Name"), fact.fact_id),
+            )
+            uow.commit()
+
+        # Live staleness check must catch the discrepancy
+        fetched = self.service.get_latest_execution_plan(self.user_id, self.case.case_id)
+        self.assertIsNotNone(fetched)
+        self.assertTrue(fetched.is_stale)
+        self.assertTrue(any("value changed" in r for r in fetched.staleness_reasons))
+
+    def test_screening_question_select_and_boolean_validation(self) -> None:
+        """Correction 4 & Hardening Point 8: Screening questions enforce strict semantic type conversion."""
+        schema_screening = TargetInteractionSchema(
+            schema_id="schema-screening-typed",
+            destination_type="ats_form",
+            fields=list(self.schema.fields),
+            upload_slots=list(self.schema.upload_slots),
+            screening_questions=[
+                TargetSchemaQuestion(
+                    question_id="q-remote-pref",
+                    question_text="Tell us about your Python experience?",
+                    answer_type=TargetAnswerType.BOOLEAN.value,
+                    required=True,
+                )
+            ],
+            final_submit_control=self.schema.final_submit_control,
+        )
+        # The answer in self.art_qa is "Yes, 10 years Python experience." which is ambiguous for boolean conversion
+        plan = self.service.create_execution_plan(
+            user_id=self.user_id,
+            case_id=self.case.case_id,
+            target_schema=schema_screening,
+            field_bindings=self.bindings,
+        )
+        self.assertEqual(plan.status, ExternalExecutionPlanStatus.DRAFT)
+        codes = [f.code for f in plan.findings]
+        self.assertIn("INVALID_QUESTION_ANSWER_CONVERSION", codes)
+
+    def test_target_schema_provenance_and_exact_submit_locator(self) -> None:
+        """Correction 4: Schema provenance binds into hash; locator required for READY_FOR_AUTHORIZATION."""
+        # 1. Without locator -> keeps plan in DRAFT
+        schema_no_locator = TargetInteractionSchema(
+            schema_id="schema-no-locator",
+            destination_type="ats_form",
+            target_schema_provenance=TargetSchemaProvenance.USER_PROVIDED.value,
+            fields=list(self.schema.fields),
+            upload_slots=list(self.schema.upload_slots),
+            screening_questions=[],
+            final_submit_control=TargetSubmitControlSpec(
+                control_type="button_submit",
+                semantic_target="Submit",
+                selector="",  # Missing selector and control_id
+                control_id="",
+            ),
+        )
+        plan_draft = self.service.create_execution_plan(
+            user_id=self.user_id,
+            case_id=self.case.case_id,
+            target_schema=schema_no_locator,
+            field_bindings=self.bindings,
+        )
+        self.assertEqual(plan_draft.status, ExternalExecutionPlanStatus.DRAFT)
+        codes = [f.code for f in plan_draft.findings]
+        self.assertIn("EXACT_SUBMIT_LOCATOR_REQUIRED", codes)
+
+        # 2. Provenance variation alters schema_hash and plan fingerprint
+        schema_verified_provenance = TargetInteractionSchema(
+            schema_id="schema-prov-test",
+            destination_type="ats_form",
+            target_schema_provenance=TargetSchemaProvenance.VERIFIED_PROVIDER_METADATA.value,
+            fields=list(self.schema.fields),
+            upload_slots=list(self.schema.upload_slots),
+            screening_questions=[],
+            final_submit_control=self.schema.final_submit_control,
+        )
+        schema_user_provenance = TargetInteractionSchema(
+            schema_id="schema-prov-test",
+            destination_type="ats_form",
+            target_schema_provenance=TargetSchemaProvenance.USER_PROVIDED.value,
+            fields=list(self.schema.fields),
+            upload_slots=list(self.schema.upload_slots),
+            screening_questions=[],
+            final_submit_control=self.schema.final_submit_control,
+        )
+        self.assertNotEqual(schema_verified_provenance.schema_hash, schema_user_provenance.schema_hash)
+
+    def test_context_vault_audit_trail_emitted(self) -> None:
+        """Correction 5: Compilation emits context.access_granted / context.access_denied audit events."""
+        plan = self.service.create_execution_plan(
+            user_id=self.user_id,
+            case_id=self.case.case_id,
+            target_schema=self.schema,
+            field_bindings=self.bindings,
+        )
+        self.assertIsNotNone(plan)
+
+        with self.storage.unit_of_work() as uow:
+            events = uow.events.get_events_by_user(self.user_id)
+            event_types = [e.event_type for e in events]
+            self.assertIn("context.access_granted", event_types)
 
 
 if __name__ == "__main__":

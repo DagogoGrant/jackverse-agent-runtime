@@ -17,6 +17,7 @@ from caseworker.domain.enums import (
     CaseType,
     ExternalExecutionPlanStatus,
     PreparationPackageStatus,
+    VerificationStatus,
 )
 from caseworker.domain.errors import (
     DomainValidationError,
@@ -25,20 +26,25 @@ from caseworker.domain.errors import (
     PackageVerificationError,
 )
 from caseworker.domain.events import (
+    make_context_access_denied_event,
+    make_context_access_granted_event,
     make_external_execution_plan_created_event,
     make_external_execution_plan_superseded_event,
 )
 from caseworker.domain.execution_plan import (
     ExecutionDestination,
     ExternalExecutionPlan,
+    TargetFieldBinding,
     TargetInteractionSchema,
     TargetSubmitControlSpec,
     compute_execution_plan_staleness,
 )
 from caseworker.domain.execution_planner import ExecutionPlanCompiler
 from caseworker.domain.package_integrity import PreparationPackageIntegrityValidator
+from caseworker.domain.vault_policy import AccessDecision, ContextAccessPolicy
 
 if TYPE_CHECKING:
+    from caseworker.domain.context import ContextFact
     from caseworker.persistence.base import CaseworkerUnitOfWork
     from caseworker.persistence.sqlite import SQLiteCaseworkerStorage
 
@@ -56,6 +62,7 @@ class ExecutionPlanService:
         package_id: str | None = None,
         destination_override: ExecutionDestination | None = None,
         target_schema: TargetInteractionSchema | None = None,
+        field_bindings: list[TargetFieldBinding] | None = None,
         channel_metadata: dict[str, Any] | None = None,
         final_submit_control: TargetSubmitControlSpec | None = None,
     ) -> tuple[ExternalExecutionPlan, Case] | None:
@@ -101,6 +108,7 @@ class ExecutionPlanService:
                     claims=integrity_result.claims,
                     facts=facts,
                     target_schema=target_schema,
+                    field_bindings=field_bindings,
                     destination_override=destination_override,
                     channel_metadata=channel_metadata,
                     final_submit_control=final_submit_control,
@@ -120,6 +128,7 @@ class ExecutionPlanService:
         package_id: str | None = None,
         destination_override: ExecutionDestination | None = None,
         target_schema: TargetInteractionSchema | None = None,
+        field_bindings: list[TargetFieldBinding] | None = None,
         channel_metadata: dict[str, Any] | None = None,
         final_submit_control: TargetSubmitControlSpec | None = None,
     ) -> ExternalExecutionPlan:
@@ -193,6 +202,83 @@ class ExecutionPlanService:
             # 5. Fetch verified active ContextFacts
             facts = uow.context.list_active(user_id=user_id)
 
+            # Emit safe context access audit events for facts considered during plan compilation
+            vault_policy = ContextAccessPolicy()
+            facts_by_id = {f.fact_id: f for f in facts}
+            considered_fact_ids: list[str] = []
+            if field_bindings:
+                for b in field_bindings:
+                    if b.source_fact_id not in considered_fact_ids:
+                        considered_fact_ids.append(b.source_fact_id)
+
+            granted_facts: list[ContextFact] = []
+            denied_decisions: list[AccessDecision] = []
+
+            for fid in considered_fact_ids:
+                fact = facts_by_id.get(fid)
+                if fact is None:
+                    denied_decisions.append(
+                        AccessDecision.deny(
+                            fact_id=fid,
+                            reason="ContextFact not found in active vault facts",
+                            reason_code="FACT_NOT_FOUND",
+                        )
+                    )
+                    continue
+
+                decision = vault_policy.evaluate_access(
+                    fact,
+                    requested_purpose="job_application",
+                    require_verified=True,
+                )
+                v_status = (
+                    fact.verification_status.value
+                    if hasattr(fact.verification_status, "value")
+                    else str(fact.verification_status)
+                )
+                if not decision.is_granted:
+                    denied_decisions.append(decision)
+                elif v_status not in (VerificationStatus.USER_VERIFIED.value, VerificationStatus.SOURCE_VERIFIED.value):
+                    denied_decisions.append(
+                        AccessDecision.deny(
+                            fact_id=fact.fact_id,
+                            reason=f"ContextFact '{fact.fact_id}' verification status '{v_status}' is not verified",
+                            reason_code="VERIFICATION_REQUIRED",
+                            namespace=fact.namespace,
+                            key=fact.key,
+                        )
+                    )
+                else:
+                    granted_facts.append(fact)
+
+            if granted_facts or denied_decisions:
+                vault_ver = uow.events.get_next_aggregate_version("context_vault", user_id)
+                if granted_facts:
+                    uow.events.append(
+                        make_context_access_granted_event(
+                            user_id=user_id,
+                            aggregate_version=vault_ver,
+                            purpose="job_application",
+                            fact_ids=[f.fact_id for f in granted_facts],
+                            namespaces=sorted(list({f.namespace for f in granted_facts if f.namespace})),
+                        )
+                    )
+                    vault_ver += 1
+                for d in denied_decisions:
+                    uow.events.append(
+                        make_context_access_denied_event(
+                            user_id=user_id,
+                            aggregate_version=vault_ver,
+                            purpose="job_application",
+                            fact_id=d.fact_id,
+                            reason=d.reason,
+                            reason_code=d.reason_code,
+                            namespace=d.namespace,
+                            key=d.key,
+                        )
+                    )
+                    vault_ver += 1
+
             # 6. Compile Plan
             compiled_plan = ExecutionPlanCompiler.compile_plan(
                 case=case,
@@ -202,6 +288,7 @@ class ExecutionPlanService:
                 claims=integrity_result.claims,
                 facts=facts,
                 target_schema=target_schema,
+                field_bindings=field_bindings,
                 destination_override=destination_override,
                 channel_metadata=channel_metadata,
                 final_submit_control=final_submit_control,
@@ -268,6 +355,22 @@ class ExecutionPlanService:
             claims=claims,
             upload_assets=upload_assets,
         )
+
+        # Full package revalidation via shared PreparationPackageIntegrityValidator
+        if package is not None and not is_stale:
+            case = uow.cases.get_by_id(plan.case_id)
+            if case is not None:
+                integrity = PreparationPackageIntegrityValidator.validate(
+                    uow=uow,
+                    case=case,
+                    package=package,
+                    user_id=plan.user_id,
+                    expected_package_status=PreparationPackageStatus.APPROVED,
+                )
+                if not integrity.is_valid:
+                    is_stale = True
+                    staleness_reasons.append(f"Preparation package integrity revalidation failed: {integrity.reason}")
+
         plan.is_stale = is_stale
         plan.staleness_reasons = staleness_reasons
         return plan

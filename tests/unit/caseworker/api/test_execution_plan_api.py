@@ -229,6 +229,10 @@ class TestExecutionPlanAPI(unittest.TestCase):
         # Sample valid target schema request
         self.sample_request = {
             "package_id": self.package_id,
+            "field_bindings": [
+                {"target_field_id": "name", "source_fact_id": self.fact_name.fact_id},
+                {"target_field_id": "email", "source_fact_id": self.fact_email.fact_id},
+            ],
             "target_schema": {
                 "schema_id": "schema-workable-v1",
                 "destination_type": "ats_form",

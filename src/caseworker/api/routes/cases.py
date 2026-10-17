@@ -58,6 +58,7 @@ from caseworker.domain.errors import EntityNotFoundError
 from caseworker.domain.execution_plan import (
     ExecutionDestination,
     ExternalExecutionPlan,
+    TargetFieldBinding,
     TargetInteractionSchema,
     TargetSchemaField,
     TargetSchemaQuestion,
@@ -860,6 +861,7 @@ def _to_execution_plan_response(plan: ExternalExecutionPlan) -> ExternalExecutio
                 source_fact_version=m.source_fact_version,
                 verification_status=m.verification_status,
                 required=m.required,
+                allowed_purposes=list(m.allowed_purposes),
             )
             for m in plan.field_mappings
         ],
@@ -883,6 +885,8 @@ def _to_execution_plan_response(plan: ExternalExecutionPlan) -> ExternalExecutio
                 question=s.question,
                 answer=s.answer,
                 source_artifact_id=s.source_artifact_id,
+                source_artifact_version=s.source_artifact_version,
+                source_payload_hash=s.source_payload_hash,
                 grounding_claim_ids=s.grounding_claim_ids,
             )
             for s in plan.screening_responses
@@ -943,12 +947,15 @@ async def create_execution_plan(
                 control_type=c.control_type,
                 semantic_target=c.semantic_target,
                 selector=c.selector,
+                control_id=c.control_id,
+                control_provenance=c.control_provenance,
                 method=c.method,
                 requires_double_confirmation=c.requires_double_confirmation,
             )
         target_schema = TargetInteractionSchema(
             schema_id=req.target_schema.schema_id,
             destination_type=req.target_schema.destination_type,
+            target_schema_provenance=req.target_schema.target_schema_provenance,
             fields=[
                 TargetSchemaField(
                     target_field_id=f.target_field_id,
@@ -975,6 +982,7 @@ async def create_execution_plan(
                     question_text=q.question_text,
                     required=q.required,
                     answer_type=q.answer_type,
+                    allowed_options=q.allowed_options,
                 )
                 for q in req.target_schema.screening_questions
             ],
@@ -989,9 +997,21 @@ async def create_execution_plan(
             control_type=c.control_type,
             semantic_target=c.semantic_target,
             selector=c.selector,
+            control_id=c.control_id,
+            control_provenance=c.control_provenance,
             method=c.method,
             requires_double_confirmation=c.requires_double_confirmation,
         )
+
+    field_bindings = None
+    if req.field_bindings:
+        field_bindings = [
+            TargetFieldBinding(
+                target_field_id=b.target_field_id,
+                source_fact_id=b.source_fact_id,
+            )
+            for b in req.field_bindings
+        ]
 
     # 1. Exact replay resolution before If-Match check (Amendment 15)
     existing_match = execution_plan_service.find_matching_plan(
@@ -1000,6 +1020,7 @@ async def create_execution_plan(
         package_id=req.package_id,
         destination_override=dest_override,
         target_schema=target_schema,
+        field_bindings=field_bindings,
         channel_metadata=req.channel_metadata,
         final_submit_control=submit_control,
     )
@@ -1023,6 +1044,7 @@ async def create_execution_plan(
         package_id=req.package_id,
         destination_override=dest_override,
         target_schema=target_schema,
+        field_bindings=field_bindings,
         channel_metadata=req.channel_metadata,
         final_submit_control=submit_control,
     )

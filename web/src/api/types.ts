@@ -125,6 +125,12 @@ export type ExecutionUploadAsset = Schemas['ExecutionUploadAssetResponse'];
 export type ExecutionScreeningResponse = Schemas['ExecutionScreeningResponseDTO'];
 export type ExecutionPlanFinding = Schemas['ExecutionPlanFindingResponse'];
 export type TargetInteractionSchema = Schemas['TargetInteractionSchemaSchema'];
+export type TargetFieldBinding = Schemas['TargetFieldBindingSchema'];
+export type TargetSchemaField = Schemas['TargetSchemaFieldSchema'];
+export type TargetSchemaQuestion = Schemas['TargetSchemaQuestionSchema'];
+export type TargetUploadSlot = Schemas['TargetSchemaUploadSlotSchema'];
+export type TargetSubmitControlSpec = Schemas['TargetSubmitControlSpecSchema'];
+
 
 // ----------------------------------------------------------------------------
 // Activity & Domain Events

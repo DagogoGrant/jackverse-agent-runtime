@@ -269,4 +269,194 @@ describe("Phase 5.3.1 Exact External Action Planning UI Dossier", () => {
     expect(screen.queryByRole("button", { name: /Authorize Submission/i })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /Send Application/i })).not.toBeInTheDocument();
   });
+
+  it("opens resolve plan inputs modal, binds Vault facts to target fields, and compiles plan with exact submit locator", async () => {
+    let capturedCompilePayload: any = null;
+
+    const mockFacts = [
+      {
+        fact_id: "fact_name",
+        key: "personal.legal_name",
+        namespace: "profile",
+        user_id: "alice",
+        preview: "Alice Smith",
+        confidence: 1.0,
+        verification_status: "USER_VERIFIED",
+        sensitivity: "MEDIUM",
+        source_type: "USER_INPUT",
+        updated_at: "2026-10-16T10:00:00Z",
+        version: 1,
+        has_value: true,
+      },
+      {
+        fact_id: "fact_email",
+        key: "contact.email",
+        namespace: "profile",
+        user_id: "alice",
+        preview: "alice@example.com",
+        confidence: 1.0,
+        verification_status: "SOURCE_VERIFIED",
+        sensitivity: "MEDIUM",
+        source_type: "USER_INPUT",
+        updated_at: "2026-10-16T10:00:00Z",
+        version: 1,
+        has_value: true,
+      },
+    ];
+
+    vi.spyOn(globalThis, "fetch").mockImplementation((input: any, init?: any) => {
+      const url = String(input);
+      if (url.includes("/cases/case-001/execution/plan") && init?.method === "POST") {
+        capturedCompilePayload = JSON.parse(init.body);
+        return Promise.resolve(new Response(JSON.stringify(mockPlan), { status: 200 }));
+      }
+      if (url.includes("/cases/case-001/execution/plan/latest")) {
+        return Promise.resolve(new Response(JSON.stringify(mockPlan), { status: 200 }));
+      }
+      if (url.includes("/context/facts")) {
+        return Promise.resolve(new Response(JSON.stringify({ items: mockFacts, total: 2, limit: 100, offset: 0 }), { status: 200 }));
+      }
+      if (url.includes("/cases/case-001/preparation/packages/latest")) {
+        return Promise.resolve(new Response(JSON.stringify(mockPackage), { status: 200 }));
+      }
+      if (url.includes("/cases/case-001/preparation/artifacts")) {
+        return Promise.resolve(new Response(JSON.stringify({ artifacts: mockArtifacts, total: 1 }), { status: 200 }));
+      }
+      if (url.includes("/cases/case-001/actions")) {
+        return Promise.resolve(new Response(JSON.stringify([]), { status: 200 }));
+      }
+      if (url.includes("/cases/case-001/claims")) {
+        return Promise.resolve(new Response(JSON.stringify([]), { status: 200 }));
+      }
+      if (url.includes("/cases/case-001/preparation/report/latest")) {
+        return Promise.resolve(new Response(JSON.stringify({}), { status: 200 }));
+      }
+      if (url.includes("/cases/case-001")) {
+        return Promise.resolve(new Response(JSON.stringify(mockCase), { status: 200 }));
+      }
+      if (url.includes("/events")) {
+        return Promise.resolve(new Response(JSON.stringify({ events: [], next_cursor: null }), { status: 200 }));
+      }
+      return Promise.resolve(new Response("Not found", { status: 404 }));
+    });
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter initialEntries={["/cases/case-001"]}>
+          <Routes>
+            <Route path="/cases/:caseId" element={<CaseDetailView />} />
+          </Routes>
+        </MemoryRouter>
+      </QueryClientProvider>
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText(/Resolve plan inputs →/i)).toBeInTheDocument();
+    });
+
+    // Open Resolution Modal
+    fireEvent.click(screen.getByText(/Resolve plan inputs →/i));
+
+    await waitFor(() => {
+      expect(screen.getByText(/Resolve Action Plan Inputs/i)).toBeInTheDocument();
+      expect(screen.getByText(/External ATS Form Field Bindings/i)).toBeInTheDocument();
+    });
+
+    // Select fact for email field
+    const emailSelect = screen.getByLabelText(/Vault Fact for Email Address/i);
+    fireEvent.change(emailSelect, { target: { value: "fact_email" } });
+
+    // Set submit selector
+    const selectorInput = screen.getByPlaceholderText(/button\[data-automation-id='submit-button'\]/i);
+    fireEvent.change(selectorInput, { target: { value: "button#submit-application" } });
+
+    // Submit modal
+    const compileBtn = screen.getByText(/Compile Action Plan with Resolved Bindings →/i);
+    fireEvent.click(compileBtn);
+
+    await waitFor(() => {
+      expect(capturedCompilePayload).not.toBeNull();
+    });
+
+    expect(capturedCompilePayload.field_bindings).toContainEqual({
+      target_field_id: "email",
+      source_fact_id: "fact_email",
+    });
+    expect(capturedCompilePayload.final_submit_control).toMatchObject({
+      selector: "button#submit-application",
+      semantic_target: "Submit Application",
+      control_provenance: "USER_PROVIDED",
+    });
+  });
+
+  it("renders staleness alert with reasons and exact final submit control card when present", async () => {
+    const mockPlanStale = {
+      ...mockPlan,
+      is_stale: true,
+      staleness_reasons: [
+        "Target form field 'email' source fact fact_email was modified since plan was sealed",
+      ],
+      final_submit_control: {
+        control_id: "submit-btn-1",
+        selector: "button#submit-application",
+        semantic_target: "Submit Application",
+        control_provenance: "USER_PROVIDED",
+        control_type: "button_submit",
+        method: "POST",
+        requires_double_confirmation: true,
+      },
+    };
+
+    vi.spyOn(globalThis, "fetch").mockImplementation((input: any) => {
+      const url = String(input);
+      if (url.includes("/cases/case-001/execution/plan/latest")) {
+        return Promise.resolve(new Response(JSON.stringify(mockPlanStale), { status: 200 }));
+      }
+      if (url.includes("/cases/case-001/preparation/packages/latest")) {
+        return Promise.resolve(new Response(JSON.stringify(mockPackage), { status: 200 }));
+      }
+      if (url.includes("/cases/case-001/preparation/artifacts")) {
+        return Promise.resolve(new Response(JSON.stringify({ artifacts: mockArtifacts, total: 1 }), { status: 200 }));
+      }
+      if (url.includes("/cases/case-001/actions")) {
+        return Promise.resolve(new Response(JSON.stringify([]), { status: 200 }));
+      }
+      if (url.includes("/cases/case-001/claims")) {
+        return Promise.resolve(new Response(JSON.stringify([]), { status: 200 }));
+      }
+      if (url.includes("/cases/case-001/preparation/report/latest")) {
+        return Promise.resolve(new Response(JSON.stringify({}), { status: 200 }));
+      }
+      if (url.includes("/cases/case-001")) {
+        return Promise.resolve(new Response(JSON.stringify(mockCase), { status: 200 }));
+      }
+      if (url.includes("/events")) {
+        return Promise.resolve(new Response(JSON.stringify({ events: [], next_cursor: null }), { status: 200 }));
+      }
+      return Promise.resolve(new Response("Not found", { status: 404 }));
+    });
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter initialEntries={["/cases/case-001"]}>
+          <Routes>
+            <Route path="/cases/:caseId" element={<CaseDetailView />} />
+          </Routes>
+        </MemoryRouter>
+      </QueryClientProvider>
+    );
+
+    // Verify staleness banner and reasons
+    await waitFor(() => {
+      expect(screen.getByText(/Action Plan is Stale/i)).toBeInTheDocument();
+      expect(
+        screen.getByText(/Target form field 'email' source fact fact_email was modified/i)
+      ).toBeInTheDocument();
+    });
+
+    // Verify Exact Final Submit Control Card
+    expect(screen.getByText(/Exact Final Submit Control/i)).toBeInTheDocument();
+    expect(screen.getByText("button#submit-application")).toBeInTheDocument();
+    expect(screen.getByText("SEALED LOCATOR")).toBeInTheDocument();
+  });
 });

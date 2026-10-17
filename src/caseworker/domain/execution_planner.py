@@ -16,6 +16,9 @@ from caseworker.domain.enums import (
     ExecutionDestinationType,
     ExternalExecutionPlanStatus,
     PreparationMaterialType,
+    TargetAnswerType,
+    TargetFieldType,
+    TargetSchemaProvenance,
     VerificationStatus,
 )
 from caseworker.domain.errors import (
@@ -26,110 +29,28 @@ from caseworker.domain.errors import (
 from caseworker.domain.execution_plan import (
     EXEC_ACTION_PLANNER_VERSION,
     EXEC_PLAN_SCHEMA_VERSION,
+    FORBIDDEN_FIELD_PATTERN,
     ExecutionDestination,
     ExecutionFieldMapping,
     ExecutionPlanFinding,
     ExecutionScreeningResponse,
     ExecutionUploadAsset,
     ExternalExecutionPlan,
+    TargetFieldBinding,
     TargetInteractionSchema,
     TargetSchemaField,
     TargetSubmitControlSpec,
     assert_safe_channel_metadata,
     assert_safe_destination,
     compute_execution_input_hash,
+    validate_and_normalize_field_value,
 )
 from caseworker.domain.opportunity import Opportunity
 from caseworker.domain.package import PreparationPackage
-from caseworker.domain.types import compute_sha256
+from caseworker.domain.types import compute_sha256, compute_sha256_bytes
+from caseworker.domain.vault_policy import ContextAccessPolicy
 
 
-def validate_and_normalize_field_value(tf: TargetSchemaField, raw_value: Any) -> tuple[bool, Any, str]:
-    """Validate and normalize a ContextFact value to match target field semantics (Clarification 5).
-
-    Rules:
-    - select: exact match to declared allowed_options (or case-insensitive exact single match).
-      If allowed_options are yes/no and value is boolean-equivalent, maps canonically.
-      Ambiguous free text is never guessed.
-    - boolean: deterministic boolean (bool, or true/false/yes/no/1/0). Ambiguous text rejected.
-    - date: canonical YYYY-MM-DD. Unstructured text rejected.
-    - email: RFC-valid email syntax.
-    - phone: valid standard phone syntax (>= 7 digits, no alphabetic characters).
-    - number: valid int or float.
-    - text: string representation.
-    """
-    ftype = (tf.field_type or "text").strip().lower()
-
-    if ftype == "email":
-        val = str(raw_value).strip()
-        email_re = re.compile(r"^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$")
-        if email_re.match(val):
-            return True, val, ""
-        return False, None, f"Value '{raw_value}' is not a valid email address."
-
-    if ftype == "phone":
-        val = str(raw_value).strip()
-        if any(c.isalpha() for c in val):
-            return False, None, f"Phone value '{raw_value}' contains forbidden alphabetic characters."
-        digit_count = sum(c.isdigit() for c in val)
-        phone_re = re.compile(r"^\+?[0-9\s\-\(\)\.]+$")
-        if digit_count >= 7 and phone_re.match(val):
-            return True, val, ""
-        return False, None, f"Phone value '{raw_value}' does not match standard phone format (at least 7 digits required)."
-
-    if ftype == "select":
-        allowed = tf.allowed_options or []
-        if not allowed:
-            return False, None, "Target select field has no declared allowed_options."
-        val = str(raw_value).strip()
-        # Direct exact match
-        if val in allowed:
-            return True, val, ""
-        # Case-insensitive single match
-        ci_matches = [opt for opt in allowed if opt.lower() == val.lower()]
-        if len(ci_matches) == 1:
-            return True, ci_matches[0], ""
-        # Deterministic yes/no boolean equivalence
-        allowed_lower_set = {opt.lower() for opt in allowed}
-        if allowed_lower_set == {"yes", "no"}:
-            if val.lower() in ("true", "1", "yes"):
-                canonical = [opt for opt in allowed if opt.lower() == "yes"][0]
-                return True, canonical, ""
-            if val.lower() in ("false", "0", "no"):
-                canonical = [opt for opt in allowed if opt.lower() == "no"][0]
-                return True, canonical, ""
-        # Free-text or unresolvable option -> do not guess
-        return False, None, f"Value '{raw_value}' does not match any declared option in {allowed}."
-
-    if ftype == "boolean":
-        if isinstance(raw_value, bool):
-            return True, raw_value, ""
-        val = str(raw_value).strip().lower()
-        if val in ("true", "yes", "1"):
-            return True, True, ""
-        if val in ("false", "no", "0"):
-            return True, False, ""
-        return False, None, f"Value '{raw_value}' cannot be deterministically converted to boolean."
-
-    if ftype == "date":
-        val = str(raw_value).strip()
-        date_re = re.compile(r"^\d{4}-\d{2}-\d{2}$")
-        if date_re.match(val):
-            return True, val, ""
-        return False, None, f"Date value '{raw_value}' does not conform to canonical format YYYY-MM-DD."
-
-    if ftype == "number":
-        try:
-            if isinstance(raw_value, (int, float)):
-                return True, raw_value, ""
-            s = str(raw_value).strip()
-            if "." in s:
-                return True, float(s), ""
-            return True, int(s), ""
-        except ValueError:
-            return False, None, f"Value '{raw_value}' is not a valid number."
-
-    return True, str(raw_value).strip(), ""
 
 
 class ExecutionPlanCompiler:
@@ -153,6 +74,7 @@ class ExecutionPlanCompiler:
         claims: list[Claim] | None = None,
         facts: list[ContextFact] | None = None,
         final_submit_control: TargetSubmitControlSpec | None = None,
+        field_bindings: list[TargetFieldBinding] | None = None,
     ) -> ExternalExecutionPlan:
         """Compile an ExternalExecutionPlan deterministically.
 
@@ -160,11 +82,14 @@ class ExecutionPlanCompiler:
         - Planning does NOT equal approval, transmission, or execution authority.
         - Zero outbound network transmission is executed here.
         """
+        # Pre-generate plan_id before asset construction (Correction 1)
+        plan_id = f"plan-{uuid.uuid4().hex[:16]}"
+
         findings: list[ExecutionPlanFinding] = []
         metadata = dict(channel_metadata or {})
         active_facts_list = facts if facts is not None else (context_facts or [])
 
-        # 1. Destination Resolution with Security Gating (Clarification 4)
+        # 1. Destination Resolution with Security Gating (Hardening Point 4, 5, 6)
         resolved_provenance = (
             destination_provenance.value
             if hasattr(destination_provenance, "value")
@@ -182,7 +107,7 @@ class ExecutionPlanCompiler:
                 dest_org = destination_override.organization or dest_org
             else:
                 canonical_url = str(destination_override).strip()
-                is_exact_dest = True
+                is_exact_dest = bool(canonical_url)
             findings.append(
                 ExecutionPlanFinding(
                     check_name="destination_resolution",
@@ -207,9 +132,9 @@ class ExecutionPlanCompiler:
                     details={"url": canonical_url},
                 )
             )
-        else:
+        elif opportunity.source_url and opportunity.source_url.strip():
             # Listing URL alone is not an application endpoint
-            canonical_url = opportunity.source_url.strip() if opportunity.source_url else ""
+            canonical_url = opportunity.source_url.strip()
             is_exact_dest = False
             findings.append(
                 ExecutionPlanFinding(
@@ -219,6 +144,20 @@ class ExecutionPlanCompiler:
                     code="DESTINATION_REQUIRED",
                     message="Exact application destination is unknown. General listing URL cannot be assumed to be an application form.",
                     details={"source_url": canonical_url},
+                )
+            )
+        else:
+            # Neither apply url nor source url exists (Hardening Point 5)
+            canonical_url = ""
+            is_exact_dest = False
+            findings.append(
+                ExecutionPlanFinding(
+                    check_name="destination_resolution",
+                    passed=False,
+                    severity="error",
+                    code="DESTINATION_REQUIRED",
+                    message="Exact application destination is unknown. No destination URL exists on opportunity.",
+                    details={"source_url": ""},
                 )
             )
 
@@ -231,7 +170,21 @@ class ExecutionPlanCompiler:
             is_exact_destination=is_exact_dest,
         )
 
-        # 2. Check Target Interaction Schema
+        # Destination channel boundary restrictions (Hardening Point 4)
+        dest_type_val = destination.destination_type.value if hasattr(destination.destination_type, "value") else str(destination.destination_type)
+        if dest_type_val not in (ExecutionDestinationType.ATS_FORM.value, ExecutionDestinationType.DIRECT_PORTAL.value):
+            findings.append(
+                ExecutionPlanFinding(
+                    check_name="destination_boundary_validation",
+                    passed=False,
+                    severity="error",
+                    code="UNSUPPORTED_DESTINATION_TYPE",
+                    message=f"Destination type '{dest_type_val}' is not supported for external execution authorization in v1.",
+                    details={"destination_type": dest_type_val},
+                )
+            )
+
+        # 2. Check Target Interaction Schema & Destination Type Alignment
         if target_schema is None:
             findings.append(
                 ExecutionPlanFinding(
@@ -242,63 +195,47 @@ class ExecutionPlanCompiler:
                     message="Target interaction schema is absent. Without a declared interaction schema, exact form fields and controls cannot be resolved.",
                 )
             )
+        else:
+            schema_dest_type = target_schema.destination_type.value if hasattr(target_schema.destination_type, "value") else str(target_schema.destination_type)
+            if schema_dest_type != dest_type_val:
+                findings.append(
+                    ExecutionPlanFinding(
+                        check_name="target_schema_verification",
+                        passed=False,
+                        severity="error",
+                        code="DESTINATION_TYPE_MISMATCH",
+                        message=f"Target schema destination_type '{schema_dest_type}' does not match destination type '{dest_type_val}'.",
+                        details={"schema_destination_type": schema_dest_type, "destination_type": dest_type_val},
+                    )
+                )
 
-        # 3. Field Mappings from Verified ContextFacts with Type Semantic Validation (Clarification 5)
+        # 3. Field Mappings from Explicit TargetFieldBinding & Centralized Vault Access Policy (Correction 2 & 5)
         field_mappings: list[ExecutionFieldMapping] = []
-        active_facts_by_key: dict[str, list[ContextFact]] = {}
-        for f in active_facts_list:
-            if getattr(f, "superseded_by_fact_id", None) is not None:
-                continue
-            active_facts_by_key.setdefault(f.key, []).append(f)
+        facts_by_id: dict[str, ContextFact] = {
+            f.fact_id: f for f in active_facts_list if getattr(f, "superseded_by_fact_id", None) is None
+        }
+        bindings_by_id = {b.target_field_id: b.source_fact_id for b in (field_bindings or [])}
+        vault_policy = ContextAccessPolicy()
 
         if target_schema is not None:
             for tf in target_schema.fields:
-                matching_facts = active_facts_by_key.get(tf.target_field_id, [])
-                if not matching_facts:
-                    alias_key = tf.target_field_id.replace("-", "_")
-                    matching_facts = active_facts_by_key.get(alias_key, [])
-
-                # Filter by verification status & allowed purpose
-                valid_fact = None
-                invalid_reason = ""
-                for fact in matching_facts:
-                    v_status = fact.verification_status.value if hasattr(fact.verification_status, "value") else str(fact.verification_status)
-                    if v_status not in (VerificationStatus.USER_VERIFIED.value, VerificationStatus.SOURCE_VERIFIED.value):
-                        invalid_reason = f"Fact is '{v_status}', requires USER_VERIFIED or SOURCE_VERIFIED"
-                        continue
-                    if "job_application" not in (fact.allowed_purposes or []):
-                        invalid_reason = "Fact lacks purpose 'job_application'"
-                        continue
-                    valid_fact = fact
-                    break
-
-                if valid_fact is not None:
-                    is_valid, norm_val, err_msg = validate_and_normalize_field_value(tf, valid_fact.value)
-                    if is_valid:
-                        field_mappings.append(
-                            ExecutionFieldMapping(
-                                target_field_id=tf.target_field_id,
-                                field_name=tf.label,
-                                field_value=norm_val,
-                                source_fact_id=valid_fact.fact_id,
-                                source_fact_version=valid_fact.version,
-                                verification_status=valid_fact.verification_status.value if hasattr(valid_fact.verification_status, "value") else str(valid_fact.verification_status),
-                                required=tf.required,
-                            )
+                # Reject authentication secret fields (Correction 5)
+                if FORBIDDEN_FIELD_PATTERN.search(tf.target_field_id) or FORBIDDEN_FIELD_PATTERN.search(tf.label):
+                    findings.append(
+                        ExecutionPlanFinding(
+                            check_name="field_mapping_resolution",
+                            passed=False,
+                            severity="error",
+                            code="AUTH_CREDENTIAL_FIELD_PROHIBITED",
+                            message=f"Target field '{tf.target_field_id}' ('{tf.label}') represents an authentication secret, which is strictly prohibited in execution plans.",
+                            details={"target_field_id": tf.target_field_id, "label": tf.label},
                         )
-                    else:
-                        if tf.required:
-                            findings.append(
-                                ExecutionPlanFinding(
-                                    check_name="field_mapping_resolution",
-                                    passed=False,
-                                    severity="error",
-                                    code="INVALID_FIELD_TYPE_CONVERSION",
-                                    message=f"Required target field '{tf.target_field_id}' (type '{tf.field_type}') failed semantic validation: {err_msg}",
-                                    details={"target_field_id": tf.target_field_id, "field_type": tf.field_type, "error": err_msg},
-                                )
-                            )
-                else:
+                    )
+                    continue
+
+                # Explicit binding resolution (Correction 2)
+                bound_fact_id = bindings_by_id.get(tf.target_field_id)
+                if bound_fact_id is None:
                     if tf.required:
                         findings.append(
                             ExecutionPlanFinding(
@@ -306,12 +243,90 @@ class ExecutionPlanCompiler:
                                 passed=False,
                                 severity="error",
                                 code="UNRESOLVED_REQUIRED_FIELD",
-                                message=f"Required target field '{tf.target_field_id}' could not be resolved from verified ContextFacts ({invalid_reason or 'No matching fact found'}).",
+                                message=f"Required target field '{tf.target_field_id}' has no explicit ContextFact binding.",
                                 details={"target_field_id": tf.target_field_id, "label": tf.label},
                             )
                         )
+                    continue
 
-        # 4. Upload Mappings & Byte Asset Materialization (Clarification 2)
+                valid_fact = facts_by_id.get(bound_fact_id)
+                if valid_fact is None:
+                    if tf.required:
+                        findings.append(
+                            ExecutionPlanFinding(
+                                check_name="field_mapping_resolution",
+                                passed=False,
+                                severity="error",
+                                code="UNRESOLVED_REQUIRED_FIELD",
+                                message=f"Bound ContextFact '{bound_fact_id}' for field '{tf.target_field_id}' was not found in active vault facts.",
+                                details={"target_field_id": tf.target_field_id, "source_fact_id": bound_fact_id},
+                            )
+                        )
+                    continue
+
+                # Centralized Vault policy evaluation with job_application purpose
+                access_decision = vault_policy.evaluate_access(
+                    valid_fact,
+                    requested_purpose="job_application",
+                    require_verified=True,
+                )
+                v_status = (
+                    valid_fact.verification_status.value
+                    if hasattr(valid_fact.verification_status, "value")
+                    else str(valid_fact.verification_status)
+                )
+
+                if (
+                    not access_decision.is_granted
+                    or v_status not in (VerificationStatus.USER_VERIFIED.value, VerificationStatus.SOURCE_VERIFIED.value)
+                ):
+                    if tf.required:
+                        findings.append(
+                            ExecutionPlanFinding(
+                                check_name="field_mapping_resolution",
+                                passed=False,
+                                severity="error",
+                                code="UNRESOLVED_REQUIRED_FIELD",
+                                message=f"ContextFact '{bound_fact_id}' for field '{tf.target_field_id}' is denied by Vault policy: {access_decision.reason} (verification: {v_status})",
+                                details={
+                                    "target_field_id": tf.target_field_id,
+                                    "source_fact_id": bound_fact_id,
+                                    "reason": access_decision.reason,
+                                    "reason_code": access_decision.reason_code,
+                                },
+                            )
+                        )
+                    continue
+
+                # Deterministic field value normalization
+                is_valid, norm_val, err_msg = validate_and_normalize_field_value(tf, valid_fact.value)
+                if is_valid:
+                    field_mappings.append(
+                        ExecutionFieldMapping(
+                            target_field_id=tf.target_field_id,
+                            field_name=tf.label,
+                            field_value=norm_val,
+                            source_fact_id=valid_fact.fact_id,
+                            source_fact_version=valid_fact.version,
+                            verification_status=v_status,
+                            required=tf.required,
+                            allowed_purposes=list(valid_fact.allowed_purposes or []),
+                        )
+                    )
+                else:
+                    if tf.required:
+                        findings.append(
+                            ExecutionPlanFinding(
+                                check_name="field_mapping_resolution",
+                                passed=False,
+                                severity="error",
+                                code="INVALID_FIELD_TYPE_CONVERSION",
+                                message=f"Required target field '{tf.target_field_id}' (type '{tf.field_type}') failed semantic validation: {err_msg}",
+                                details={"target_field_id": tf.target_field_id, "field_type": tf.field_type, "error": err_msg},
+                            )
+                        )
+
+        # 4. Upload Mappings & Byte Asset Materialization (Correction 1 & Hardening Point 1, 2, 3)
         upload_mappings: list[ExecutionUploadAsset] = []
         artifacts_by_type: dict[str, PreparedArtifact] = {}
         for art in artifacts:
@@ -342,10 +357,10 @@ class ExecutionPlanCompiler:
                         )
                     continue
 
-                # Materialize raw export byte asset
+                # Materialize raw export byte asset using binary-safe sha256 (Hardening Point 3)
                 rendered_text = art.compute_rendered_payload()
                 raw_bytes = rendered_text.encode("utf-8")
-                byte_sha256 = compute_sha256(raw_bytes.decode("utf-8", errors="replace"))
+                byte_sha256 = compute_sha256_bytes(raw_bytes)
 
                 # Check acceptable mime type
                 mime_type = "text/plain"
@@ -355,7 +370,9 @@ class ExecutionPlanCompiler:
                     ext = "txt"
                 elif "application/pdf" in slot.accepted_mime_types and len(slot.accepted_mime_types) == 1:
                     # Slot strictly requires PDF bytes, but we only have text payload in this environment
-                    deterministic_asset_id = f"asset-{compute_sha256(f'{case.case_id}:{art.artifact_id}:{slot.role}')[:12]}"
+                    deterministic_asset_id = (
+                        f"asset-{compute_sha256(f'{plan_id}:{slot.slot_id}:{art.artifact_id}:{art.version}:{byte_sha256}')[:16]}"
+                    )
                     upload_mappings.append(
                         ExecutionUploadAsset(
                             asset_id=deterministic_asset_id,
@@ -368,6 +385,7 @@ class ExecutionPlanCompiler:
                             byte_size=0,
                             materialized=False,
                             content_bytes=b"",
+                            plan_id=plan_id,
                             case_id=case.case_id,
                             user_id=case.user_id,
                         )
@@ -385,7 +403,9 @@ class ExecutionPlanCompiler:
                     continue
 
                 clean_user = re.sub(r"[^a-zA-Z0-9_-]", "_", case.user_id)
-                deterministic_asset_id = f"asset-{compute_sha256(f'{case.case_id}:{art.artifact_id}:{slot.role}')[:12]}"
+                deterministic_asset_id = (
+                    f"asset-{compute_sha256(f'{plan_id}:{slot.slot_id}:{art.artifact_id}:{art.version}:{byte_sha256}')[:16]}"
+                )
                 upload_mappings.append(
                     ExecutionUploadAsset(
                         asset_id=deterministic_asset_id,
@@ -398,12 +418,13 @@ class ExecutionPlanCompiler:
                         byte_size=len(raw_bytes),
                         materialized=True,
                         content_bytes=raw_bytes,
+                        plan_id=plan_id,
                         case_id=case.case_id,
                         user_id=case.user_id,
                     )
                 )
 
-        # 5. Screening Responses (SCREENING_ANSWERS only; ANSWER_BANK strictly prohibited)
+        # 5. Screening Responses (SCREENING_ANSWERS only; ANSWER_BANK strictly prohibited; Hardening Point 7)
         screening_responses: list[ExecutionScreeningResponse] = []
         screening_artifact = artifacts_by_type.get(PreparationMaterialType.SCREENING_ANSWERS.value)
         answer_bank_artifact = artifacts_by_type.get(PreparationMaterialType.APPLICATION_ANSWER_BANK.value) or artifacts_by_type.get(PreparationMaterialType.ANSWER_BANK.value)
@@ -422,7 +443,6 @@ class ExecutionPlanCompiler:
 
         if target_schema is not None and target_schema.screening_questions:
             if screening_artifact is None and answer_bank_artifact is not None:
-                # Package contains only Answer Bank; cannot use as transmission payload
                 findings.append(
                     ExecutionPlanFinding(
                         check_name="screening_resolution",
@@ -437,6 +457,54 @@ class ExecutionPlanCompiler:
                     match = screening_qna_items.get(sq.question_text.strip().lower())
                     if match is not None:
                         ans_val, claim_ids, art_id = match
+                        # Semantic validation of screening answers (Hardening Point 7)
+                        sq_type = (sq.answer_type or TargetAnswerType.TEXT.value).lower()
+                        if sq_type == TargetAnswerType.SELECT.value:
+                            allowed = sq.allowed_options or []
+                            if allowed:
+                                matched_opt = None
+                                if ans_val in allowed:
+                                    matched_opt = ans_val
+                                else:
+                                    ci = [opt for opt in allowed if opt.lower() == ans_val.lower()]
+                                    if len(ci) == 1:
+                                        matched_opt = ci[0]
+                                    elif {opt.lower() for opt in allowed} == {"yes", "no"}:
+                                        if ans_val.lower() in ("true", "1", "yes"):
+                                            matched_opt = [opt for opt in allowed if opt.lower() == "yes"][0]
+                                        elif ans_val.lower() in ("false", "0", "no"):
+                                            matched_opt = [opt for opt in allowed if opt.lower() == "no"][0]
+                                if matched_opt is None:
+                                    findings.append(
+                                        ExecutionPlanFinding(
+                                            check_name="screening_resolution",
+                                            passed=False,
+                                            severity="error",
+                                            code="INVALID_QUESTION_ANSWER_CONVERSION",
+                                            message=f"Screening question '{sq.question_id}' of type 'select' could not be resolved from answer text '{ans_val}'. Must match one of {allowed}.",
+                                            details={"question_id": sq.question_id, "answer": ans_val, "allowed_options": allowed},
+                                        )
+                                    )
+                                    continue
+                                ans_val = matched_opt
+                        elif sq_type == TargetAnswerType.BOOLEAN.value:
+                            if ans_val.lower() in ("true", "yes", "1"):
+                                ans_val = "true"
+                            elif ans_val.lower() in ("false", "no", "0"):
+                                ans_val = "false"
+                            else:
+                                findings.append(
+                                    ExecutionPlanFinding(
+                                        check_name="screening_resolution",
+                                        passed=False,
+                                        severity="error",
+                                        code="INVALID_QUESTION_ANSWER_CONVERSION",
+                                        message=f"Screening question '{sq.question_id}' of type 'boolean' cannot be deterministically converted from '{ans_val}'.",
+                                        details={"question_id": sq.question_id, "answer": ans_val},
+                                    )
+                                )
+                                continue
+
                         screening_responses.append(
                             ExecutionScreeningResponse(
                                 question_id=sq.question_id,
@@ -444,6 +512,8 @@ class ExecutionPlanCompiler:
                                 answer=ans_val,
                                 source_artifact_id=art_id,
                                 grounding_claim_ids=claim_ids,
+                                source_artifact_version=screening_artifact.version if screening_artifact else 1,
+                                source_payload_hash=screening_artifact.compute_rendered_payload_hash() if screening_artifact else "",
                             )
                         )
                     elif sq.required:
@@ -458,8 +528,8 @@ class ExecutionPlanCompiler:
                             )
                         )
 
-        # 6. Final Submit Control
-        final_control = target_schema.final_submit_control if target_schema else None
+        # 6. Final Submit Control (Correction 4)
+        final_control = final_submit_control or (target_schema.final_submit_control if target_schema else None)
         if target_schema is not None and final_control is None:
             findings.append(
                 ExecutionPlanFinding(
@@ -470,8 +540,21 @@ class ExecutionPlanCompiler:
                     message="Target schema does not specify a final submit control descriptor.",
                 )
             )
+        elif final_control is not None:
+            # For READY_FOR_AUTHORIZATION, require a stable locator (selector or control_id)
+            if not final_control.selector and not final_control.control_id:
+                findings.append(
+                    ExecutionPlanFinding(
+                        check_name="submit_control_resolution",
+                        passed=False,
+                        severity="error",
+                        code="EXACT_SUBMIT_LOCATOR_REQUIRED",
+                        message="Final submit control must specify an exact stable locator (selector or control_id).",
+                        details={"control_type": final_control.control_type},
+                    )
+                )
 
-        # 7. Evaluate Durable Upload Assets Precondition (Clarification 2)
+        # 7. Evaluate Durable Upload Assets Precondition (Hardening Point 1, 2, 3)
         for u in upload_mappings:
             if not u.materialized or u.byte_size <= 0:
                 findings.append(
@@ -485,7 +568,7 @@ class ExecutionPlanCompiler:
                     )
                 )
             elif u.content_bytes is not None:
-                computed_hash = compute_sha256(u.content_bytes.decode("utf-8", errors="replace"))
+                computed_hash = compute_sha256_bytes(u.content_bytes)
                 if computed_hash != u.content_sha256:
                     findings.append(
                         ExecutionPlanFinding(
@@ -525,6 +608,7 @@ class ExecutionPlanCompiler:
             final_submit_control=final_control,
             findings=findings,
             execution_input_hash=input_hash,
+            plan_id=plan_id,
             schema_version=cls.SCHEMA_VERSION,
             planner_version=cls.PLANNER_VERSION,
         )

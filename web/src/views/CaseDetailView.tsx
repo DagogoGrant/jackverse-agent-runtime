@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
-import { ArrowLeft, AlertTriangle, CheckCircle2, XCircle, Search, ChevronDown, FileText, Copy, Check, ShieldCheck, X, Lock, Send, Eye, EyeOff, FileCode } from 'lucide-react';
+import { ArrowLeft, AlertTriangle, CheckCircle2, XCircle, Search, ChevronDown, FileText, Copy, Check, ShieldCheck, X, Lock, Send, Eye, EyeOff, FileCode, Settings } from 'lucide-react';
 import {
   useCase,
   useCaseActions,
@@ -19,9 +19,10 @@ import {
   useVerifyPreparationPackage,
   useLatestExecutionPlan,
   useCreateExecutionPlan,
+  useContextFacts,
 } from '../hooks/useCaseworker';
 import { apiRequest, PreconditionFailedError } from '../api/client';
-import type { Claim } from '../api/types';
+import type { Claim, TargetFieldBinding, TargetSchemaField, TargetInteractionSchema, ExecutionDestination } from '../api/types';
 import { TextureBadge } from '../components/ui/TextureBadge';
 import { TactileButton } from '../components/ui/TactileButton';
 import { humanizeEvent, formatEventTime } from '../lib/eventPresentation';
@@ -97,6 +98,132 @@ export const CaseDetailView: React.FC = () => {
         packageId: latestPackage?.package_id,
         etag: caseData.etag,
       });
+    } catch (err: unknown) {
+      if (err instanceof PreconditionFailedError) {
+        setConcurrencyNotice(
+          'Case was modified concurrently. Reloading current dossier state…'
+        );
+        await refetchCase();
+      } else {
+        setPlanError(
+          err instanceof Error ? err.message : 'Plan compilation failed.'
+        );
+      }
+    }
+  };
+
+  // Phase 5.3.1.1 Plan Input Resolution State
+  const { data: contextFacts } = useContextFacts();
+  const [showResolvePlanModal, setShowResolvePlanModal] = useState(false);
+  const [resolveDestinationUrl, setResolveDestinationUrl] = useState('');
+  const [resolveDestinationOrg, setResolveDestinationOrg] = useState('');
+  const [resolveFieldBindings, setResolveFieldBindings] = useState<Record<string, string>>({});
+  const [resolveSubmitSelector, setResolveSubmitSelector] = useState('');
+  const [resolveSubmitControlId, setResolveSubmitControlId] = useState('');
+  const [resolveSubmitLabel, setResolveSubmitLabel] = useState('Submit Application');
+
+  const defaultSchemaFields: TargetSchemaField[] = [
+    { target_field_id: 'first_name', label: 'First Name', field_type: 'text', required: true },
+    { target_field_id: 'last_name', label: 'Last Name', field_type: 'text', required: true },
+    { target_field_id: 'email', label: 'Email Address', field_type: 'email', required: true },
+    { target_field_id: 'phone', label: 'Phone Number', field_type: 'phone', required: true },
+    { target_field_id: 'linkedin_url', label: 'LinkedIn Profile', field_type: 'url', required: false },
+    { target_field_id: 'github_url', label: 'GitHub Profile', field_type: 'url', required: false },
+    { target_field_id: 'work_authorization', label: 'Work Authorization', field_type: 'select', required: true },
+  ];
+
+  const openResolvePlanModal = () => {
+    setResolveDestinationUrl(latestPlan?.destination?.canonical_url || '');
+    setResolveDestinationOrg(latestPlan?.destination?.organization || '');
+
+    const initialBindings: Record<string, string> = {};
+    if (latestPlan?.field_mappings && latestPlan.field_mappings.length > 0) {
+      for (const m of latestPlan.field_mappings) {
+        if (m.target_field_id && m.source_fact_id) {
+          initialBindings[m.target_field_id] = m.source_fact_id;
+        }
+      }
+    }
+    setResolveFieldBindings(initialBindings);
+
+    setResolveSubmitSelector(latestPlan?.final_submit_control?.selector || '');
+    setResolveSubmitControlId(latestPlan?.final_submit_control?.control_id || '');
+    setResolveSubmitLabel(latestPlan?.final_submit_control?.semantic_target || 'Submit Application');
+
+    setShowResolvePlanModal(true);
+  };
+
+  const handleSaveAndCompileResolvedPlan = async () => {
+    if (!caseId || !caseData) return;
+    setPlanError(null);
+    setConcurrencyNotice(null);
+
+    const bindings: TargetFieldBinding[] = Object.entries(resolveFieldBindings)
+      .filter(([_, factId]) => Boolean(factId))
+      .map(([fieldId, factId]) => ({
+        target_field_id: fieldId,
+        source_fact_id: factId,
+      }));
+
+    const activeFields = (latestPlan?.target_schema?.fields && latestPlan.target_schema.fields.length > 0)
+      ? latestPlan.target_schema.fields
+      : defaultSchemaFields;
+
+    const targetSchema: TargetInteractionSchema = {
+      schema_id: latestPlan?.target_schema?.schema_id || 'manual-resolved-v1',
+      destination_type: 'ats_form',
+      target_schema_provenance: 'USER_PROVIDED',
+      fields: activeFields,
+      upload_slots: latestPlan?.target_schema?.upload_slots || [
+        { slot_id: 'resume', label: 'Resume', role: 'RESUME', required: true, accepted_mime_types: ['application/pdf'] },
+      ],
+      screening_questions: latestPlan?.target_schema?.screening_questions || [],
+      final_submit_control: (resolveSubmitSelector || resolveSubmitControlId) ? {
+        control_id: resolveSubmitControlId || '',
+        selector: resolveSubmitSelector || '',
+        semantic_target: resolveSubmitLabel || 'Submit Application',
+        control_provenance: 'USER_PROVIDED',
+        control_type: 'button_submit',
+        method: 'POST',
+        requires_double_confirmation: true,
+      } : null,
+      schema_hash: '',
+    };
+
+    let normOrigin = '';
+    let normHost = '';
+    if (resolveDestinationUrl) {
+      try {
+        const parsed = new URL(resolveDestinationUrl);
+        normOrigin = parsed.origin;
+        normHost = parsed.hostname;
+      } catch {
+        // ignore
+      }
+    }
+
+    const destinationOverride: ExecutionDestination | null = resolveDestinationUrl ? {
+      canonical_url: resolveDestinationUrl,
+      organization: resolveDestinationOrg || '',
+      destination_type: 'ats_form',
+      destination_provenance: 'USER_PROVIDED',
+      channel_metadata: {},
+      is_exact_destination: true,
+      normalized_origin: normOrigin,
+      normalized_hostname: normHost,
+    } : null;
+
+    try {
+      await createPlan.mutateAsync({
+        caseId,
+        packageId: latestPackage?.package_id,
+        destinationOverride,
+        targetSchema,
+        fieldBindings: bindings,
+        finalSubmitControl: targetSchema.final_submit_control,
+        etag: caseData.etag,
+      });
+      setShowResolvePlanModal(false);
     } catch (err: unknown) {
       if (err instanceof PreconditionFailedError) {
         setConcurrencyNotice(
@@ -1036,18 +1163,46 @@ export const CaseDetailView: React.FC = () => {
                             </div>
                           </div>
 
-                          {latestPackage?.status === 'approved' && (!latestPlan || latestPlan.status === 'draft' || latestPlan.status === 'superseded') && (
-                            <TactileButton
-                              variant="primary"
-                              size="sm"
-                              loading={createPlan.isPending}
-                              onClick={handleCompilePlan}
-                            >
-                              <FileCode className="w-3.5 h-3.5 mr-1.5 inline" />
-                              Compile Action Plan →
-                            </TactileButton>
-                          )}
+                          <div className="flex flex-wrap items-center gap-2">
+                            {latestPackage?.status === 'approved' && (
+                              <TactileButton
+                                variant="outline"
+                                size="sm"
+                                onClick={openResolvePlanModal}
+                              >
+                                <Settings className="w-3.5 h-3.5 mr-1.5 inline" />
+                                Resolve plan inputs →
+                              </TactileButton>
+                            )}
+                            {latestPackage?.status === 'approved' && (!latestPlan || latestPlan.status === 'draft' || latestPlan.status === 'superseded') && (
+                              <TactileButton
+                                variant="primary"
+                                size="sm"
+                                loading={createPlan.isPending}
+                                onClick={handleCompilePlan}
+                              >
+                                <FileCode className="w-3.5 h-3.5 mr-1.5 inline" />
+                                {latestPlan ? 'Recompile Plan →' : 'Compile Action Plan →'}
+                              </TactileButton>
+                            )}
+                          </div>
                         </div>
+
+                        {latestPlan?.is_stale && (
+                          <div className="p-3 border border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-400 font-interface text-xs space-y-1">
+                            <div className="font-semibold flex items-center gap-1.5">
+                              <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
+                              <span>Action Plan is Stale: Context facts, prepared artifacts, or destination integrity have changed.</span>
+                            </div>
+                            {latestPlan.staleness_reasons && latestPlan.staleness_reasons.length > 0 && (
+                              <ul className="list-disc list-inside text-[11px] font-mono mt-1 space-y-0.5">
+                                {latestPlan.staleness_reasons.map((r, i) => (
+                                  <li key={i}>{r}</li>
+                                ))}
+                              </ul>
+                            )}
+                          </div>
+                        )}
 
                         {planError && (
                           <div className="p-3 border border-red-500/30 bg-red-500/10 text-red-600 font-interface text-xs flex items-center gap-2">
@@ -1205,6 +1360,44 @@ export const CaseDetailView: React.FC = () => {
                                       </div>
                                     );
                                   })}
+                                </div>
+                              </div>
+                            )}
+
+                            {/* Exact Final Submit Control Card */}
+                            {latestPlan.final_submit_control && (
+                              <div className="p-3 border border-jv-rule bg-jv-bg space-y-2 font-interface text-xs">
+                                <div className="font-machine text-[11px] text-jv-muted uppercase flex items-center justify-between">
+                                  <span>Exact Final Submit Control</span>
+                                  <span className="px-1.5 py-0.5 border border-emerald-600/30 text-emerald-600 bg-emerald-600/10 font-machine text-[10px]">
+                                    SEALED LOCATOR
+                                  </span>
+                                </div>
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-jv-ink font-interface">
+                                  <div>
+                                    <span className="text-jv-muted">Control Label:</span>{' '}
+                                    <span className="font-medium">{latestPlan.final_submit_control.semantic_target || '—'}</span>
+                                  </div>
+                                  <div>
+                                    <span className="text-jv-muted">Provenance:</span>{' '}
+                                    <span className="font-machine">{latestPlan.final_submit_control.control_provenance}</span>
+                                  </div>
+                                  {latestPlan.final_submit_control.selector && (
+                                    <div className="sm:col-span-2 flex items-center gap-1.5 overflow-hidden">
+                                      <span className="text-jv-muted shrink-0">CSS Selector:</span>
+                                      <span className="font-mono text-jv-ink text-[11px] bg-jv-surface px-1.5 py-0.5 border border-jv-rule truncate">
+                                        {latestPlan.final_submit_control.selector}
+                                      </span>
+                                    </div>
+                                  )}
+                                  {latestPlan.final_submit_control.control_id && (
+                                    <div className="sm:col-span-2 flex items-center gap-1.5 overflow-hidden">
+                                      <span className="text-jv-muted shrink-0">Control ID:</span>
+                                      <span className="font-mono text-jv-ink text-[11px] bg-jv-surface px-1.5 py-0.5 border border-jv-rule truncate">
+                                        {latestPlan.final_submit_control.control_id}
+                                      </span>
+                                    </div>
+                                  )}
                                 </div>
                               </div>
                             )}
@@ -1670,6 +1863,256 @@ export const CaseDetailView: React.FC = () => {
           </div>
         </div>
       </div>
+
+      {/* Resolve Action Plan Inputs & Vault Fact Bindings Modal */}
+      {showResolvePlanModal && (
+        <div className="fixed inset-0 z-50 bg-jv-ink/40 flex items-center justify-center p-4">
+          <div className="w-full max-w-3xl max-h-[90vh] overflow-y-auto border border-jv-rule bg-jv-bg p-6 space-y-6 font-interface">
+            <div className="flex items-start justify-between border-b border-jv-rule pb-3">
+              <div className="space-y-1">
+                <div className="flex items-center gap-2">
+                  <ShieldCheck className="w-5 h-5 text-jv-accent" />
+                  <h3 className="font-display text-2xl text-jv-ink">
+                    Resolve Action Plan Inputs
+                  </h3>
+                </div>
+                <p className="text-xs text-jv-muted">
+                  Configure target form schema fields, bind verified facts from your Context Vault, and seal the exact submit locator.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowResolvePlanModal(false)}
+                className="text-jv-muted hover:text-jv-ink p-1 border border-jv-rule bg-jv-surface"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Section 1: Exact Destination */}
+            <div className="border border-jv-rule bg-jv-surface/40 p-4 space-y-3">
+              <div className="font-machine text-xs font-semibold text-jv-ink uppercase flex items-center justify-between">
+                <span>1. Exact Application Destination</span>
+                <span className="text-[10px] text-jv-muted font-normal">USER_PROVIDED PROVENANCE</span>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                <div className="sm:col-span-2 space-y-1">
+                  <label className="text-jv-muted font-medium">Canonical Application URL</label>
+                  <input
+                    type="url"
+                    value={resolveDestinationUrl}
+                    onChange={(e) => setResolveDestinationUrl(e.target.value)}
+                    placeholder="https://company.greenhouse.io/jobs/123/apply"
+                    className="w-full p-2 border border-jv-rule bg-jv-bg font-mono text-xs text-jv-ink rounded-none"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-jv-muted font-medium">Organization Name</label>
+                  <input
+                    type="text"
+                    value={resolveDestinationOrg}
+                    onChange={(e) => setResolveDestinationOrg(e.target.value)}
+                    placeholder="e.g. Acme Corp"
+                    className="w-full p-2 border border-jv-rule bg-jv-bg text-xs text-jv-ink rounded-none"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-jv-muted font-medium">Channel Type</label>
+                  <input
+                    type="text"
+                    value="ats_form"
+                    disabled
+                    className="w-full p-2 border border-jv-rule bg-jv-surface font-mono text-xs text-jv-muted rounded-none cursor-not-allowed"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Section 2: Target Fields & Fact Bindings */}
+            <div className="border border-jv-rule bg-jv-surface/40 p-4 space-y-3">
+              <div className="font-machine text-xs font-semibold text-jv-ink uppercase flex items-center justify-between">
+                <span>2. External ATS Form Field Bindings</span>
+                <span className="text-[10px] text-jv-muted font-normal">EXPLICIT VAULT BINDING ONLY</span>
+              </div>
+              <p className="text-[11px] text-jv-muted">
+                Each target form field must be explicitly bound to an authorized Vault fact. Missing required bindings will keep the action plan in DRAFT status.
+              </p>
+
+              <div className="divide-y divide-jv-rule border border-jv-rule bg-jv-bg">
+                {((latestPlan?.target_schema?.fields && latestPlan.target_schema.fields.length > 0)
+                  ? latestPlan.target_schema.fields
+                  : defaultSchemaFields
+                ).map((field) => {
+                  const currentBindingFactId = resolveFieldBindings[field.target_field_id] || '';
+                  const boundFact = (contextFacts || []).find((f) => f.fact_id === currentBindingFactId);
+                  const isBound = Boolean(currentBindingFactId);
+
+                  return (
+                    <div key={field.target_field_id} className="p-3 space-y-2 text-xs">
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1">
+                        <div className="flex items-center gap-2">
+                          <span className="font-medium text-jv-ink">{field.label}</span>
+                          <span className="font-mono text-[11px] text-jv-muted">({field.target_field_id})</span>
+                          <span className="font-machine text-[10px] px-1.5 py-0.2 border border-jv-rule bg-jv-surface uppercase text-jv-muted">
+                            {field.field_type}
+                          </span>
+                          {field.required && (
+                            <span className="text-[10px] text-red-500 font-bold">*REQUIRED</span>
+                          )}
+                        </div>
+                        <div>
+                          {isBound ? (
+                            <span className="font-machine text-[10px] text-emerald-600 bg-emerald-600/10 border border-emerald-600/30 px-1.5 py-0.5">
+                              BOUND
+                            </span>
+                          ) : field.required ? (
+                            <span className="font-machine text-[10px] text-amber-600 bg-amber-600/10 border border-amber-600/30 px-1.5 py-0.5">
+                              UNBOUND (REQUIRED)
+                            </span>
+                          ) : (
+                            <span className="font-machine text-[10px] text-jv-muted bg-jv-surface border border-jv-rule px-1.5 py-0.5">
+                              OPTIONAL
+                            </span>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+                        <select
+                          aria-label={`Vault Fact for ${field.label}`}
+                          value={currentBindingFactId}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            setResolveFieldBindings((prev) => ({
+                              ...prev,
+                              [field.target_field_id]: val,
+                            }));
+                          }}
+                          className="flex-1 p-2 border border-jv-rule bg-jv-surface text-xs font-interface text-jv-ink rounded-none"
+                        >
+                          <option value="">-- No Vault Fact Bound (Unbound) --</option>
+                          {(contextFacts || []).map((fact) => (
+                            <option key={fact.fact_id} value={fact.fact_id}>
+                              [{fact.verification_status}] {fact.key} ({fact.namespace}) — {fact.preview ? fact.preview.slice(0, 40) : '(empty)'}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+
+                      {boundFact && (
+                        <div className="font-machine text-[11px] text-jv-muted flex items-center gap-2 bg-jv-surface/50 p-1.5 border border-jv-rule/50">
+                          <span className="text-jv-ink font-semibold">FACT ID: {boundFact.fact_id}</span>
+                          <span>·</span>
+                          <span className="text-jv-accent">{boundFact.verification_status}</span>
+                          {boundFact.preview && (
+                            <>
+                              <span>·</span>
+                              <span className="truncate max-w-[250px] font-mono">{boundFact.preview}</span>
+                            </>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Section 3: Materialized Upload Slots */}
+            <div className="border border-jv-rule bg-jv-surface/40 p-4 space-y-3">
+              <div className="font-machine text-xs font-semibold text-jv-ink uppercase flex items-center justify-between">
+                <span>3. Materialized Upload Assets</span>
+                <span className="text-[10px] text-jv-muted font-normal">DURABLE BINARY STORAGE</span>
+              </div>
+              <p className="text-[11px] text-jv-muted">
+                Frozen package artifacts will be materialized into immutable byte assets with SHA-256 integrity verification.
+              </p>
+              <div className="border border-jv-rule bg-jv-bg p-3 space-y-1 font-machine text-xs">
+                <div className="flex items-center justify-between text-jv-ink">
+                  <span className="font-semibold">RESUME // slot: resume</span>
+                  <span className="text-emerald-600 text-[10px] border border-emerald-600/30 px-1.5 py-0.5 bg-emerald-600/10">
+                    APPROVED PACKAGE ARTIFACT
+                  </span>
+                </div>
+                <div className="text-[11px] text-jv-muted">
+                  Binds to approved package: <span className="font-mono text-jv-ink">{latestPackage?.package_id || 'none'}</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Section 4: Exact Final Submit Control */}
+            <div className="border border-jv-rule bg-jv-surface/40 p-4 space-y-3">
+              <div className="font-machine text-xs font-semibold text-jv-ink uppercase flex items-center justify-between">
+                <span>4. Exact Final Submit Control Locator</span>
+                <span className="text-[10px] text-amber-600 font-semibold">REQUIRED FOR READY_FOR_AUTHORIZATION</span>
+              </div>
+              <p className="text-[11px] text-jv-muted">
+                Specify the exact DOM selector or control ID that submits the form. Plans without an exact submit locator cannot be authorized and remain in DRAFT status.
+              </p>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
+                <div className="sm:col-span-2 space-y-1">
+                  <label className="text-jv-muted font-medium">CSS Selector</label>
+                  <input
+                    type="text"
+                    value={resolveSubmitSelector}
+                    onChange={(e) => setResolveSubmitSelector(e.target.value)}
+                    placeholder="e.g. button[data-automation-id='submit-button'] or #submit-application"
+                    className="w-full p-2 border border-jv-rule bg-jv-bg font-mono text-xs text-jv-ink rounded-none"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-jv-muted font-medium">Control ID (Optional)</label>
+                  <input
+                    type="text"
+                    value={resolveSubmitControlId}
+                    onChange={(e) => setResolveSubmitControlId(e.target.value)}
+                    placeholder="e.g. submit_btn"
+                    className="w-full p-2 border border-jv-rule bg-jv-bg font-mono text-xs text-jv-ink rounded-none"
+                  />
+                </div>
+                <div className="sm:col-span-3 space-y-1">
+                  <label className="text-jv-muted font-medium">Submit Button Label</label>
+                  <input
+                    type="text"
+                    value={resolveSubmitLabel}
+                    onChange={(e) => setResolveSubmitLabel(e.target.value)}
+                    placeholder="e.g. Submit Application"
+                    className="w-full p-2 border border-jv-rule bg-jv-bg text-xs text-jv-ink rounded-none"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Constitutional Notice */}
+            <div className="p-3 border border-jv-rule bg-jv-surface/30 text-xs text-jv-muted font-interface flex items-start gap-2">
+              <Lock className="w-4 h-4 text-jv-accent shrink-0 mt-0.5" />
+              <div>
+                <span className="font-semibold text-jv-ink">Decoupled Planning Authority:</span> Saving and compiling this plan seals an exact execution specification for user review. No browser connection, network request, or transmission is made.
+              </div>
+            </div>
+
+            {/* Footer Buttons */}
+            <div className="flex items-center justify-end gap-3 pt-3 border-t border-jv-rule">
+              <TactileButton
+                variant="outline"
+                size="sm"
+                onClick={() => setShowResolvePlanModal(false)}
+              >
+                Cancel
+              </TactileButton>
+              <TactileButton
+                variant="primary"
+                size="sm"
+                loading={createPlan.isPending}
+                onClick={handleSaveAndCompileResolvedPlan}
+              >
+                Compile Action Plan with Resolved Bindings →
+              </TactileButton>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

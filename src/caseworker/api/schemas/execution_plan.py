@@ -33,6 +33,7 @@ class TargetSchemaQuestionSchema(BaseModel):
     question_text: str
     required: bool = True
     answer_type: str = "text"
+    allowed_options: list[str] = Field(default_factory=list)
 
 
 class TargetSubmitControlSpecSchema(BaseModel):
@@ -41,6 +42,8 @@ class TargetSubmitControlSpecSchema(BaseModel):
     control_type: str = "button_submit"
     semantic_target: str = "Submit Application"
     selector: str = ""
+    control_id: str = ""
+    control_provenance: str = ""
     method: str = "POST"
     requires_double_confirmation: bool = True
 
@@ -49,6 +52,7 @@ class TargetInteractionSchemaSchema(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     schema_id: str
+    target_schema_provenance: str = "USER_PROVIDED"
     destination_type: str = "ats_form"
     fields: list[TargetSchemaFieldSchema] = Field(default_factory=list)
     upload_slots: list[TargetSchemaUploadSlotSchema] = Field(default_factory=list)
@@ -70,12 +74,20 @@ class ExecutionDestinationSchema(BaseModel):
     normalized_hostname: str = ""
 
 
+class TargetFieldBindingSchema(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    target_field_id: str
+    source_fact_id: str
+
+
 class CreateExecutionPlanRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     package_id: str | None = None
     destination_override: ExecutionDestinationSchema | None = None
     target_schema: TargetInteractionSchemaSchema | None = None
+    field_bindings: list[TargetFieldBindingSchema] = Field(default_factory=list)
     channel_metadata: dict[str, Any] | None = None
     final_submit_control: TargetSubmitControlSpecSchema | None = None
 
@@ -88,6 +100,7 @@ class ExecutionFieldMappingResponse(BaseModel):
     source_fact_version: int
     verification_status: str
     required: bool
+    allowed_purposes: list[str] = Field(default_factory=list)
 
 
 class ExecutionUploadAssetResponse(BaseModel):
@@ -107,6 +120,8 @@ class ExecutionScreeningResponseDTO(BaseModel):
     question: str
     answer: str
     source_artifact_id: str
+    source_artifact_version: int = 1
+    source_payload_hash: str = ""
     grounding_claim_ids: list[str]
 
 
