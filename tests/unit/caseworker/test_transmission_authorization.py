@@ -618,35 +618,148 @@ class TestTransmissionAuthorization(unittest.TestCase):
             c = uow.cases.get_by_id(self.case_id)
             self.assertEqual(c.status, CaseStatus.ACTION_REQUIRED)
 
-    def test_api_route_request_authorization(self) -> None:
-        """Correction 2: Test POST /api/v1/cases/{case_id}/execution/plan/{plan_id}/request-authorization endpoint."""
+    def test_api_route_request_authorization_enforces_if_match_and_allows_idempotent_retry(self) -> None:
+        """Enforces Case If-Match on genuinely new request, and preserves idempotent retries with stale or missing If-Match."""
         config = APIConfig(dev_auth=True)
         app = create_app(config=config, storage=self.storage)
         client = TestClient(app)
-        headers = {"X-JackVerse-User": self.user_id}
 
-        res = client.post(
+        with self.storage.unit_of_work() as uow:
+            c = uow.cases.get_by_id(self.case_id)
+            case_version = c.version
+
+        # 1. Missing If-Match on new request: 428 Precondition Required
+        res_missing = client.post(
             f"/api/v1/cases/{self.case_id}/execution/plan/{self.plan.plan_id}/request-authorization",
-            headers=headers,
+            headers={"X-JackVerse-User": self.user_id},
         )
-        self.assertEqual(res.status_code, 200)
-        data = res.json()
+        self.assertEqual(res_missing.status_code, 428)
+
+        # 2. Mismatched If-Match on new request: 412 Precondition Failed
+        res_mismatch = client.post(
+            f"/api/v1/cases/{self.case_id}/execution/plan/{self.plan.plan_id}/request-authorization",
+            headers={
+                "X-JackVerse-User": self.user_id,
+                "If-Match": f'"case:{self.case_id}:v999"',
+            },
+        )
+        self.assertEqual(res_mismatch.status_code, 412)
+
+        # 3. Matching If-Match on new request: 200 OK
+        correct_etag = f'"case:{self.case_id}:v{case_version}"'
+        res_ok = client.post(
+            f"/api/v1/cases/{self.case_id}/execution/plan/{self.plan.plan_id}/request-authorization",
+            headers={
+                "X-JackVerse-User": self.user_id,
+                "If-Match": correct_etag,
+            },
+        )
+        self.assertEqual(res_ok.status_code, 200)
+        data = res_ok.json()
         self.assertIn("action", data)
         self.assertIn("approval", data)
         self.assertEqual(data["action"]["action_type"], "submit_form")
         self.assertEqual(data["action"]["status"], "awaiting_approval")
         self.assertEqual(data["approval"]["status"], "pending")
-        self.assertIsNotNone(res.headers.get("etag"))
+        self.assertIsNotNone(res_ok.headers.get("etag"))
 
-        # Test retry through API returns same pair idempotently
-        repeat_res = client.post(
+        # 4. Idempotent retry with original (now stale) If-Match header: 200 OK
+        retry_stale = client.post(
             f"/api/v1/cases/{self.case_id}/execution/plan/{self.plan.plan_id}/request-authorization",
-            headers=headers,
+            headers={
+                "X-JackVerse-User": self.user_id,
+                "If-Match": correct_etag,
+            },
         )
-        self.assertEqual(repeat_res.status_code, 200)
-        repeat_data = repeat_res.json()
-        self.assertEqual(data["action"]["action_id"], repeat_data["action"]["action_id"])
-        self.assertEqual(data["approval"]["approval_id"], repeat_data["approval"]["approval_id"])
+        self.assertEqual(retry_stale.status_code, 200)
+        retry_data = retry_stale.json()
+        self.assertEqual(data["action"]["action_id"], retry_data["action"]["action_id"])
+        self.assertEqual(data["approval"]["approval_id"], retry_data["approval"]["approval_id"])
+
+        # 5. Idempotent retry with NO If-Match header: 200 OK
+        retry_no_etag = client.post(
+            f"/api/v1/cases/{self.case_id}/execution/plan/{self.plan.plan_id}/request-authorization",
+            headers={"X-JackVerse-User": self.user_id},
+        )
+        self.assertEqual(retry_no_etag.status_code, 200)
+        self.assertEqual(data["action"]["action_id"], retry_no_etag.json()["action"]["action_id"])
+
+    def test_approval_time_action_fingerprint_tampering_unwinds_as_authorization_binding_invalid(self) -> None:
+        """Tampering top-level action description changes fingerprint, unwinding as AUTHORIZATION_BINDING_INVALID."""
+        action, approval = self.plan_service.request_transmission_authorization(
+            user_id=self.user_id,
+            case_id=self.case_id,
+            plan_id=self.plan.plan_id,
+        )
+
+        # Tamper action description in DB directly (alters action.compute_fingerprint())
+        with self.storage.unit_of_work() as uow:
+            act = uow.actions.get_by_id(action.action_id)
+            act.description = "Tampered description altering action fingerprint"
+            act.version += 1
+            uow.actions.save(act)
+
+        with self.assertRaises(ApprovalValidationError) as ctx:
+            self.approval_service.approve_action(
+                user_id=self.user_id,
+                approval_id=approval.approval_id,
+            )
+        self.assertIn("Transmission approval failed revalidation", str(ctx.exception))
+        self.assertEqual(
+            ctx.exception.details.get("failure_kind"),
+            "authorization_binding_invalid",
+        )
+
+        with self.storage.unit_of_work() as uow:
+            # Plan remains READY_FOR_AUTHORIZATION (not superseded)
+            p = uow.execution_plans.get_by_id(self.plan.plan_id)
+            self.assertEqual(p.status, ExternalExecutionPlanStatus.READY_FOR_AUTHORIZATION)
+
+            # Action and Approval are CANCELLED
+            act = uow.actions.get_by_id(action.action_id)
+            self.assertEqual(act.status, ActionStatus.CANCELLED)
+            app = uow.approvals.get_by_id(approval.approval_id)
+            self.assertEqual(app.status, ApprovalStatus.CANCELLED)
+
+            # Case unwinds to ACTION_REQUIRED
+            c = uow.cases.get_by_id(self.case_id)
+            self.assertEqual(c.status, CaseStatus.ACTION_REQUIRED)
+
+    def test_approval_time_action_parameter_tampering_unwinds_as_authorization_binding_invalid(self) -> None:
+        """Tampering non-plan action parameter (e.g. destination_hostname) unwinds as AUTHORIZATION_BINDING_INVALID."""
+        action, approval = self.plan_service.request_transmission_authorization(
+            user_id=self.user_id,
+            case_id=self.case_id,
+            plan_id=self.plan.plan_id,
+        )
+
+        # Tamper destination_hostname parameter in DB
+        with self.storage.unit_of_work() as uow:
+            act = uow.actions.get_by_id(action.action_id)
+            act.parameters["destination_hostname"] = "evil-destination.example.com"
+            act.version += 1
+            uow.actions.save(act)
+
+        with self.assertRaises(ApprovalValidationError) as ctx:
+            self.approval_service.approve_action(
+                user_id=self.user_id,
+                approval_id=approval.approval_id,
+            )
+        self.assertIn("Transmission approval failed revalidation", str(ctx.exception))
+        self.assertEqual(
+            ctx.exception.details.get("failure_kind"),
+            "authorization_binding_invalid",
+        )
+
+        with self.storage.unit_of_work() as uow:
+            p = uow.execution_plans.get_by_id(self.plan.plan_id)
+            self.assertEqual(p.status, ExternalExecutionPlanStatus.READY_FOR_AUTHORIZATION)
+            act = uow.actions.get_by_id(action.action_id)
+            self.assertEqual(act.status, ActionStatus.CANCELLED)
+            app = uow.approvals.get_by_id(approval.approval_id)
+            self.assertEqual(app.status, ApprovalStatus.CANCELLED)
+            c = uow.cases.get_by_id(self.case_id)
+            self.assertEqual(c.status, CaseStatus.ACTION_REQUIRED)
 
 
 if __name__ == "__main__":

@@ -25,6 +25,7 @@ from caseworker.domain.execution_plan import (
 from caseworker.domain.package_integrity import PreparationPackageIntegrityValidator
 
 if TYPE_CHECKING:
+    from caseworker.domain.approval import Approval
     from caseworker.domain.case import Case
     from caseworker.persistence.base import CaseworkerUnitOfWork
 
@@ -65,6 +66,7 @@ class ExecutionPlanIntegrityValidator:
         user_id: str,
         expected_plan_status: ExternalExecutionPlanStatus | None = ExternalExecutionPlanStatus.READY_FOR_AUTHORIZATION,
         action: Action | None = None,
+        approval: Approval | None = None,
     ) -> ExecutionPlanIntegrityValidationResult:
         """Validate all cryptographic and semantic invariants for transmission authorization.
 
@@ -245,6 +247,30 @@ class ExecutionPlanIntegrityValidator:
                     reason="Action execution_input_hash does not match plan execution_input_hash.",
                     findings=["EXECUTION_INPUT_HASH_MISMATCH"],
                 )
+
+            # Action Fingerprint Integrity: catch ANY Action fingerprint tampering
+            if approval is not None:
+                if approval.action_id != action.action_id or approval.case_id != action.case_id:
+                    return ExecutionPlanIntegrityValidationResult(
+                        is_valid=False,
+                        failure_kind=ExecutionPlanIntegrityFailureKind.AUTHORIZATION_BINDING_INVALID,
+                        reason=(
+                            f"Approval action binding mismatch (approval action '{approval.action_id}' vs "
+                            f"action '{action.action_id}', approval case '{approval.case_id}' vs action case '{action.case_id}')."
+                        ),
+                        findings=["ACTION_ID_MISMATCH"],
+                    )
+                computed_action_fp = action.compute_fingerprint()
+                if approval.action_fingerprint != computed_action_fp:
+                    return ExecutionPlanIntegrityValidationResult(
+                        is_valid=False,
+                        failure_kind=ExecutionPlanIntegrityFailureKind.AUTHORIZATION_BINDING_INVALID,
+                        reason=(
+                            f"Action fingerprint mismatch. Action parameters or description have changed since "
+                            f"authorization was requested (expected {approval.action_fingerprint[:12]}..., got {computed_action_fp[:12]}...)."
+                        ),
+                        findings=["ACTION_FINGERPRINT_MISMATCH"],
+                    )
 
         return ExecutionPlanIntegrityValidationResult(
             is_valid=True,

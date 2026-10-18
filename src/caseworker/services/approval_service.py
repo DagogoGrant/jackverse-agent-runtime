@@ -112,7 +112,14 @@ class ApprovalService:
             is_submit_form = (
                 action.action_type == ActionType.SUBMIT_FORM
                 or (hasattr(action.action_type, "value") and action.action_type.value == ActionType.SUBMIT_FORM.value)
-            ) and (action.parameters.get("scope") == "external_transmission" or "plan_id" in action.parameters)
+            ) and (
+                bool(action.parameters and (
+                    action.parameters.get("scope") == "external_transmission"
+                    or "plan_id" in action.parameters
+                    or action.parameters.get("authorization_schema") == "tx_auth_v1"
+                ))
+                or bool(action.idempotency_key and action.idempotency_key.startswith("tx_act:"))
+            )
 
             if is_prep_pkg:
                 package_id = action.parameters.get("package_id")
@@ -204,24 +211,45 @@ class ApprovalService:
                     )
 
             elif is_submit_form:
-                plan_id = action.parameters.get("plan_id")
-                plan = uow.execution_plans.get_by_id(plan_id) if plan_id else None
-                if plan is None:
+                # Catch ANY Action fingerprint tampering first as AUTHORIZATION_BINDING_INVALID
+                computed_action_fp = action.compute_fingerprint()
+                if (
+                    approval.action_fingerprint != computed_action_fp
+                    or approval.action_id != action.action_id
+                    or approval.case_id != action.case_id
+                ):
                     val_res = ExecutionPlanIntegrityValidationResult(
                         is_valid=False,
                         failure_kind=ExecutionPlanIntegrityFailureKind.AUTHORIZATION_BINDING_INVALID,
-                        reason=f"ExternalExecutionPlan '{plan_id}' referenced by action was not found.",
-                        findings=["PLAN_NOT_FOUND"],
+                        reason=(
+                            f"Action fingerprint mismatch. Action parameters or description have changed since "
+                            f"authorization was requested (approval action_fingerprint '{approval.action_fingerprint}', "
+                            f"computed '{computed_action_fp}')."
+                        ),
+                        findings=["ACTION_FINGERPRINT_MISMATCH"],
                     )
+                    plan_id = action.parameters.get("plan_id") if action.parameters else None
+                    plan = uow.execution_plans.get_by_id(plan_id) if plan_id else None
                 else:
-                    val_res = ExecutionPlanIntegrityValidator.validate(
-                        uow=uow,
-                        case=case,
-                        plan=plan,
-                        user_id=user_id,
-                        expected_plan_status=ExternalExecutionPlanStatus.READY_FOR_AUTHORIZATION,
-                        action=action,
-                    )
+                    plan_id = action.parameters.get("plan_id") if action.parameters else None
+                    plan = uow.execution_plans.get_by_id(plan_id) if plan_id else None
+                    if plan is None:
+                        val_res = ExecutionPlanIntegrityValidationResult(
+                            is_valid=False,
+                            failure_kind=ExecutionPlanIntegrityFailureKind.AUTHORIZATION_BINDING_INVALID,
+                            reason=f"ExternalExecutionPlan '{plan_id}' referenced by action was not found.",
+                            findings=["PLAN_NOT_FOUND"],
+                        )
+                    else:
+                        val_res = ExecutionPlanIntegrityValidator.validate(
+                            uow=uow,
+                            case=case,
+                            plan=plan,
+                            user_id=user_id,
+                            expected_plan_status=ExternalExecutionPlanStatus.READY_FOR_AUTHORIZATION,
+                            action=action,
+                            approval=approval,
+                        )
                 if not val_res.is_valid:
                     # Failure classification (Correction 6):
                     # For PLAN_INVALID: Plan -> SUPERSEDED, Approval -> CANCELLED, Action -> CANCELLED, Case -> ACTION_REQUIRED
@@ -288,7 +316,54 @@ class ApprovalService:
                     )
 
             # Approve domain model (validates action fingerprint and updates status/version)
-            approval.approve(action=action, reason=reason)
+            try:
+                approval.approve(action=action, reason=reason)
+            except ApprovalValidationError as err:
+                if is_submit_form:
+                    approval.cancel(reason=f"Approval revalidation failed: {err}")
+                    uow.approvals.save(approval)
+                    uow.events.append(
+                        make_approval_decided_event(
+                            approval_id=approval.approval_id,
+                            user_id=user_id,
+                            aggregate_version=approval.version,
+                            decision="cancelled",
+                            reason=f"Approval revalidation failed: {err}",
+                        )
+                    )
+                    old_action_status = action.status.value
+                    action.transition_to(ActionStatus.CANCELLED, reason=f"Approval revalidation failed: {err}")
+                    uow.actions.save(action)
+                    uow.events.append(
+                        make_action_status_changed_event(
+                            action_id=action.action_id,
+                            user_id=user_id,
+                            aggregate_version=action.version,
+                            old_status=old_action_status,
+                            new_status=action.status.value,
+                            reason=f"Approval revalidation failed: {err}",
+                        )
+                    )
+                    if case.status == CaseStatus.AWAITING_APPROVAL:
+                        old_case_status = case.status.value
+                        case.transition_to(CaseStatus.ACTION_REQUIRED, reason=f"Transmission plan invalidated: {err}")
+                        uow.cases.save(case)
+                        uow.events.append(
+                            make_case_status_changed_event(
+                                case_id=case.case_id,
+                                user_id=user_id,
+                                aggregate_version=case.version,
+                                old_status=old_case_status,
+                                new_status=case.status.value,
+                                reason=f"Transmission plan invalidated: {err}",
+                            )
+                        )
+                    uow.commit()
+                    raise ApprovalValidationError(
+                        f"Transmission approval failed revalidation: {err}",
+                        details={"findings": ["ACTION_FINGERPRINT_MISMATCH"], "reval_reason": str(err), "failure_kind": ExecutionPlanIntegrityFailureKind.AUTHORIZATION_BINDING_INVALID.value},
+                    )
+                raise
             uow.approvals.save(approval)
 
             approval_event = make_approval_decided_event(

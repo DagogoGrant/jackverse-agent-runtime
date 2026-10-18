@@ -422,6 +422,35 @@ class ExecutionPlanService:
             plans = uow.execution_plans.list_for_case(case_id)
             return [self._attach_staleness(uow, p) for p in plans]
 
+    def find_existing_transmission_authorization(
+        self,
+        user_id: str,
+        case_id: str,
+        plan_id: str,
+    ) -> tuple[Action, Approval] | None:
+        """Find an existing active or approved transmission authorization for the given plan without side effects.
+
+        Enables exact replay / idempotent retry resolution before If-Match check.
+        """
+        with self.storage.unit_of_work() as uow:
+            plan = uow.execution_plans.get_by_id(plan_id)
+            if plan is None or plan.case_id != case_id or plan.user_id != user_id:
+                return None
+
+            case_actions = uow.actions.list_by_case(case_id)
+            for act in case_actions:
+                act_type = act.action_type.value if hasattr(act.action_type, "value") else str(act.action_type)
+                if (
+                    act_type == ActionType.SUBMIT_FORM.value
+                    and act.parameters.get("execution_plan_fingerprint") == plan.execution_plan_fingerprint
+                ):
+                    app = uow.approvals.get_by_action_id(act.action_id)
+                    if act.status == ActionStatus.AWAITING_APPROVAL and app and app.status == ApprovalStatus.PENDING:
+                        return act, app
+                    if act.status == ActionStatus.APPROVED and app and app.status == ApprovalStatus.APPROVED:
+                        return act, app
+            return None
+
     def request_transmission_authorization(
         self,
         user_id: str,

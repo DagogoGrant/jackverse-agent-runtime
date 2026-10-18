@@ -1137,9 +1137,32 @@ async def request_plan_authorization(
     request: Request,
     response: Response,
     principal: Annotated[Principal, Depends(get_principal)],
+    case_service: Annotated[CaseService, Depends(get_case_service)],
     execution_plan_service: Annotated[ExecutionPlanService, Depends(get_execution_plan_service)],
 ) -> ApprovalDecisionResponse:
     """Request human authorization for an exact ExternalExecutionPlan under ETag control."""
+    # 1. Exact replay / idempotent retry resolution before If-Match check
+    existing_auth = execution_plan_service.find_existing_transmission_authorization(
+        user_id=principal.user_id,
+        case_id=case_id,
+        plan_id=plan_id,
+    )
+    if existing_auth is not None:
+        action, approval = existing_auth
+        set_etag_header(response, "approval", approval.approval_id, approval.version)
+        return ApprovalDecisionResponse(
+            approval=_to_approval_response(approval),
+            action=_to_action_response(action),
+        )
+
+    # 2. Case presence & concurrency validation on genuinely new requests
+    case = case_service.get_case_for_user(principal.user_id, case_id)
+    if case is None:
+        raise EntityNotFoundError("Case", case_id)
+
+    check_if_match(request, "case", case.case_id, case.version)
+
+    # 3. Genuinely new authorization request
     action, approval = execution_plan_service.request_transmission_authorization(
         user_id=principal.user_id,
         case_id=case_id,
