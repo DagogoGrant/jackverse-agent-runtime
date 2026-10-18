@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import date, datetime
 import re
 from typing import Any
 import urllib.parse
@@ -238,9 +238,12 @@ def validate_and_normalize_field_value(tf: TargetSchemaField, raw_value: Any) ->
 
     if ftype == TargetFieldType.DATE.value:
         val = str(raw_value).strip()
-        date_re = re.compile(r"^\d{4}-\d{2}-\d{2}$")
-        if date_re.match(val):
-            return True, val, ""
+        if re.fullmatch(r"\d{4}-\d{2}-\d{2}", val):
+            try:
+                date.fromisoformat(val)
+                return True, val, ""
+            except (ValueError, TypeError):
+                pass
         return False, None, f"Date value '{raw_value}' does not conform to canonical format YYYY-MM-DD."
 
     if ftype == TargetFieldType.NUMBER.value:

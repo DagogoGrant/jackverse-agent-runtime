@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
 import decimal
 import re
 from typing import Any
@@ -518,10 +518,14 @@ class ExecutionPlanCompiler:
                                 continue
                         elif sq_type == TargetAnswerType.DATE.value:
                             raw_clean = ans_val.strip()
-                            try:
-                                datetime.strptime(raw_clean, "%Y-%m-%d")
-                                ans_val = raw_clean
-                            except (ValueError, TypeError):
+                            is_iso = bool(re.fullmatch(r"\d{4}-\d{2}-\d{2}", raw_clean))
+                            if is_iso:
+                                try:
+                                    date.fromisoformat(raw_clean)
+                                    ans_val = raw_clean
+                                except (ValueError, TypeError):
+                                    is_iso = False
+                            if not is_iso:
                                 findings.append(
                                     ExecutionPlanFinding(
                                         check_name="screening_resolution",

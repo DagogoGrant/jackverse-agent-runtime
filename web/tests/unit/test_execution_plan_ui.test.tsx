@@ -538,4 +538,225 @@ describe("Phase 5.3.1 Exact External Action Planning UI Dossier", () => {
       expect(screen.getByText(/No upload slots declared in target schema/i)).toBeInTheDocument();
     });
   });
+
+  it("allows explicit schema construction when schema is absent and compiles user-entered schema with no invented values", async () => {
+    let capturedCompilePayload: any = null;
+    const mockPlanNoSchema = {
+      ...mockPlan,
+      status: "draft",
+      destination: null,
+      target_schema: null,
+      field_mappings: [],
+      upload_mappings: [],
+      findings: [
+        {
+          check_name: "target_schema_verification",
+          passed: false,
+          severity: "error",
+          code: "TARGET_SCHEMA_REQUIRED",
+          message: "Target interaction schema is absent.",
+          details: {},
+        },
+      ],
+    };
+
+    vi.spyOn(globalThis, "fetch").mockImplementation((input: any, init?: any) => {
+      const url = String(input);
+      if (url.includes("/cases/case-001/execution/plan") && init?.method === "POST") {
+        capturedCompilePayload = JSON.parse(init.body);
+        return Promise.resolve(new Response(JSON.stringify(mockPlan), { status: 200 }));
+      }
+      if (url.includes("/cases/case-001/execution/plan/latest")) {
+        return Promise.resolve(new Response(JSON.stringify(mockPlanNoSchema), { status: 200 }));
+      }
+      if (url.includes("/cases/case-001/preparation/packages/latest")) {
+        return Promise.resolve(new Response(JSON.stringify(mockPackage), { status: 200 }));
+      }
+      if (url.includes("/cases/case-001/preparation/artifacts")) {
+        return Promise.resolve(new Response(JSON.stringify({ artifacts: mockArtifacts, total: 1 }), { status: 200 }));
+      }
+      if (url.includes("/cases/case-001/actions")) {
+        return Promise.resolve(new Response(JSON.stringify([]), { status: 200 }));
+      }
+      if (url.includes("/cases/case-001/claims")) {
+        return Promise.resolve(new Response(JSON.stringify([]), { status: 200 }));
+      }
+      if (url.includes("/cases/case-001/preparation/report/latest")) {
+        return Promise.resolve(new Response(JSON.stringify({}), { status: 200 }));
+      }
+      if (url.includes("/cases/case-001")) {
+        return Promise.resolve(new Response(JSON.stringify(mockCase), { status: 200 }));
+      }
+      if (url.includes("/events")) {
+        return Promise.resolve(new Response(JSON.stringify({ events: [], next_cursor: null }), { status: 200 }));
+      }
+      return Promise.resolve(new Response("Not found", { status: 404 }));
+    });
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter initialEntries={["/cases/case-001"]}>
+          <Routes>
+            <Route path="/cases/:caseId" element={<CaseDetailView />} />
+          </Routes>
+        </MemoryRouter>
+      </QueryClientProvider>
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText(/Resolve plan inputs →/i)).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByText(/Resolve plan inputs →/i));
+
+    await waitFor(() => {
+      expect(screen.getByText(/NO TARGET INTERACTION SCHEMA DECLARED/i)).toBeInTheDocument();
+    });
+
+    // 1. Operator adds a field but forgets destination_type -> client-side validation error shown
+    const addFieldBtns = screen.getAllByText(/\+ Add Target Field/i);
+    fireEvent.click(addFieldBtns[0]);
+
+    const fieldIdInput = screen.getByPlaceholderText(/Field ID \(e\.g\. first_name\)/i);
+    fireEvent.change(fieldIdInput, { target: { value: "custom_first_name" } });
+
+    const fieldLabelInput = screen.getByPlaceholderText(/Label \(e\.g\. First Name\)/i);
+    fireEvent.change(fieldLabelInput, { target: { value: "First Name" } });
+
+    const fieldTypeSelect = screen.getByLabelText(/Field Type for First Name/i);
+    fireEvent.change(fieldTypeSelect, { target: { value: "text" } });
+
+    const compileBtn = screen.getByText(/Compile Action Plan with Resolved Bindings →/i);
+    fireEvent.click(compileBtn);
+
+    await waitFor(() => {
+      expect(screen.getByText(/Destination type \(ats_form or direct_portal\) is required/i)).toBeInTheDocument();
+    });
+    expect(capturedCompilePayload).toBeNull();
+
+    // 2. Operator selects destination_type = direct_portal and adds an upload slot
+    const channelSelect = screen.getByLabelText(/Channel Type/i);
+    fireEvent.change(channelSelect, { target: { value: "direct_portal" } });
+
+    const addSlotBtns = screen.getAllByText(/\+ Add Upload Slot/i);
+    fireEvent.click(addSlotBtns[0]);
+
+    const slotIdInput = screen.getByPlaceholderText(/Slot ID \(e\.g\. resume\)/i);
+    fireEvent.change(slotIdInput, { target: { value: "cv_doc" } });
+
+    const slotRoleInput = screen.getByPlaceholderText(/Role \(e\.g\. RESUME\)/i);
+    fireEvent.change(slotRoleInput, { target: { value: "RESUME" } });
+
+    const slotLabelInput = screen.getByPlaceholderText(/Label \(e\.g\. Resume \/ CV\)/i);
+    fireEvent.change(slotLabelInput, { target: { value: "Curriculum Vitae" } });
+
+    // Set canonical url to test destinationOverride
+    const urlInput = screen.getByPlaceholderText(/https:\/\/company\.greenhouse\.io\/jobs\/123\/apply/i);
+    fireEvent.change(urlInput, { target: { value: "https://portal.example.com/apply" } });
+
+    fireEvent.click(compileBtn);
+
+    await waitFor(() => {
+      expect(capturedCompilePayload).not.toBeNull();
+    });
+
+    expect(capturedCompilePayload.target_schema).not.toBeNull();
+    expect(capturedCompilePayload.target_schema.destination_type).toBe("direct_portal");
+    expect(capturedCompilePayload.target_schema.fields).toHaveLength(1);
+    expect(capturedCompilePayload.target_schema.fields[0]).toMatchObject({
+      target_field_id: "custom_first_name",
+      label: "First Name",
+      field_type: "text",
+      required: true,
+      allowed_options: [],
+    });
+    expect(capturedCompilePayload.target_schema.upload_slots).toHaveLength(1);
+    expect(capturedCompilePayload.target_schema.upload_slots[0]).toMatchObject({
+      slot_id: "cv_doc",
+      role: "RESUME",
+      label: "Curriculum Vitae",
+      required: true,
+      accepted_mime_types: [],
+    });
+    expect(capturedCompilePayload.destination_override).toMatchObject({
+      canonical_url: "https://portal.example.com/apply",
+      destination_type: "direct_portal",
+      is_exact_destination: true,
+    });
+  });
+
+  it("compiles with targetSchema: null and destination_override: null when no schema or destination is entered", async () => {
+    let capturedCompilePayload: any = null;
+    const mockPlanNoSchema = {
+      ...mockPlan,
+      status: "draft",
+      destination: null,
+      target_schema: null,
+      field_mappings: [],
+      upload_mappings: [],
+      findings: [],
+    };
+
+    vi.spyOn(globalThis, "fetch").mockImplementation((input: any, init?: any) => {
+      const url = String(input);
+      if (url.includes("/cases/case-001/execution/plan") && init?.method === "POST") {
+        capturedCompilePayload = JSON.parse(init.body);
+        return Promise.resolve(new Response(JSON.stringify(mockPlan), { status: 200 }));
+      }
+      if (url.includes("/cases/case-001/execution/plan/latest")) {
+        return Promise.resolve(new Response(JSON.stringify(mockPlanNoSchema), { status: 200 }));
+      }
+      if (url.includes("/cases/case-001/preparation/packages/latest")) {
+        return Promise.resolve(new Response(JSON.stringify(mockPackage), { status: 200 }));
+      }
+      if (url.includes("/cases/case-001/preparation/artifacts")) {
+        return Promise.resolve(new Response(JSON.stringify({ artifacts: mockArtifacts, total: 1 }), { status: 200 }));
+      }
+      if (url.includes("/cases/case-001/actions")) {
+        return Promise.resolve(new Response(JSON.stringify([]), { status: 200 }));
+      }
+      if (url.includes("/cases/case-001/claims")) {
+        return Promise.resolve(new Response(JSON.stringify([]), { status: 200 }));
+      }
+      if (url.includes("/cases/case-001/preparation/report/latest")) {
+        return Promise.resolve(new Response(JSON.stringify({}), { status: 200 }));
+      }
+      if (url.includes("/cases/case-001")) {
+        return Promise.resolve(new Response(JSON.stringify(mockCase), { status: 200 }));
+      }
+      if (url.includes("/events")) {
+        return Promise.resolve(new Response(JSON.stringify({ events: [], next_cursor: null }), { status: 200 }));
+      }
+      return Promise.resolve(new Response("Not found", { status: 404 }));
+    });
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter initialEntries={["/cases/case-001"]}>
+          <Routes>
+            <Route path="/cases/:caseId" element={<CaseDetailView />} />
+          </Routes>
+        </MemoryRouter>
+      </QueryClientProvider>
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText(/Resolve plan inputs →/i)).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByText(/Resolve plan inputs →/i));
+
+    await waitFor(() => {
+      expect(screen.getByText(/NO TARGET INTERACTION SCHEMA DECLARED/i)).toBeInTheDocument();
+    });
+
+    const compileBtn = screen.getByText(/Compile Action Plan with Resolved Bindings →/i);
+    fireEvent.click(compileBtn);
+
+    await waitFor(() => {
+      expect(capturedCompilePayload).not.toBeNull();
+    });
+    expect(capturedCompilePayload.target_schema).toBeNull();
+    expect(capturedCompilePayload.destination_override).toBeNull();
+  });
 });

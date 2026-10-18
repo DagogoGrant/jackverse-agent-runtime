@@ -22,7 +22,15 @@ import {
   useContextFacts,
 } from '../hooks/useCaseworker';
 import { apiRequest, PreconditionFailedError } from '../api/client';
-import type { Claim, TargetFieldBinding, TargetInteractionSchema, ExecutionDestination } from '../api/types';
+import type {
+  Claim,
+  TargetFieldBinding,
+  TargetInteractionSchema,
+  TargetSchemaField,
+  TargetSchemaQuestion,
+  TargetUploadSlot,
+  ExecutionDestination,
+} from '../api/types';
 import { TextureBadge } from '../components/ui/TextureBadge';
 import { TactileButton } from '../components/ui/TactileButton';
 import { humanizeEvent, formatEventTime } from '../lib/eventPresentation';
@@ -113,18 +121,51 @@ export const CaseDetailView: React.FC = () => {
   };
 
   // Phase 5.3.1.1 Plan Input Resolution State
+  interface DeclaredFieldRow {
+    target_field_id: string;
+    label: string;
+    field_type: string;
+    required: boolean;
+    allowed_options: string;
+  }
+
+  interface DeclaredSlotRow {
+    slot_id: string;
+    role: string;
+    label: string;
+    required: boolean;
+    accepted_mime_types: string;
+  }
+
+  interface DeclaredQuestionRow {
+    question_id: string;
+    question_text: string;
+    answer_type: string;
+    required: boolean;
+    allowed_options: string;
+  }
+
   const { data: contextFacts } = useContextFacts();
   const [showResolvePlanModal, setShowResolvePlanModal] = useState(false);
   const [resolveDestinationUrl, setResolveDestinationUrl] = useState('');
   const [resolveDestinationOrg, setResolveDestinationOrg] = useState('');
+  const [resolveDestinationType, setResolveDestinationType] = useState('');
   const [resolveFieldBindings, setResolveFieldBindings] = useState<Record<string, string>>({});
+  const [declaredFields, setDeclaredFields] = useState<DeclaredFieldRow[]>([]);
+  const [declaredUploadSlots, setDeclaredUploadSlots] = useState<DeclaredSlotRow[]>([]);
+  const [declaredQuestions, setDeclaredQuestions] = useState<DeclaredQuestionRow[]>([]);
   const [resolveSubmitSelector, setResolveSubmitSelector] = useState('');
   const [resolveSubmitControlId, setResolveSubmitControlId] = useState('');
   const [resolveSubmitLabel, setResolveSubmitLabel] = useState('');
+  const [resolveSubmitControlType, setResolveSubmitControlType] = useState('');
+  const [resolveSubmitMethod, setResolveSubmitMethod] = useState('');
+  const [resolveModalError, setResolveModalError] = useState<string | null>(null);
 
   const openResolvePlanModal = () => {
+    setResolveModalError(null);
     setResolveDestinationUrl(latestPlan?.destination?.canonical_url || '');
     setResolveDestinationOrg(latestPlan?.destination?.organization || '');
+    setResolveDestinationType(latestPlan?.target_schema?.destination_type || '');
 
     const initialBindings: Record<string, string> = {};
     if (latestPlan?.field_mappings && latestPlan.field_mappings.length > 0) {
@@ -136,17 +177,218 @@ export const CaseDetailView: React.FC = () => {
     }
     setResolveFieldBindings(initialBindings);
 
-    setResolveSubmitSelector(latestPlan?.final_submit_control?.selector || '');
-    setResolveSubmitControlId(latestPlan?.final_submit_control?.control_id || '');
-    setResolveSubmitLabel(latestPlan?.final_submit_control?.semantic_target || '');
+    if (latestPlan?.target_schema?.fields && latestPlan.target_schema.fields.length > 0) {
+      setDeclaredFields(
+        latestPlan.target_schema.fields.map((f) => ({
+          target_field_id: f.target_field_id || '',
+          label: f.label || '',
+          field_type: f.field_type || '',
+          required: Boolean(f.required),
+          allowed_options: (f.allowed_options || []).join(', '),
+        }))
+      );
+    } else {
+      setDeclaredFields([]);
+    }
+
+    if (latestPlan?.target_schema?.upload_slots && latestPlan.target_schema.upload_slots.length > 0) {
+      setDeclaredUploadSlots(
+        latestPlan.target_schema.upload_slots.map((s) => ({
+          slot_id: s.slot_id || '',
+          role: s.role || '',
+          label: s.label || '',
+          required: Boolean(s.required),
+          accepted_mime_types: (s.accepted_mime_types || []).join(', '),
+        }))
+      );
+    } else {
+      setDeclaredUploadSlots([]);
+    }
+
+    if (latestPlan?.target_schema?.screening_questions && latestPlan.target_schema.screening_questions.length > 0) {
+      setDeclaredQuestions(
+        latestPlan.target_schema.screening_questions.map((q) => ({
+          question_id: q.question_id || '',
+          question_text: q.question_text || '',
+          answer_type: q.answer_type || '',
+          required: Boolean(q.required),
+          allowed_options: (q.allowed_options || []).join(', '),
+        }))
+      );
+    } else {
+      setDeclaredQuestions([]);
+    }
+
+    const initialSubmit = latestPlan?.final_submit_control || latestPlan?.target_schema?.final_submit_control;
+    setResolveSubmitSelector(initialSubmit?.selector || '');
+    setResolveSubmitControlId(initialSubmit?.control_id || '');
+    setResolveSubmitLabel(initialSubmit?.semantic_target || '');
+    setResolveSubmitControlType(initialSubmit?.control_type || '');
+    setResolveSubmitMethod(initialSubmit?.method || '');
 
     setShowResolvePlanModal(true);
+  };
+
+  const handleAddField = () => {
+    setDeclaredFields((prev) => [
+      ...prev,
+      {
+        target_field_id: '',
+        label: '',
+        field_type: '',
+        required: true,
+        allowed_options: '',
+      },
+    ]);
+  };
+
+  const handleRemoveField = (index: number) => {
+    setDeclaredFields((prev) => prev.filter((_, i) => i !== index));
+  };
+
+  const handleFieldChange = (index: number, key: keyof DeclaredFieldRow, val: any) => {
+    setDeclaredFields((prev) => {
+      const copy = [...prev];
+      copy[index] = { ...copy[index], [key]: val };
+      return copy;
+    });
+  };
+
+  const handleAddUploadSlot = () => {
+    setDeclaredUploadSlots((prev) => [
+      ...prev,
+      {
+        slot_id: '',
+        role: '',
+        label: '',
+        required: true,
+        accepted_mime_types: '',
+      },
+    ]);
+  };
+
+  const handleRemoveUploadSlot = (index: number) => {
+    setDeclaredUploadSlots((prev) => prev.filter((_, i) => i !== index));
+  };
+
+  const handleSlotChange = (index: number, key: keyof DeclaredSlotRow, val: any) => {
+    setDeclaredUploadSlots((prev) => {
+      const copy = [...prev];
+      copy[index] = { ...copy[index], [key]: val };
+      return copy;
+    });
+  };
+
+  const handleAddQuestion = () => {
+    setDeclaredQuestions((prev) => [
+      ...prev,
+      {
+        question_id: '',
+        question_text: '',
+        answer_type: '',
+        required: true,
+        allowed_options: '',
+      },
+    ]);
+  };
+
+  const handleRemoveQuestion = (index: number) => {
+    setDeclaredQuestions((prev) => prev.filter((_, i) => i !== index));
+  };
+
+  const handleQuestionChange = (index: number, key: keyof DeclaredQuestionRow, val: any) => {
+    setDeclaredQuestions((prev) => {
+      const copy = [...prev];
+      copy[index] = { ...copy[index], [key]: val };
+      return copy;
+    });
   };
 
   const handleSaveAndCompileResolvedPlan = async () => {
     if (!caseId || !caseData) return;
     setPlanError(null);
+    setResolveModalError(null);
     setConcurrencyNotice(null);
+
+    // Serialization filter: do not invent defaults for partial rows
+    const serializedFields: TargetSchemaField[] = declaredFields
+      .filter((f) => f.target_field_id.trim() && f.label.trim() && f.field_type.trim())
+      .map((f) => ({
+        target_field_id: f.target_field_id.trim(),
+        label: f.label.trim(),
+        field_type: f.field_type.trim(),
+        required: Boolean(f.required),
+        allowed_options: f.allowed_options.trim()
+          ? f.allowed_options.split(',').map((s) => s.trim()).filter(Boolean)
+          : [],
+      }));
+
+    const serializedSlots: TargetUploadSlot[] = declaredUploadSlots
+      .filter((s) => s.slot_id.trim() && s.role.trim() && s.label.trim())
+      .map((s) => ({
+        slot_id: s.slot_id.trim(),
+        role: s.role.trim(),
+        label: s.label.trim(),
+        required: Boolean(s.required),
+        accepted_mime_types: s.accepted_mime_types.trim()
+          ? s.accepted_mime_types.split(',').map((m) => m.trim()).filter(Boolean)
+          : [],
+      }));
+
+    const serializedQuestions: TargetSchemaQuestion[] = declaredQuestions
+      .filter((q) => q.question_id.trim() && q.question_text.trim() && q.answer_type.trim())
+      .map((q) => ({
+        question_id: q.question_id.trim(),
+        question_text: q.question_text.trim(),
+        answer_type: q.answer_type.trim(),
+        required: Boolean(q.required),
+        allowed_options: q.allowed_options.trim()
+          ? q.allowed_options.split(',').map((o) => o.trim()).filter(Boolean)
+          : [],
+      }));
+
+    const hasSubmitControlInput = Boolean(
+      resolveSubmitSelector.trim() ||
+      resolveSubmitControlId.trim() ||
+      resolveSubmitLabel.trim() ||
+      resolveSubmitControlType.trim() ||
+      resolveSubmitMethod.trim()
+    );
+
+    const hasAnySchemaContent = Boolean(
+      serializedFields.length > 0 ||
+      serializedSlots.length > 0 ||
+      serializedQuestions.length > 0 ||
+      hasSubmitControlInput
+    );
+
+    if (!resolveDestinationType.trim() && hasAnySchemaContent) {
+      setResolveModalError(
+        'Destination type (ats_form or direct_portal) is required when declaring a target schema.'
+      );
+      return;
+    }
+
+    const targetSchema: TargetInteractionSchema | null = (resolveDestinationType.trim() && hasAnySchemaContent)
+      ? {
+          schema_id: latestPlan?.target_schema?.schema_id || (caseId ? `schema_${caseId}` : 'schema_user'),
+          destination_type: resolveDestinationType.trim(),
+          target_schema_provenance: latestPlan?.target_schema?.target_schema_provenance || 'user_provided',
+          fields: serializedFields,
+          upload_slots: serializedSlots,
+          screening_questions: serializedQuestions,
+          final_submit_control: hasSubmitControlInput ? {
+            control_id: resolveSubmitControlId.trim(),
+            selector: resolveSubmitSelector.trim(),
+            semantic_target: resolveSubmitLabel.trim(),
+            control_provenance: latestPlan?.target_schema?.final_submit_control?.control_provenance || 'user_provided',
+            control_type: resolveSubmitControlType.trim(),
+            method: resolveSubmitMethod.trim(),
+            requires_double_confirmation: true,
+          } : null,
+          schema_hash: '',
+        }
+      : null;
 
     const bindings: TargetFieldBinding[] = Object.entries(resolveFieldBindings)
       .filter(([_, factId]) => Boolean(factId))
@@ -154,25 +396,6 @@ export const CaseDetailView: React.FC = () => {
         target_field_id: fieldId,
         source_fact_id: factId,
       }));
-
-    const targetSchema: TargetInteractionSchema | null = latestPlan?.target_schema ? {
-      schema_id: latestPlan.target_schema.schema_id,
-      destination_type: latestPlan.target_schema.destination_type,
-      target_schema_provenance: latestPlan.target_schema.target_schema_provenance || 'user_provided',
-      fields: latestPlan.target_schema.fields || [],
-      upload_slots: latestPlan.target_schema.upload_slots || [],
-      screening_questions: latestPlan.target_schema.screening_questions || [],
-      final_submit_control: (resolveSubmitSelector || resolveSubmitControlId || resolveSubmitLabel) ? {
-        control_id: resolveSubmitControlId || '',
-        selector: resolveSubmitSelector || '',
-        semantic_target: resolveSubmitLabel || '',
-        control_provenance: latestPlan.target_schema.final_submit_control?.control_provenance || 'user_provided',
-        control_type: latestPlan.target_schema.final_submit_control?.control_type || '',
-        method: latestPlan.target_schema.final_submit_control?.method || '',
-        requires_double_confirmation: true,
-      } : null,
-      schema_hash: '',
-    } : null;
 
     let normOrigin = '';
     let normHost = '';
@@ -189,7 +412,7 @@ export const CaseDetailView: React.FC = () => {
     const destinationOverride: ExecutionDestination | null = resolveDestinationUrl ? {
       canonical_url: resolveDestinationUrl,
       organization: resolveDestinationOrg || '',
-      destination_type: latestPlan?.destination?.destination_type || 'ats_form',
+      destination_type: resolveDestinationType || latestPlan?.destination?.destination_type || '',
       destination_provenance: 'user_provided',
       channel_metadata: latestPlan?.destination?.channel_metadata || {},
       is_exact_destination: true,
@@ -1204,31 +1427,37 @@ export const CaseDetailView: React.FC = () => {
                         {latestPlan && (
                           <div className="space-y-4">
                             {/* Destination Card */}
-                            <div className="p-3 border border-jv-rule bg-jv-bg space-y-2 font-interface text-xs">
-                              <div className="font-machine text-[11px] text-jv-muted uppercase flex items-center justify-between">
-                                <span>Target Destination & Provenance</span>
-                                <span className={`px-1.5 py-0.5 border ${
-                                  latestPlan.destination.is_exact_destination
-                                    ? 'border-emerald-600/30 text-emerald-600 bg-emerald-600/10'
-                                    : 'border-amber-600/30 text-amber-600 bg-amber-600/10'
-                                }`}>
-                                  {latestPlan.destination.is_exact_destination ? 'EXACT DESTINATION' : 'DESTINATION REQUIRED'}
-                                </span>
-                              </div>
-                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-jv-ink">
-                                <div><span className="text-jv-muted">Organization:</span> <span className="font-medium">{latestPlan.destination.organization || '—'}</span></div>
-                                <div><span className="text-jv-muted">Channel Type:</span> <span className="font-mono">{latestPlan.destination.destination_type}</span></div>
-                                <div className="sm:col-span-2 flex items-center gap-1.5 overflow-hidden">
-                                  <span className="text-jv-muted shrink-0">Endpoint URL:</span>
-                                  <span className="font-mono text-jv-accent truncate" title={latestPlan.destination.canonical_url}>
-                                    {latestPlan.destination.canonical_url}
+                            {latestPlan.destination ? (
+                              <div className="p-3 border border-jv-rule bg-jv-bg space-y-2 font-interface text-xs">
+                                <div className="font-machine text-[11px] text-jv-muted uppercase flex items-center justify-between">
+                                  <span>Target Destination & Provenance</span>
+                                  <span className={`px-1.5 py-0.5 border ${
+                                    latestPlan.destination.is_exact_destination
+                                      ? 'border-emerald-600/30 text-emerald-600 bg-emerald-600/10'
+                                      : 'border-amber-600/30 text-amber-600 bg-amber-600/10'
+                                  }`}>
+                                    {latestPlan.destination.is_exact_destination ? 'EXACT DESTINATION' : 'DESTINATION REQUIRED'}
                                   </span>
                                 </div>
-                                <div className="sm:col-span-2 text-[11px] text-jv-muted">
-                                  Provenance: <span className="font-machine text-jv-ink">{latestPlan.destination.destination_provenance}</span>
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-jv-ink">
+                                  <div><span className="text-jv-muted">Organization:</span> <span className="font-medium">{latestPlan.destination.organization || '—'}</span></div>
+                                  <div><span className="text-jv-muted">Channel Type:</span> <span className="font-mono">{latestPlan.destination.destination_type}</span></div>
+                                  <div className="sm:col-span-2 flex items-center gap-1.5 overflow-hidden">
+                                    <span className="text-jv-muted shrink-0">Endpoint URL:</span>
+                                    <span className="font-mono text-jv-accent truncate" title={latestPlan.destination.canonical_url}>
+                                      {latestPlan.destination.canonical_url}
+                                    </span>
+                                  </div>
+                                  <div className="sm:col-span-2 text-[11px] text-jv-muted">
+                                    Provenance: <span className="font-machine text-jv-ink">{latestPlan.destination.destination_provenance}</span>
+                                  </div>
                                 </div>
                               </div>
-                            </div>
+                            ) : (
+                              <div className="p-3 border border-dashed border-jv-rule bg-jv-bg text-center text-[11px] text-jv-muted">
+                                No target destination configured.
+                              </div>
+                            )}
 
                             {/* Field Mappings Table */}
                             {latestPlan.field_mappings && latestPlan.field_mappings.length > 0 && (
@@ -1873,6 +2102,12 @@ export const CaseDetailView: React.FC = () => {
               </button>
             </div>
 
+            {resolveModalError && (
+              <div className="p-3 bg-red-500/10 border border-red-500/30 text-red-600 text-xs font-mono">
+                {resolveModalError}
+              </div>
+            )}
+
             {/* Section 1: Exact Destination */}
             <div className="border border-jv-rule bg-jv-surface/40 p-4 space-y-3">
               <div className="font-machine text-xs font-semibold text-jv-ink uppercase flex items-center justify-between">
@@ -1902,12 +2137,19 @@ export const CaseDetailView: React.FC = () => {
                 </div>
                 <div className="space-y-1">
                   <label className="text-jv-muted font-medium">Channel Type</label>
-                  <input
-                    type="text"
-                    value="ats_form"
-                    disabled
-                    className="w-full p-2 border border-jv-rule bg-jv-surface font-mono text-xs text-jv-muted rounded-none cursor-not-allowed"
-                  />
+                  <select
+                    aria-label="Channel Type"
+                    value={resolveDestinationType}
+                    onChange={(e) => {
+                      setResolveDestinationType(e.target.value);
+                      setResolveModalError(null);
+                    }}
+                    className="w-full p-2 border border-jv-rule bg-jv-bg font-mono text-xs text-jv-ink rounded-none"
+                  >
+                    <option value="">-- Select Channel Type --</option>
+                    <option value="ats_form">ats_form</option>
+                    <option value="direct_portal">direct_portal</option>
+                  </select>
                 </div>
               </div>
             </div>
@@ -1916,70 +2158,132 @@ export const CaseDetailView: React.FC = () => {
             <div className="border border-jv-rule bg-jv-surface/40 p-4 space-y-3">
               <div className="font-machine text-xs font-semibold text-jv-ink uppercase flex items-center justify-between">
                 <span>2. External ATS Form Field Bindings</span>
-                <span className="text-[10px] text-jv-muted font-normal">EXPLICIT VAULT BINDING ONLY</span>
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] text-jv-muted font-normal">EXPLICIT VAULT BINDING ONLY</span>
+                  <button
+                    type="button"
+                    onClick={handleAddField}
+                    className="text-xs px-2 py-0.5 border border-jv-rule bg-jv-bg hover:bg-jv-surface font-machine text-jv-ink cursor-pointer"
+                  >
+                    + Add Target Field
+                  </button>
+                </div>
               </div>
               <p className="text-[11px] text-jv-muted">
                 Each target form field must be explicitly bound to an authorized Vault fact. Missing required bindings will keep the action plan in DRAFT status.
               </p>
 
-              {(!latestPlan?.target_schema || !latestPlan.target_schema.fields || latestPlan.target_schema.fields.length === 0) ? (
-                <div className="p-4 border border-dashed border-jv-rule bg-jv-bg text-center space-y-1">
+              {declaredFields.length === 0 ? (
+                <div className="p-4 border border-dashed border-jv-rule bg-jv-bg text-center space-y-2">
                   <div className="font-machine text-xs text-amber-600 font-semibold">
                     NO TARGET INTERACTION SCHEMA DECLARED
                   </div>
                   <p className="text-[11px] text-jv-muted">
                     Without a declared target schema, exact form fields cannot be resolved. The action plan remains in DRAFT status with finding TARGET_SCHEMA_REQUIRED.
                   </p>
+                  <button
+                    type="button"
+                    onClick={handleAddField}
+                    className="px-3 py-1 bg-jv-ink text-jv-bg font-machine text-xs hover:opacity-90 cursor-pointer"
+                  >
+                    + Add Target Field
+                  </button>
                 </div>
               ) : (
-                <div className="divide-y divide-jv-rule border border-jv-rule bg-jv-bg">
-                  {latestPlan.target_schema.fields.map((field) => {
+                <div className="space-y-3">
+                  {declaredFields.map((field, idx) => {
                     const currentBindingFactId = resolveFieldBindings[field.target_field_id] || '';
                     const boundFact = (contextFacts || []).find((f) => f.fact_id === currentBindingFactId);
                     const isBound = Boolean(currentBindingFactId);
 
                     return (
-                      <div key={field.target_field_id} className="p-3 space-y-2 text-xs">
-                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1">
-                          <div className="flex items-center gap-2">
-                            <span className="font-medium text-jv-ink">{field.label}</span>
-                            <span className="font-mono text-[11px] text-jv-muted">({field.target_field_id})</span>
-                            <span className="font-machine text-[10px] px-1.5 py-0.2 border border-jv-rule bg-jv-surface uppercase text-jv-muted">
-                              {field.field_type}
-                            </span>
-                            {field.required && (
-                              <span className="text-[10px] text-red-500 font-bold">*REQUIRED</span>
-                            )}
+                      <div key={idx} className="p-3 space-y-2 text-xs border border-jv-rule bg-jv-bg">
+                        <div className="grid grid-cols-1 sm:grid-cols-12 gap-2 items-center">
+                          <div className="sm:col-span-4">
+                            <input
+                              type="text"
+                              placeholder="Field ID (e.g. first_name)"
+                              aria-label={`Target Field ID #${idx + 1}`}
+                              value={field.target_field_id}
+                              onChange={(e) => handleFieldChange(idx, 'target_field_id', e.target.value)}
+                              className="w-full p-1.5 border border-jv-rule bg-jv-surface font-mono text-xs text-jv-ink rounded-none"
+                            />
                           </div>
-                          <div>
-                            {isBound ? (
-                              <span className="font-machine text-[10px] text-emerald-600 bg-emerald-600/10 border border-emerald-600/30 px-1.5 py-0.5">
-                                BOUND
-                              </span>
-                            ) : field.required ? (
-                              <span className="font-machine text-[10px] text-amber-600 bg-amber-600/10 border border-amber-600/30 px-1.5 py-0.5">
-                                UNBOUND (REQUIRED)
-                              </span>
-                            ) : (
-                              <span className="font-machine text-[10px] text-jv-muted bg-jv-surface border border-jv-rule px-1.5 py-0.5">
-                                OPTIONAL
-                              </span>
-                            )}
+                          <div className="sm:col-span-3">
+                            <input
+                              type="text"
+                              placeholder="Label (e.g. First Name)"
+                              aria-label={`Label for Field #${idx + 1}`}
+                              value={field.label}
+                              onChange={(e) => handleFieldChange(idx, 'label', e.target.value)}
+                              className="w-full p-1.5 border border-jv-rule bg-jv-surface text-xs text-jv-ink rounded-none"
+                            />
+                          </div>
+                          <div className="sm:col-span-2">
+                            <select
+                              aria-label={`Field Type for ${field.label || `Field #${idx + 1}`}`}
+                              value={field.field_type}
+                              onChange={(e) => handleFieldChange(idx, 'field_type', e.target.value)}
+                              className="w-full p-1.5 border border-jv-rule bg-jv-surface font-mono text-xs text-jv-ink rounded-none"
+                            >
+                              <option value="">-- Type --</option>
+                              <option value="text">text</option>
+                              <option value="email">email</option>
+                              <option value="phone">phone</option>
+                              <option value="number">number</option>
+                              <option value="boolean">boolean</option>
+                              <option value="date">date</option>
+                              <option value="select">select</option>
+                            </select>
+                          </div>
+                          <div className="sm:col-span-2 flex items-center gap-2">
+                            <label className="flex items-center gap-1 text-[11px] text-jv-muted">
+                              <input
+                                type="checkbox"
+                                checked={field.required}
+                                onChange={(e) => handleFieldChange(idx, 'required', e.target.checked)}
+                              />
+                              Required
+                            </label>
+                          </div>
+                          <div className="sm:col-span-1 flex justify-end">
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveField(idx)}
+                              className="text-xs text-red-500 hover:text-red-700 cursor-pointer p-1"
+                              title="Remove field"
+                            >
+                              ✕
+                            </button>
                           </div>
                         </div>
 
-                        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+                        {field.field_type === 'select' && (
+                          <div className="space-y-1">
+                            <input
+                              type="text"
+                              placeholder="Allowed options (comma-separated, e.g. full_time, contractor)"
+                              value={field.allowed_options}
+                              onChange={(e) => handleFieldChange(idx, 'allowed_options', e.target.value)}
+                              className="w-full p-1.5 border border-jv-rule bg-jv-surface font-mono text-xs text-jv-ink rounded-none"
+                            />
+                          </div>
+                        )}
+
+                        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 pt-1 border-t border-jv-rule/40">
                           <select
-                            aria-label={`Vault Fact for ${field.label}`}
+                            aria-label={`Vault Fact for ${field.label || field.target_field_id || `Field #${idx + 1}`}`}
                             value={currentBindingFactId}
                             onChange={(e) => {
                               const val = e.target.value;
-                              setResolveFieldBindings((prev) => ({
-                                ...prev,
-                                [field.target_field_id]: val,
-                              }));
+                              if (field.target_field_id) {
+                                setResolveFieldBindings((prev) => ({
+                                  ...prev,
+                                  [field.target_field_id]: val,
+                                }));
+                              }
                             }}
-                            className="flex-1 p-2 border border-jv-rule bg-jv-surface text-xs font-interface text-jv-ink rounded-none"
+                            className="flex-1 p-1.5 border border-jv-rule bg-jv-surface text-xs font-interface text-jv-ink rounded-none"
                           >
                             <option value="">-- No Vault Fact Bound (Unbound) --</option>
                             {(contextFacts || []).map((fact) => (
@@ -1988,6 +2292,19 @@ export const CaseDetailView: React.FC = () => {
                               </option>
                             ))}
                           </select>
+                          {isBound ? (
+                            <span className="font-machine text-[10px] text-emerald-600 bg-emerald-600/10 border border-emerald-600/30 px-1.5 py-0.5 shrink-0">
+                              BOUND
+                            </span>
+                          ) : field.required ? (
+                            <span className="font-machine text-[10px] text-amber-600 bg-amber-600/10 border border-amber-600/30 px-1.5 py-0.5 shrink-0">
+                              UNBOUND (REQUIRED)
+                            </span>
+                          ) : (
+                            <span className="font-machine text-[10px] text-jv-muted bg-jv-surface border border-jv-rule px-1.5 py-0.5 shrink-0">
+                              OPTIONAL
+                            </span>
+                          )}
                         </div>
 
                         {boundFact && (
@@ -2006,6 +2323,13 @@ export const CaseDetailView: React.FC = () => {
                       </div>
                     );
                   })}
+                  <button
+                    type="button"
+                    onClick={handleAddField}
+                    className="text-xs px-2.5 py-1 border border-jv-rule bg-jv-bg hover:bg-jv-surface font-machine text-jv-ink cursor-pointer"
+                  >
+                    + Add Target Field
+                  </button>
                 </div>
               )}
             </div>
@@ -2014,46 +2338,235 @@ export const CaseDetailView: React.FC = () => {
             <div className="border border-jv-rule bg-jv-surface/40 p-4 space-y-3">
               <div className="font-machine text-xs font-semibold text-jv-ink uppercase flex items-center justify-between">
                 <span>3. Materialized Upload Assets</span>
-                <span className="text-[10px] text-jv-muted font-normal">DURABLE BINARY STORAGE</span>
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] text-jv-muted font-normal">DURABLE BINARY STORAGE</span>
+                  <button
+                    type="button"
+                    onClick={handleAddUploadSlot}
+                    className="text-xs px-2 py-0.5 border border-jv-rule bg-jv-bg hover:bg-jv-surface font-machine text-jv-ink cursor-pointer"
+                  >
+                    + Add Upload Slot
+                  </button>
+                </div>
               </div>
               <p className="text-[11px] text-jv-muted">
                 Frozen package artifacts will be materialized into immutable byte assets with SHA-256 integrity verification.
               </p>
-              {(!latestPlan?.target_schema?.upload_slots || latestPlan.target_schema.upload_slots.length === 0) ? (
-                <div className="p-3 border border-dashed border-jv-rule bg-jv-bg text-center text-[11px] text-jv-muted">
-                  No upload slots declared in target schema.
+              {declaredUploadSlots.length === 0 ? (
+                <div className="p-3 border border-dashed border-jv-rule bg-jv-bg text-center text-[11px] text-jv-muted space-y-2">
+                  <div>No upload slots declared in target schema.</div>
+                  <button
+                    type="button"
+                    onClick={handleAddUploadSlot}
+                    className="px-3 py-1 bg-jv-ink text-jv-bg font-machine text-xs hover:opacity-90 cursor-pointer"
+                  >
+                    + Add Upload Slot
+                  </button>
                 </div>
               ) : (
-                <div className="divide-y divide-jv-rule border border-jv-rule bg-jv-bg">
-                  {latestPlan.target_schema.upload_slots.map((slot) => (
-                    <div key={slot.slot_id} className="p-3 space-y-1 font-machine text-xs">
-                      <div className="flex items-center justify-between text-jv-ink">
-                        <span className="font-semibold">{slot.label} // slot: {slot.slot_id} ({slot.role})</span>
-                        <span className="text-emerald-600 text-[10px] border border-emerald-600/30 px-1.5 py-0.5 bg-emerald-600/10">
-                          {slot.required ? 'REQUIRED' : 'OPTIONAL'}
-                        </span>
+                <div className="space-y-3">
+                  {declaredUploadSlots.map((slot, idx) => (
+                    <div key={idx} className="p-3 space-y-2 text-xs border border-jv-rule bg-jv-bg">
+                      <div className="grid grid-cols-1 sm:grid-cols-12 gap-2 items-center">
+                        <div className="sm:col-span-3">
+                          <input
+                            type="text"
+                            placeholder="Slot ID (e.g. resume)"
+                            aria-label={`Upload Slot ID #${idx + 1}`}
+                            value={slot.slot_id}
+                            onChange={(e) => handleSlotChange(idx, 'slot_id', e.target.value)}
+                            className="w-full p-1.5 border border-jv-rule bg-jv-surface font-mono text-xs text-jv-ink rounded-none"
+                          />
+                        </div>
+                        <div className="sm:col-span-3">
+                          <input
+                            type="text"
+                            placeholder="Role (e.g. RESUME)"
+                            aria-label={`Role for Slot #${idx + 1}`}
+                            value={slot.role}
+                            onChange={(e) => handleSlotChange(idx, 'role', e.target.value)}
+                            className="w-full p-1.5 border border-jv-rule bg-jv-surface font-mono text-xs text-jv-ink rounded-none"
+                          />
+                        </div>
+                        <div className="sm:col-span-3">
+                          <input
+                            type="text"
+                            placeholder="Label (e.g. Resume / CV)"
+                            aria-label={`Label for Slot #${idx + 1}`}
+                            value={slot.label}
+                            onChange={(e) => handleSlotChange(idx, 'label', e.target.value)}
+                            className="w-full p-1.5 border border-jv-rule bg-jv-surface text-xs text-jv-ink rounded-none"
+                          />
+                        </div>
+                        <div className="sm:col-span-2 flex items-center gap-2">
+                          <label className="flex items-center gap-1 text-[11px] text-jv-muted">
+                            <input
+                              type="checkbox"
+                              checked={slot.required}
+                              onChange={(e) => handleSlotChange(idx, 'required', e.target.checked)}
+                            />
+                            Required
+                          </label>
+                        </div>
+                        <div className="sm:col-span-1 flex justify-end">
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveUploadSlot(idx)}
+                            className="text-xs text-red-500 hover:text-red-700 cursor-pointer p-1"
+                            title="Remove upload slot"
+                          >
+                            ✕
+                          </button>
+                        </div>
                       </div>
-                      <div className="text-[11px] text-jv-muted">
-                        Accepted MIME types: {(slot.accepted_mime_types || []).join(', ')} · Binds to approved package: <span className="font-mono text-jv-ink">{latestPackage?.package_id || 'none'}</span>
+                      <div className="space-y-1">
+                        <input
+                          type="text"
+                          placeholder="Accepted MIME types (e.g. application/pdf, text/plain)"
+                          value={slot.accepted_mime_types}
+                          onChange={(e) => handleSlotChange(idx, 'accepted_mime_types', e.target.value)}
+                          className="w-full p-1.5 border border-jv-rule bg-jv-surface font-mono text-xs text-jv-ink rounded-none"
+                        />
                       </div>
                     </div>
                   ))}
+                  <button
+                    type="button"
+                    onClick={handleAddUploadSlot}
+                    className="text-xs px-2.5 py-1 border border-jv-rule bg-jv-bg hover:bg-jv-surface font-machine text-jv-ink cursor-pointer"
+                  >
+                    + Add Upload Slot
+                  </button>
                 </div>
               )}
             </div>
 
-            {/* Section 4: Exact Final Submit Control */}
+            {/* Section 4: Target Screening Questions */}
             <div className="border border-jv-rule bg-jv-surface/40 p-4 space-y-3">
               <div className="font-machine text-xs font-semibold text-jv-ink uppercase flex items-center justify-between">
-                <span>4. Exact Final Submit Control Locator</span>
+                <span>4. Target Screening Questions</span>
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] text-jv-muted font-normal">DETERMINISTIC CONVERSION ONLY</span>
+                  <button
+                    type="button"
+                    onClick={handleAddQuestion}
+                    className="text-xs px-2 py-0.5 border border-jv-rule bg-jv-bg hover:bg-jv-surface font-machine text-jv-ink cursor-pointer"
+                  >
+                    + Add Screening Question
+                  </button>
+                </div>
+              </div>
+              <p className="text-[11px] text-jv-muted">
+                Declare screening questions present in the external application. Answers will be mapped from verified package Q&amp;A claims.
+              </p>
+              {declaredQuestions.length === 0 ? (
+                <div className="p-3 border border-dashed border-jv-rule bg-jv-bg text-center text-[11px] text-jv-muted space-y-2">
+                  <div>No screening questions declared in target schema.</div>
+                  <button
+                    type="button"
+                    onClick={handleAddQuestion}
+                    className="px-3 py-1 bg-jv-ink text-jv-bg font-machine text-xs hover:opacity-90 cursor-pointer"
+                  >
+                    + Add Screening Question
+                  </button>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {declaredQuestions.map((q, idx) => (
+                    <div key={idx} className="p-3 space-y-2 text-xs border border-jv-rule bg-jv-bg">
+                      <div className="grid grid-cols-1 sm:grid-cols-12 gap-2 items-center">
+                        <div className="sm:col-span-3">
+                          <input
+                            type="text"
+                            placeholder="Question ID (e.g. q-years)"
+                            aria-label={`Question ID #${idx + 1}`}
+                            value={q.question_id}
+                            onChange={(e) => handleQuestionChange(idx, 'question_id', e.target.value)}
+                            className="w-full p-1.5 border border-jv-rule bg-jv-surface font-mono text-xs text-jv-ink rounded-none"
+                          />
+                        </div>
+                        <div className="sm:col-span-5">
+                          <input
+                            type="text"
+                            placeholder="Question Text"
+                            aria-label={`Question Text #${idx + 1}`}
+                            value={q.question_text}
+                            onChange={(e) => handleQuestionChange(idx, 'question_text', e.target.value)}
+                            className="w-full p-1.5 border border-jv-rule bg-jv-surface text-xs text-jv-ink rounded-none"
+                          />
+                        </div>
+                        <div className="sm:col-span-2">
+                          <select
+                            aria-label={`Answer Type for Question #${idx + 1}`}
+                            value={q.answer_type}
+                            onChange={(e) => handleQuestionChange(idx, 'answer_type', e.target.value)}
+                            className="w-full p-1.5 border border-jv-rule bg-jv-surface font-mono text-xs text-jv-ink rounded-none"
+                          >
+                            <option value="">-- Type --</option>
+                            <option value="text">text</option>
+                            <option value="boolean">boolean</option>
+                            <option value="number">number</option>
+                            <option value="date">date</option>
+                            <option value="select">select</option>
+                          </select>
+                        </div>
+                        <div className="sm:col-span-1 flex items-center">
+                          <label className="flex items-center gap-1 text-[11px] text-jv-muted">
+                            <input
+                              type="checkbox"
+                              checked={q.required}
+                              onChange={(e) => handleQuestionChange(idx, 'required', e.target.checked)}
+                            />
+                            Req
+                          </label>
+                        </div>
+                        <div className="sm:col-span-1 flex justify-end">
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveQuestion(idx)}
+                            className="text-xs text-red-500 hover:text-red-700 cursor-pointer p-1"
+                            title="Remove question"
+                          >
+                            ✕
+                          </button>
+                        </div>
+                      </div>
+                      {q.answer_type === 'select' && (
+                        <div className="space-y-1">
+                          <input
+                            type="text"
+                            placeholder="Allowed options (comma-separated, e.g. yes, no)"
+                            value={q.allowed_options}
+                            onChange={(e) => handleQuestionChange(idx, 'allowed_options', e.target.value)}
+                            className="w-full p-1.5 border border-jv-rule bg-jv-surface font-mono text-xs text-jv-ink rounded-none"
+                          />
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                  <button
+                    type="button"
+                    onClick={handleAddQuestion}
+                    className="text-xs px-2.5 py-1 border border-jv-rule bg-jv-bg hover:bg-jv-surface font-machine text-jv-ink cursor-pointer"
+                  >
+                    + Add Screening Question
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {/* Section 5: Exact Final Submit Control */}
+            <div className="border border-jv-rule bg-jv-surface/40 p-4 space-y-3">
+              <div className="font-machine text-xs font-semibold text-jv-ink uppercase flex items-center justify-between">
+                <span>5. Exact Final Submit Control Locator</span>
                 <span className="text-[10px] text-amber-600 font-semibold">REQUIRED FOR READY_FOR_AUTHORIZATION</span>
               </div>
               <p className="text-[11px] text-jv-muted">
-                Specify the exact DOM selector or control ID that submits the form. Plans without an exact submit locator cannot be authorized and remain in DRAFT status.
+                Specify the exact DOM selector, control ID, type, and method that submits the form. Plans without an exact submit locator cannot be authorized and remain in DRAFT status.
               </p>
 
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
-                <div className="sm:col-span-2 space-y-1">
+              <div className="grid grid-cols-1 sm:grid-cols-6 gap-3 text-xs">
+                <div className="sm:col-span-4 space-y-1">
                   <label className="text-jv-muted font-medium">CSS Selector</label>
                   <input
                     type="text"
@@ -2063,7 +2576,7 @@ export const CaseDetailView: React.FC = () => {
                     className="w-full p-2 border border-jv-rule bg-jv-bg font-mono text-xs text-jv-ink rounded-none"
                   />
                 </div>
-                <div className="space-y-1">
+                <div className="sm:col-span-2 space-y-1">
                   <label className="text-jv-muted font-medium">Control ID (Optional)</label>
                   <input
                     type="text"
@@ -2081,6 +2594,26 @@ export const CaseDetailView: React.FC = () => {
                     onChange={(e) => setResolveSubmitLabel(e.target.value)}
                     placeholder="e.g. Submit Application"
                     className="w-full p-2 border border-jv-rule bg-jv-bg text-xs text-jv-ink rounded-none"
+                  />
+                </div>
+                <div className="sm:col-span-1 space-y-1">
+                  <label className="text-jv-muted font-medium">Control Type</label>
+                  <input
+                    type="text"
+                    value={resolveSubmitControlType}
+                    onChange={(e) => setResolveSubmitControlType(e.target.value)}
+                    placeholder="e.g. button"
+                    className="w-full p-2 border border-jv-rule bg-jv-bg font-mono text-xs text-jv-ink rounded-none"
+                  />
+                </div>
+                <div className="sm:col-span-2 space-y-1">
+                  <label className="text-jv-muted font-medium">Method</label>
+                  <input
+                    type="text"
+                    value={resolveSubmitMethod}
+                    onChange={(e) => setResolveSubmitMethod(e.target.value)}
+                    placeholder="e.g. click"
+                    className="w-full p-2 border border-jv-rule bg-jv-bg font-mono text-xs text-jv-ink rounded-none"
                   />
                 </div>
               </div>

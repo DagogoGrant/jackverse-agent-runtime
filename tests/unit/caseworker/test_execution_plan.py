@@ -70,6 +70,7 @@ from caseworker.domain.execution_plan import (
     compute_execution_input_hash,
     compute_execution_plan_fingerprint,
     compute_execution_plan_staleness,
+    validate_and_normalize_field_value,
 )
 from caseworker.domain.execution_planner import ExecutionPlanCompiler
 from caseworker.domain.opportunity import Opportunity
@@ -1564,6 +1565,65 @@ class TestExecutionPlanServiceAndIntegration(unittest.TestCase):
                 canonical_url="https://acme.org/jobs/1",
                 organization="Acme",
             )
+
+    def test_strict_iso_date_validation_for_target_fields(self) -> None:
+        """Strict ISO date validation: reject non-padded or non-calendar dates, accept valid YYYY-MM-DD."""
+        date_field = TargetSchemaField(target_field_id="start_date", label="Start Date", field_type="date", required=True)
+
+        # Unpadded months or days must be rejected
+        for bad_date in ("2026-1-1", "2026-01-1", "2026-1-01", "2026-1-12"):
+            ok, val, err = validate_and_normalize_field_value(date_field, bad_date)
+            self.assertFalse(ok)
+            self.assertIsNone(val)
+            self.assertIn("does not conform to canonical format YYYY-MM-DD", err)
+
+        # Non-ISO formats must be rejected
+        for bad_date in ("01/12/2026", "2026/01/01", "October 18, 2026", "2026-10"):
+            ok, val, err = validate_and_normalize_field_value(date_field, bad_date)
+            self.assertFalse(ok)
+            self.assertIsNone(val)
+            self.assertIn("does not conform to canonical format YYYY-MM-DD", err)
+
+        # Invalid calendar dates (even if matching \d{4}-\d{2}-\d{2}) must be rejected
+        for bad_cal in ("2026-02-30", "2026-04-31", "2026-13-01", "2026-00-10", "2026-01-32"):
+            ok, val, err = validate_and_normalize_field_value(date_field, bad_cal)
+            self.assertFalse(ok)
+            self.assertIsNone(val)
+            self.assertIn("does not conform to canonical format YYYY-MM-DD", err)
+
+        # Valid ISO calendar dates must be accepted
+        for good_date in ("2026-01-01", "2026-12-31", "2024-02-29"):
+            ok, val, err = validate_and_normalize_field_value(date_field, good_date)
+            self.assertTrue(ok)
+            self.assertEqual(val, good_date)
+            self.assertEqual(err, "")
+
+    def test_strict_iso_date_screening_answer_rejection(self) -> None:
+        """Screening question date conversions must reject unpadded dates and invalid calendar dates."""
+        sq = TargetSchemaQuestion(
+            question_id="q-date",
+            question_text="Tell us about your Python experience?",
+            answer_type=TargetAnswerType.DATE.value,
+            required=True,
+        )
+        schema_date = TargetInteractionSchema(
+            schema_id="schema-strict-date",
+            destination_type="ats_form",
+            fields=list(self.schema.fields),
+            upload_slots=list(self.schema.upload_slots),
+            screening_questions=[sq],
+            final_submit_control=self.schema.final_submit_control,
+        )
+        plan = self.service.create_execution_plan(
+            user_id=self.user_id,
+            case_id=self.case.case_id,
+            target_schema=schema_date,
+            field_bindings=self.bindings,
+        )
+        self.assertEqual(plan.status, ExternalExecutionPlanStatus.DRAFT)
+        findings = [f for f in plan.findings if f.code == "INVALID_QUESTION_ANSWER_CONVERSION"]
+        self.assertTrue(len(findings) > 0)
+        self.assertIn("cannot be parsed as ISO date (YYYY-MM-DD)", findings[0].message)
 
 
 if __name__ == "__main__":
