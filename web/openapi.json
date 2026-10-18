@@ -5113,6 +5113,58 @@
         ]
       }
     },
+    "/api/v1/cases/{case_id}/execution/plan/{plan_id}/request-authorization": {
+      "post": {
+        "description": "Request human authorization for an exact ExternalExecutionPlan under ETag control.",
+        "operationId": "request_plan_authorization_api_v1_cases__case_id__execution_plan__plan_id__request_authorization_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "case_id",
+            "required": true,
+            "schema": {
+              "title": "Case Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "plan_id",
+            "required": true,
+            "schema": {
+              "title": "Plan Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApprovalDecisionResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Request Plan Authorization",
+        "tags": [
+          "cases"
+        ]
+      }
+    },
     "/api/v1/cases/{case_id}/execution/plans": {
       "get": {
         "description": "List all execution plans for a case.",

@@ -257,6 +257,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/cases/{case_id}/execution/plan/{plan_id}/request-authorization": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Request Plan Authorization
+         * @description Request human authorization for an exact ExternalExecutionPlan under ETag control.
+         */
+        post: operations["request_plan_authorization_api_v1_cases__case_id__execution_plan__plan_id__request_authorization_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/cases/{case_id}/execution/plans": {
         parameters: {
             query?: never;
@@ -3549,6 +3569,38 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ExternalExecutionPlanResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    request_plan_authorization_api_v1_cases__case_id__execution_plan__plan_id__request_authorization_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                case_id: string;
+                plan_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApprovalDecisionResponse"];
                 };
             };
             /** @description Validation Error */

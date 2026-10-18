@@ -7,11 +7,25 @@ import {
   useRejectApproval,
   useCaseArtifacts,
   useLatestPreparationPackage,
+  useExecutionPlan,
 } from '../hooks/useCaseworker';
 import { DragToAuthorize } from '../components/ui/DragToAuthorize';
 import { TactileButton } from '../components/ui/TactileButton';
 import { TextureBadge } from '../components/ui/TextureBadge';
-import { ShieldCheck, AlertTriangle, ChevronDown, ChevronUp, Lock, FileText } from 'lucide-react';
+import {
+  ShieldCheck,
+  AlertTriangle,
+  ChevronDown,
+  ChevronUp,
+  Lock,
+  FileText,
+  Eye,
+  EyeOff,
+  Send,
+  Globe,
+  UploadCloud,
+  CheckCircle2,
+} from 'lucide-react';
 import type { Approval } from '../api/types';
 
 export const NeedsYouView: React.FC = () => {
@@ -58,6 +72,17 @@ export const NeedsYouView: React.FC = () => {
   const { data: caseArtifacts } = useCaseArtifacts(activeApproval?.case_id);
   const { data: prepPackage } = useLatestPreparationPackage(activeApproval?.case_id);
   const isPrepPackageApproval = action?.action_type === 'approve_preparation_package';
+  const isSubmitFormApproval = action?.action_type === 'submit_form';
+  const planId = (action?.parameters as Record<string, any> | undefined)?.plan_id as string | undefined;
+  const { data: executionPlan } = useExecutionPlan(activeApproval?.case_id, planId);
+
+  const [revealedValues, setRevealedValues] = useState<Record<string, boolean>>({});
+  const toggleRevealValue = (key: string) => {
+    setRevealedValues((prev) => ({
+      ...prev,
+      [key]: !prev[key],
+    }));
+  };
 
   const handleApprove = async () => {
     if (!activeApproval || !approvalEtag) return;
@@ -256,7 +281,20 @@ export const NeedsYouView: React.FC = () => {
                   </div>
 
                   {/* Constitutional Rationale / Guardrail Notice */}
-                  {isPrepPackageApproval ? (
+                  {isSubmitFormApproval ? (
+                    <div className="border-l-4 border-jv-accent bg-jv-accent/10 p-4 text-xs font-interface text-jv-ink space-y-2">
+                      <div className="font-semibold uppercase tracking-wider font-machine text-[11px] text-jv-accent flex items-center gap-2">
+                        <ShieldCheck className="w-4 h-4 text-jv-accent" />
+                        Constitutional Boundary // External Transmission Authorization
+                      </div>
+                      <p className="leading-relaxed font-semibold text-sm text-jv-ink">
+                        “I authorize these exact materials and values to be transmitted to this exact destination.”
+                      </p>
+                      <p className="leading-relaxed text-jv-muted">
+                        Authorizing this decision provides your cryptographic consent for external transmission of the sealed plan. Actual transmission execution remains strictly deferred to Phase 5.3.3. Zero outbound network calls or form submissions will occur at this stage.
+                      </p>
+                    </div>
+                  ) : isPrepPackageApproval ? (
                     <div className="border-l-4 border-amber-600 bg-amber-500/10 p-4 text-xs font-interface text-amber-900 dark:text-amber-200 space-y-1">
                       <div className="font-semibold uppercase tracking-wider font-machine text-[11px] text-amber-700 dark:text-amber-400 flex items-center gap-2">
                         <Lock className="w-3.5 h-3.5" />
@@ -335,6 +373,179 @@ export const NeedsYouView: React.FC = () => {
                     </div>
                   )}
 
+                  {/* Specialized Human Review for External Transmission: Exact Transmission Dossier */}
+                  {isSubmitFormApproval && executionPlan && (
+                    <div className="space-y-4 border border-jv-rule bg-jv-bg/50 p-4">
+                      <div className="flex items-center justify-between pb-2 border-b border-jv-rule">
+                        <div className="font-machine text-xs uppercase font-semibold text-jv-ink flex items-center gap-2">
+                          <Send className="w-4 h-4 text-jv-accent" />
+                          Exact External Transmission Dossier
+                        </div>
+                        <span className="font-machine text-[11px] text-emerald-600 border border-emerald-600/30 px-2 py-0.5 bg-emerald-600/10">
+                          SEALED PLAN v{executionPlan.version}
+                        </span>
+                      </div>
+
+                      {/* Destination Summary */}
+                      {executionPlan.destination && (
+                        <div className="p-3 border border-jv-rule bg-jv-surface text-xs space-y-2">
+                          <div className="flex items-center justify-between font-machine text-[11px] text-jv-muted">
+                            <span className="flex items-center gap-1.5 text-jv-ink font-semibold">
+                              <Globe className="w-3.5 h-3.5 text-jv-accent" />
+                              Target Destination
+                            </span>
+                            <span className="text-[10px] uppercase font-mono px-1.5 py-0.5 border border-jv-rule">
+                              {executionPlan.destination.is_exact_destination ? 'EXACT DESTINATION' : 'DESTINATION REQUIRED'}
+                            </span>
+                          </div>
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 font-interface text-xs">
+                            <div><span className="text-jv-muted">Organization:</span> <span className="font-medium text-jv-ink">{executionPlan.destination.organization || '—'}</span></div>
+                            <div><span className="text-jv-muted">Channel Type:</span> <span className="font-mono text-jv-ink">{executionPlan.destination.destination_type}</span></div>
+                          </div>
+                          <div className="pt-1 border-t border-jv-rule/60 text-[11px] font-mono break-all text-jv-accent">
+                            {executionPlan.destination.canonical_url}
+                          </div>
+                          <div className="text-[10px] font-machine text-jv-muted">
+                            Provenance: <span className="text-jv-ink">{executionPlan.destination.destination_provenance}</span>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Materialized Upload Assets */}
+                      {executionPlan.upload_mappings && executionPlan.upload_mappings.length > 0 && (
+                        <div className="p-3 border border-jv-rule bg-jv-surface text-xs space-y-2">
+                          <div className="flex items-center justify-between font-machine text-[11px] text-jv-muted">
+                            <span className="flex items-center gap-1.5 text-jv-ink font-semibold">
+                              <UploadCloud className="w-3.5 h-3.5 text-jv-accent" />
+                              Materialized Upload Assets ({executionPlan.upload_mappings.length})
+                            </span>
+                          </div>
+                          <div className="space-y-2">
+                            {executionPlan.upload_mappings.map((u) => (
+                              <div key={u.asset_id} className="p-2 border border-jv-rule/80 bg-jv-bg/60 text-xs font-interface space-y-1">
+                                <div className="flex items-center justify-between font-medium text-jv-ink">
+                                  <span>{u.filename}</span>
+                                  <span className="text-[10px] font-mono text-jv-muted">{(u.byte_size / 1024).toFixed(1)} KB</span>
+                                </div>
+                                <div className="flex items-center justify-between text-[11px] text-jv-muted">
+                                  <span>Role: <span className="font-mono text-jv-ink">{u.role}</span></span>
+                                  <span className="font-mono">{u.mime_type}</span>
+                                </div>
+                                <div className="text-[10px] font-mono text-jv-muted truncate" title={u.content_sha256}>
+                                  SHA-256: {u.content_sha256}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Form Field Mappings with Masking */}
+                      {executionPlan.field_mappings && executionPlan.field_mappings.length > 0 && (
+                        <div className="p-3 border border-jv-rule bg-jv-surface text-xs space-y-2">
+                          <div className="flex items-center justify-between font-machine text-[11px] text-jv-muted">
+                            <span className="flex items-center gap-1.5 text-jv-ink font-semibold">
+                              <FileText className="w-3.5 h-3.5 text-jv-accent" />
+                              Exact Form Field Values ({executionPlan.field_mappings.length})
+                            </span>
+                            <span className="text-[10px] text-jv-muted">PII MASKED BY DEFAULT</span>
+                          </div>
+                          <div className="space-y-1.5 max-h-60 overflow-y-auto">
+                            {executionPlan.field_mappings.map((m) => {
+                              const isRevealed = Boolean(revealedValues[`field_${m.target_field_id}`]);
+                              const displayVal = String(m.field_value ?? '');
+                              return (
+                                <div key={m.target_field_id} className="p-2 border border-jv-rule/80 bg-jv-bg/60 text-xs flex items-center justify-between gap-2">
+                                  <div className="space-y-0.5 min-w-0">
+                                    <div className="font-mono text-[11px] font-medium text-jv-ink truncate">
+                                      {m.field_name}
+                                    </div>
+                                    <div className="text-[10px] text-jv-muted font-mono truncate">
+                                      ID: {m.target_field_id} · Fact: {m.source_fact_id} v{m.source_fact_version}
+                                    </div>
+                                  </div>
+                                  <div className="flex items-center gap-2 shrink-0">
+                                    <span className="font-mono text-xs px-2 py-0.5 border border-jv-rule bg-jv-surface text-jv-ink max-w-[180px] truncate">
+                                      {isRevealed ? displayVal : '••••••••'}
+                                    </span>
+                                    <button
+                                      type="button"
+                                      onClick={() => toggleRevealValue(`field_${m.target_field_id}`)}
+                                      className="p-1 border border-jv-rule text-jv-muted hover:text-jv-ink text-xs transition-colors"
+                                      title={isRevealed ? 'Hide value' : 'Reveal value'}
+                                    >
+                                      {isRevealed ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                                    </button>
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Grounded Screening Responses with Masking */}
+                      {executionPlan.screening_responses && executionPlan.screening_responses.length > 0 && (
+                        <div className="p-3 border border-jv-rule bg-jv-surface text-xs space-y-2">
+                          <div className="flex items-center justify-between font-machine text-[11px] text-jv-muted">
+                            <span className="flex items-center gap-1.5 text-jv-ink font-semibold">
+                              <CheckCircle2 className="w-3.5 h-3.5 text-jv-accent" />
+                              Grounded Screening Responses ({executionPlan.screening_responses.length})
+                            </span>
+                            <span className="text-[10px] text-jv-muted">ANSWERS MASKED BY DEFAULT</span>
+                          </div>
+                          <div className="space-y-1.5 max-h-48 overflow-y-auto">
+                            {executionPlan.screening_responses.map((s) => {
+                              const isRevealed = Boolean(revealedValues[`screen_${s.question_id}`]);
+                              const displayAns = String(s.answer ?? '');
+                              return (
+                                <div key={s.question_id} className="p-2 border border-jv-rule/80 bg-jv-bg/60 text-xs flex items-center justify-between gap-2">
+                                  <div className="space-y-0.5 min-w-0">
+                                    <div className="font-interface text-xs text-jv-ink truncate">
+                                      {s.question}
+                                    </div>
+                                    <div className="text-[10px] text-jv-muted font-mono">
+                                      ID: {s.question_id}
+                                    </div>
+                                  </div>
+                                  <div className="flex items-center gap-2 shrink-0">
+                                    <span className="font-mono text-xs px-2 py-0.5 border border-jv-rule bg-jv-surface text-jv-ink max-w-[180px] truncate">
+                                      {isRevealed ? displayAns : '••••••••'}
+                                    </span>
+                                    <button
+                                      type="button"
+                                      onClick={() => toggleRevealValue(`screen_${s.question_id}`)}
+                                      className="p-1 border border-jv-rule text-jv-muted hover:text-jv-ink text-xs transition-colors"
+                                      title={isRevealed ? 'Hide answer' : 'Reveal answer'}
+                                    >
+                                      {isRevealed ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                                    </button>
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Final Submit Control */}
+                      {executionPlan.final_submit_control && (
+                        <div className="p-3 border border-jv-rule bg-jv-surface text-xs space-y-1">
+                          <div className="font-machine text-[11px] text-jv-muted uppercase">Final Submit Control</div>
+                          <div className="flex items-center justify-between font-interface">
+                            <span className="font-medium text-jv-ink">{executionPlan.final_submit_control.semantic_target}</span>
+                            <span className="font-machine text-[10px] text-jv-muted">Provenance: {executionPlan.final_submit_control.control_provenance}</span>
+                          </div>
+                          {executionPlan.final_submit_control.selector && (
+                            <div className="text-[11px] font-mono text-jv-muted truncate">
+                              Selector: {executionPlan.final_submit_control.selector}
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
                   {/* Action Parameters & Cryptographic Binding Inspector */}
                   <div className="border border-jv-rule">
                     <button
@@ -342,7 +553,13 @@ export const NeedsYouView: React.FC = () => {
                       onClick={() => setShowParameters(!showParameters)}
                       className="w-full flex items-center justify-between px-4 py-3 bg-jv-bg text-sm font-interface text-jv-ink hover:text-jv-ink-soft border-b border-jv-rule"
                     >
-                      <span>{isPrepPackageApproval ? 'Inspect cryptographic binding & fingerprints' : 'Inspect action parameters & fingerprint'}</span>
+                      <span>
+                        {isSubmitFormApproval
+                          ? 'Inspect cryptographic plan binding & fingerprints'
+                          : isPrepPackageApproval
+                          ? 'Inspect cryptographic binding & fingerprints'
+                          : 'Inspect action parameters & fingerprint'}
+                      </span>
                       {showParameters ? (
                         <ChevronUp className="w-4 h-4" />
                       ) : (
@@ -352,6 +569,35 @@ export const NeedsYouView: React.FC = () => {
 
                     {showParameters && (
                       <div className="p-4 space-y-3 font-machine text-xs bg-jv-bg/60">
+                        {isSubmitFormApproval && executionPlan && (
+                          <>
+                            <div className="space-y-1">
+                              <span className="font-interface text-xs text-jv-muted">Plan Content Fingerprint:</span>
+                              <div className="p-2 border border-jv-rule bg-jv-surface text-jv-ink break-all text-[11px] font-machine">
+                                {executionPlan.execution_plan_fingerprint}
+                              </div>
+                            </div>
+                            <div className="space-y-1">
+                              <span className="font-interface text-xs text-jv-muted">Package Fingerprint:</span>
+                              <div className="p-2 border border-jv-rule bg-jv-surface text-jv-ink break-all text-[11px] font-machine">
+                                {executionPlan.package_fingerprint}
+                              </div>
+                            </div>
+                            <div className="space-y-1">
+                              <span className="font-interface text-xs text-jv-muted">Target Schema Hash:</span>
+                              <div className="p-2 border border-jv-rule bg-jv-surface text-jv-ink break-all text-[11px] font-machine">
+                                {executionPlan.target_schema_hash}
+                              </div>
+                            </div>
+                            <div className="space-y-1">
+                              <span className="font-interface text-xs text-jv-muted">Execution Input Hash:</span>
+                              <div className="p-2 border border-jv-rule bg-jv-surface text-jv-ink break-all text-[11px] font-machine">
+                                {executionPlan.execution_input_hash}
+                              </div>
+                            </div>
+                          </>
+                        )}
+
                         {isPrepPackageApproval && prepPackage && (
                           <div className="space-y-1">
                             <span className="font-interface text-xs text-jv-muted">Package Content Fingerprint:</span>
@@ -384,9 +630,17 @@ export const NeedsYouView: React.FC = () => {
                       <div className="space-y-4">
                         {isHighConsequential ? (
                           <DragToAuthorize
-                            label={isPrepPackageApproval ? "Slide to approve preparation package locally" : "Slide to authorize action"}
+                            label={
+                              isSubmitFormApproval
+                                ? "Slide to authorize transmission"
+                                : isPrepPackageApproval
+                                ? "Slide to approve preparation package locally"
+                                : "Slide to authorize action"
+                            }
                             consequentialDescription={
-                              isPrepPackageApproval
+                              isSubmitFormApproval
+                                ? "Transmission authorization: Approving provides explicit consent to transmit these exact values to the declared destination. Execution is deferred to Phase 5.3.3."
+                                : isPrepPackageApproval
                                 ? "Local compilation authorization: Approving binds your explicit consent of these exact materials. No external submission will be initiated."
                                 : "Consequential operation: Authorizing binds your explicit consent under cryptographic fingerprint verification."
                             }

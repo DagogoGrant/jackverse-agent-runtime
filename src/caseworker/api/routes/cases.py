@@ -72,7 +72,9 @@ from caseworker.services.case_service import CaseService
 from caseworker.services.execution_plan_service import ExecutionPlanService
 from caseworker.services.mission_service import MissionService
 from caseworker.api.schemas.action import ActionResponse
-from caseworker.api.schemas.approval import ApprovalResponse
+from caseworker.api.schemas.approval import ApprovalDecisionResponse, ApprovalResponse
+from caseworker.api.routes.actions import _to_action_response
+from caseworker.api.routes.approvals import _to_approval_response
 from caseworker.api.schemas.package import (
     ArtifactPackageSnapshotResponse,
     PreparationPackageListResponse,
@@ -1121,4 +1123,30 @@ async def list_execution_plans(
     return ExternalExecutionPlanListResponse(
         plans=[_to_execution_plan_response(p) for p in plans],
         total=len(plans),
+    )
+
+
+@router.post(
+    "/api/v1/cases/{case_id}/execution/plan/{plan_id}/request-authorization",
+    response_model=ApprovalDecisionResponse,
+    status_code=status.HTTP_200_OK,
+)
+async def request_plan_authorization(
+    case_id: str,
+    plan_id: str,
+    request: Request,
+    response: Response,
+    principal: Annotated[Principal, Depends(get_principal)],
+    execution_plan_service: Annotated[ExecutionPlanService, Depends(get_execution_plan_service)],
+) -> ApprovalDecisionResponse:
+    """Request human authorization for an exact ExternalExecutionPlan under ETag control."""
+    action, approval = execution_plan_service.request_transmission_authorization(
+        user_id=principal.user_id,
+        case_id=case_id,
+        plan_id=plan_id,
+    )
+    set_etag_header(response, "approval", approval.approval_id, approval.version)
+    return ApprovalDecisionResponse(
+        approval=_to_approval_response(approval),
+        action=_to_action_response(action),
     )

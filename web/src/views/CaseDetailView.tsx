@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
-import { ArrowLeft, AlertTriangle, CheckCircle2, XCircle, Search, ChevronDown, FileText, Copy, Check, ShieldCheck, X, Lock, Send, Eye, EyeOff, FileCode, Settings } from 'lucide-react';
+import { ArrowLeft, AlertTriangle, CheckCircle2, XCircle, Search, ChevronDown, FileText, Copy, Check, ShieldCheck, ShieldAlert, X, Lock, Send, Eye, EyeOff, FileCode, Settings } from 'lucide-react';
 import {
   useCase,
   useCaseActions,
@@ -19,6 +19,7 @@ import {
   useVerifyPreparationPackage,
   useLatestExecutionPlan,
   useCreateExecutionPlan,
+  useRequestExecutionPlanAuthorization,
   useContextFacts,
 } from '../hooks/useCaseworker';
 import { apiRequest, PreconditionFailedError } from '../api/client';
@@ -89,11 +90,38 @@ export const CaseDetailView: React.FC = () => {
   const [revealedFields, setRevealedFields] = useState<Record<string, boolean>>({});
   const [copiedPlanFingerprint, setCopiedPlanFingerprint] = useState(false);
 
+  const requestAuthorization = useRequestExecutionPlanAuthorization();
+  const [authorizationError, setAuthorizationError] = useState<string | null>(null);
+
   const toggleRevealField = (fieldId: string) => {
     setRevealedFields((prev) => ({
       ...prev,
       [fieldId]: !prev[fieldId],
     }));
+  };
+
+  const handleRequestAuthorization = async () => {
+    if (!caseId || !latestPlan || !caseData) return;
+    setAuthorizationError(null);
+    setConcurrencyNotice(null);
+    try {
+      await requestAuthorization.mutateAsync({
+        caseId,
+        planId: latestPlan.plan_id,
+        etag: caseData.etag,
+      });
+      await refetchCase();
+    } catch (err: unknown) {
+      if (err instanceof PreconditionFailedError) {
+        setConcurrencyNotice(
+          'Case was modified concurrently. Reloading current dossier state…'
+        );
+        await refetchCase();
+      } else {
+        const msg = err instanceof Error ? err.message : 'Failed to request transmission authorization.';
+        setAuthorizationError(msg);
+      }
+    }
   };
 
   const handleCompilePlan = async () => {
@@ -670,10 +698,14 @@ export const CaseDetailView: React.FC = () => {
             <Lock className="w-5 h-5 text-jv-accent shrink-0" />
             <div className="space-y-0.5">
               <div className="font-semibold text-sm text-jv-ink">
-                Preparation Package Frozen · Human Review Required
+                {latestPlan?.status === 'ready_for_authorization'
+                  ? 'Transmission Authorization Requested · Human Approval Required'
+                  : 'Preparation Package Frozen · Human Review Required'}
               </div>
               <div className="text-xs text-jv-muted">
-                Materials are frozen under content-addressed cryptographic fingerprint. Review and authorize in Needs You.
+                {latestPlan?.status === 'ready_for_authorization'
+                  ? 'Sealed plan is awaiting cryptographic human authorization to transmit materials. Review and authorize in Needs You.'
+                  : 'Materials are frozen under content-addressed cryptographic fingerprint. Review and authorize in Needs You.'}
               </div>
             </div>
           </div>
@@ -1392,8 +1424,39 @@ export const CaseDetailView: React.FC = () => {
                                 {latestPlan ? 'Recompile Plan →' : 'Compile Action Plan →'}
                               </TactileButton>
                             )}
+                            {latestPlan?.status === 'ready_for_authorization' && caseItem.status.toLowerCase() === 'action_required' && (
+                              <TactileButton
+                                variant="primary"
+                                size="sm"
+                                loading={requestAuthorization.isPending}
+                                onClick={handleRequestAuthorization}
+                              >
+                                <ShieldCheck className="w-3.5 h-3.5 mr-1.5 inline" />
+                                Request Transmission Authorization →
+                              </TactileButton>
+                            )}
                           </div>
                         </div>
+
+                        {caseItem.status.toLowerCase() === 'awaiting_approval' && latestPlan?.status === 'ready_for_authorization' && (
+                          <div className="p-3 border border-amber-500/30 bg-amber-500/10 text-amber-800 dark:text-amber-300 font-interface text-xs space-y-1">
+                            <div className="font-semibold flex items-center justify-between">
+                              <span className="flex items-center gap-1.5">
+                                <ShieldAlert className="w-4 h-4 text-amber-600 shrink-0" />
+                                Transmission Authorization Pending Operator Review
+                              </span>
+                              <Link
+                                to="/needs-you"
+                                className="underline font-machine text-[11px] hover:text-amber-600"
+                              >
+                                Go to Needs You queue →
+                              </Link>
+                            </div>
+                            <p className="text-[11px] text-jv-muted">
+                              An exact transmission authorization request has been proposed. Review and sign in the Needs You queue to grant transmission authority.
+                            </p>
+                          </div>
+                        )}
 
                         {latestPlan?.is_stale && (
                           <div className="p-3 border border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-400 font-interface text-xs space-y-1">
@@ -1408,6 +1471,13 @@ export const CaseDetailView: React.FC = () => {
                                 ))}
                               </ul>
                             )}
+                          </div>
+                        )}
+
+                        {authorizationError && (
+                          <div className="p-3 border border-red-500/30 bg-red-500/10 text-red-600 font-interface text-xs flex items-center gap-2">
+                            <AlertTriangle className="w-4 h-4 shrink-0" />
+                            <span>{authorizationError}</span>
                           </div>
                         )}
 

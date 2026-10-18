@@ -10,9 +10,17 @@ $$\\text{Planning authority} \\neq \\text{Content approval} \\neq \\text{Transmi
 from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
+from urllib.parse import urlparse
+import uuid
 
+from caseworker.domain.action import Action
+from caseworker.domain.action_policy import ActionPolicy
+from caseworker.domain.approval import Approval
 from caseworker.domain.case import Case
 from caseworker.domain.enums import (
+    ActionStatus,
+    ActionType,
+    ApprovalStatus,
     CaseStatus,
     CaseType,
     ExternalExecutionPlanStatus,
@@ -26,6 +34,10 @@ from caseworker.domain.errors import (
     PackageVerificationError,
 )
 from caseworker.domain.events import (
+    make_action_proposed_event,
+    make_action_status_changed_event,
+    make_approval_requested_event,
+    make_case_status_changed_event,
     make_context_access_denied_event,
     make_context_access_granted_event,
     make_external_execution_plan_created_event,
@@ -38,6 +50,10 @@ from caseworker.domain.execution_plan import (
     TargetInteractionSchema,
     TargetSubmitControlSpec,
     compute_execution_plan_staleness,
+)
+from caseworker.domain.execution_plan_integrity import (
+    ExecutionPlanIntegrityFailureKind,
+    ExecutionPlanIntegrityValidator,
 )
 from caseworker.domain.execution_planner import ExecutionPlanCompiler
 from caseworker.domain.package_integrity import PreparationPackageIntegrityValidator
@@ -405,3 +421,206 @@ class ExecutionPlanService:
                 raise EntityNotFoundError("Case", case_id)
             plans = uow.execution_plans.list_for_case(case_id)
             return [self._attach_staleness(uow, p) for p in plans]
+
+    def request_transmission_authorization(
+        self,
+        user_id: str,
+        case_id: str,
+        plan_id: str,
+    ) -> tuple[Action, Approval]:
+        """Request human authorization for an exact ExternalExecutionPlan.
+
+        Ordering (Corrections 1, 2, 3, 7):
+        1. Load exact plan by plan_id. Assert user & case ownership.
+        2. Find existing SUBMIT_FORM authorization for same execution_plan_fingerprint.
+           - If Action is AWAITING_APPROVAL and Approval is PENDING: return existing pair.
+           - If Action is APPROVED and Approval is APPROVED: return existing pair.
+        3. Only for a NEW request:
+           - Validate Case belongs to user and is in CaseStatus.ACTION_REQUIRED.
+           - Require CaseType == JOB_APPLICATION.
+           - Revalidate plan status (must be READY_FOR_AUTHORIZATION, not DRAFT).
+           - Revalidate plan integrity via ExecutionPlanIntegrityValidator.
+           - Derive risk and approval requirements via ActionPolicy.evaluate(ActionType.SUBMIT_FORM).
+           - Propose Action with minimal privacy-safe cryptographic parameters.
+           - Transition Action to AWAITING_APPROVAL.
+           - Create Approval (status PENDING) bound to action fingerprint.
+           - Transition Case to AWAITING_APPROVAL.
+           - Commit atomically in one UoW.
+        """
+        with self.storage.unit_of_work() as uow:
+            # 1. Exact plan retrieval (Correction 2)
+            plan = uow.execution_plans.get_by_id(plan_id)
+            if plan is None or plan.case_id != case_id or plan.user_id != user_id:
+                raise EntityNotFoundError("ExternalExecutionPlan", plan_id)
+
+            # 2. Idempotency Check Before Case Status Precondition (Correction 1)
+            case_actions = uow.actions.list_by_case(case_id)
+            for act in case_actions:
+                act_type = act.action_type.value if hasattr(act.action_type, "value") else str(act.action_type)
+                if (
+                    act_type == ActionType.SUBMIT_FORM.value
+                    and act.parameters.get("execution_plan_fingerprint") == plan.execution_plan_fingerprint
+                ):
+                    app = uow.approvals.get_by_action_id(act.action_id)
+                    if act.status == ActionStatus.AWAITING_APPROVAL and app and app.status == ApprovalStatus.PENDING:
+                        return act, app
+                    if act.status == ActionStatus.APPROVED and app and app.status == ApprovalStatus.APPROVED:
+                        return act, app
+
+            # 3. Only for genuinely new request: validate Case status & type
+            case = uow.cases.get_by_id(case_id)
+            if case is None or case.user_id != user_id:
+                raise EntityNotFoundError("Case", case_id)
+
+            if case.status != CaseStatus.ACTION_REQUIRED:
+                raise InvalidStateTransitionError(
+                    "Case",
+                    case.status.value,
+                    CaseStatus.AWAITING_APPROVAL.value,
+                    f"Case must be in ACTION_REQUIRED status to request authorization (currently '{case.status.value}').",
+                )
+
+            if case.case_type != CaseType.JOB_APPLICATION:
+                raise DomainValidationError(
+                    f"Transmission authorization is currently supported only for JOB_APPLICATION cases (got '{case.case_type.value}')."
+                )
+
+            # 4. Plan status & integrity revalidation (Correction 4, 5, 6)
+            if plan.status == ExternalExecutionPlanStatus.DRAFT:
+                raise DomainValidationError(
+                    "Execution plan is in DRAFT status and cannot be submitted for authorization. "
+                    "All required fields and submit controls must be declared first."
+                )
+
+            if plan.status == ExternalExecutionPlanStatus.SUPERSEDED:
+                raise DomainValidationError("Execution plan has been SUPERSEDED and cannot be submitted for authorization.")
+
+            if plan.status != ExternalExecutionPlanStatus.READY_FOR_AUTHORIZATION:
+                raise DomainValidationError(
+                    f"Execution plan status is '{plan.status.value}', expected READY_FOR_AUTHORIZATION."
+                )
+
+            val_result = ExecutionPlanIntegrityValidator.validate(
+                uow=uow,
+                case=case,
+                plan=plan,
+                user_id=user_id,
+                expected_plan_status=ExternalExecutionPlanStatus.READY_FOR_AUTHORIZATION,
+            )
+            if not val_result.is_valid:
+                if val_result.failure_kind == ExecutionPlanIntegrityFailureKind.PLAN_INVALID:
+                    plan.mark_superseded(reason=f"Integrity revalidation failed: {val_result.reason}")
+                    uow.execution_plans.save(plan)
+                    uow.events.append(
+                        make_external_execution_plan_superseded_event(
+                            user_id=user_id,
+                            case_id=case.case_id,
+                            plan_id=plan.plan_id,
+                            superseded_by_plan_id="",
+                            package_id=plan.package_id,
+                            reason=val_result.reason,
+                        )
+                    )
+                    uow.commit()
+                raise DomainValidationError(f"Execution plan failed integrity validation: {val_result.reason}")
+
+            # 5. Propose SUBMIT_FORM Action via ActionPolicy (Correction 3 & 7)
+            decision = ActionPolicy.evaluate(ActionType.SUBMIT_FORM)
+            hostname = plan.destination.normalized_hostname or urlparse(plan.destination.canonical_url).netloc or plan.destination.canonical_url
+
+            action_params = {
+                "authorization_schema": "tx_auth_v1",
+                "scope": "external_transmission",
+                "plan_id": plan.plan_id,
+                "execution_plan_fingerprint": plan.execution_plan_fingerprint,
+                "package_id": plan.package_id,
+                "package_fingerprint": plan.package_fingerprint,
+                "target_schema_hash": plan.target_schema_hash,
+                "execution_input_hash": plan.execution_input_hash,
+                "destination_type": plan.destination.destination_type,
+                "destination_hostname": hostname,
+                "field_mapping_count": len(plan.field_mappings),
+                "upload_asset_count": len(plan.upload_mappings),
+                "screening_response_count": len(plan.screening_responses),
+            }
+
+            action = Action(
+                action_id=f"act_{uuid.uuid4().hex[:12]}",
+                case_id=case_id,
+                action_type=ActionType.SUBMIT_FORM,
+                description=f"Authorize external transmission to {hostname} ({plan.destination.destination_type}) for case {case_id[:8]}",
+                risk_level=decision.risk_level,
+                requires_approval=decision.requires_approval,
+                parameters=action_params,
+                idempotency_key=f"tx_act:{plan.execution_plan_fingerprint}",
+                status=ActionStatus.PROPOSED,
+            )
+            uow.actions.save(action)
+            uow.events.append(
+                make_action_proposed_event(
+                    action_id=action.action_id,
+                    case_id=case_id,
+                    user_id=user_id,
+                    aggregate_version=action.version,
+                    payload={
+                        "action_type": action.action_type_str,
+                        "risk_level": action.risk_level.value,
+                        "requires_approval": action.requires_approval,
+                        "parameters": action.parameters,
+                        "idempotency_key": action.idempotency_key,
+                    },
+                )
+            )
+
+            # Transition PROPOSED -> AWAITING_APPROVAL
+            old_act_status = action.status.value
+            action.transition_to(ActionStatus.AWAITING_APPROVAL, reason="Transmission authorization requested")
+            uow.actions.save(action)
+            uow.events.append(
+                make_action_status_changed_event(
+                    action_id=action.action_id,
+                    user_id=user_id,
+                    aggregate_version=action.version,
+                    old_status=old_act_status,
+                    new_status=action.status.value,
+                    reason="Transmission authorization requested",
+                )
+            )
+
+            # 6. Create Approval bound to action fingerprint
+            approval = Approval(
+                action_id=action.action_id,
+                case_id=case_id,
+                user_id=user_id,
+                action_fingerprint=action.compute_fingerprint(),
+                status=ApprovalStatus.PENDING,
+            )
+            uow.approvals.save(approval)
+            uow.events.append(
+                make_approval_requested_event(
+                    approval_id=approval.approval_id,
+                    action_id=action.action_id,
+                    case_id=case_id,
+                    user_id=user_id,
+                    aggregate_version=approval.version,
+                    action_fingerprint=approval.action_fingerprint,
+                )
+            )
+
+            # 7. Transition Case to AWAITING_APPROVAL
+            old_case_status = case.status.value
+            case.transition_to(CaseStatus.AWAITING_APPROVAL, reason="Transmission authorization requested")
+            uow.cases.save(case)
+            uow.events.append(
+                make_case_status_changed_event(
+                    case_id=case.case_id,
+                    user_id=user_id,
+                    aggregate_version=case.version,
+                    old_status=old_case_status,
+                    new_status=case.status.value,
+                    reason="Transmission authorization requested",
+                )
+            )
+
+            uow.commit()
+            return action, approval

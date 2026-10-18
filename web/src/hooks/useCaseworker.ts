@@ -525,6 +525,60 @@ export function useCreateExecutionPlan() {
   });
 }
 
+export function useExecutionPlan(caseId?: string, planId?: string) {
+  return useQuery({
+    queryKey: ['execution-plan', caseId, planId],
+    queryFn: async () => {
+      if (!caseId || !planId) return null;
+      try {
+        const res = await apiRequest<ExternalExecutionPlan>(
+          `/cases/${caseId}/execution/plan/${planId}`
+        );
+        return res.data;
+      } catch (err: unknown) {
+        if (err instanceof ApiError && err.status === 404) {
+          return null;
+        }
+        throw err;
+      }
+    },
+    enabled: Boolean(caseId && planId),
+  });
+}
+
+export function useRequestExecutionPlanAuthorization() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({
+      caseId,
+      planId,
+      etag,
+    }: {
+      caseId: string;
+      planId: string;
+      etag?: string | null;
+    }) => {
+      const res = await apiRequest<ApprovalDecision>(
+        `/cases/${caseId}/execution/plan/${planId}/request-authorization`,
+        {
+          method: 'POST',
+        },
+        etag
+      );
+      return res.data;
+    },
+    onSuccess: (_, vars) => {
+      queryClient.invalidateQueries({ queryKey: ['cases'] });
+      queryClient.invalidateQueries({ queryKey: ['cases', vars.caseId] });
+      queryClient.invalidateQueries({ queryKey: ['execution-plan-latest', vars.caseId] });
+      queryClient.invalidateQueries({ queryKey: ['execution-plan', vars.caseId, vars.planId] });
+      queryClient.invalidateQueries({ queryKey: ['actions'] });
+      queryClient.invalidateQueries({ queryKey: ['approvals'] });
+      queryClient.invalidateQueries({ queryKey: ['events'] });
+    },
+  });
+}
+
 // ----------------------------------------------------------------------------
 // Actions
 // ----------------------------------------------------------------------------
