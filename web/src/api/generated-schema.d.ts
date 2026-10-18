@@ -2879,10 +2879,7 @@ export interface components {
         };
         /** TargetInteractionSchemaSchema */
         TargetInteractionSchemaSchema: {
-            /**
-             * Destination Type
-             * @default ats_form
-             */
+            /** Destination Type */
             destination_type: string;
             /** Fields */
             fields?: components["schemas"]["TargetSchemaFieldSchema"][];
@@ -2898,7 +2895,7 @@ export interface components {
             screening_questions?: components["schemas"]["TargetSchemaQuestionSchema"][];
             /**
              * Target Schema Provenance
-             * @default USER_PROVIDED
+             * @default user_provided
              */
             target_schema_provenance: string;
             /** Upload Slots */
@@ -2967,17 +2964,17 @@ export interface components {
             control_id: string;
             /**
              * Control Provenance
-             * @default
+             * @default user_provided
              */
             control_provenance: string;
             /**
              * Control Type
-             * @default button_submit
+             * @default
              */
             control_type: string;
             /**
              * Method
-             * @default POST
+             * @default
              */
             method: string;
             /**
@@ -2992,7 +2989,7 @@ export interface components {
             selector: string;
             /**
              * Semantic Target
-             * @default Submit Application
+             * @default
              */
             semantic_target: string;
         };

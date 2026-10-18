@@ -390,19 +390,22 @@ class TargetSchemaQuestion:
 class TargetSubmitControlSpec:
     """Specification of the final submission control on the target destination."""
 
-    control_type: str
-    semantic_target: str
+    control_type: str = ""
+    semantic_target: str = ""
     selector: str = ""
     control_id: str = ""
-    method: str = "POST"
+    method: str = ""
     control_provenance: str = TargetSchemaProvenance.USER_PROVIDED.value
     requires_double_confirmation: bool = True
 
     def __post_init__(self) -> None:
-        if not self.control_type or not self.control_type.strip():
-            raise DomainValidationError("TargetSubmitControlSpec control_type cannot be empty.")
-        if not self.semantic_target or not self.semantic_target.strip():
-            raise DomainValidationError("TargetSubmitControlSpec semantic_target cannot be empty.")
+        raw_prov = (self.control_provenance or TargetSchemaProvenance.USER_PROVIDED.value).strip().lower()
+        if raw_prov not in TargetSchemaProvenance._value2member_map_:
+            raise DomainValidationError(
+                f"Unsupported control_provenance '{self.control_provenance}'. Must be one of {[e.value for e in TargetSchemaProvenance]}."
+            )
+        if raw_prov != self.control_provenance:
+            object.__setattr__(self, "control_provenance", raw_prov)
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -422,7 +425,7 @@ class TargetSubmitControlSpec:
             semantic_target=data.get("semantic_target", ""),
             selector=data.get("selector", ""),
             control_id=data.get("control_id", ""),
-            method=data.get("method", "POST"),
+            method=data.get("method", ""),
             control_provenance=data.get("control_provenance", TargetSchemaProvenance.USER_PROVIDED.value),
             requires_double_confirmation=bool(data.get("requires_double_confirmation", True)),
         )
@@ -442,6 +445,16 @@ class TargetInteractionSchema:
     schema_hash: str = ""
 
     def __post_init__(self) -> None:
+        if not self.destination_type or not self.destination_type.strip():
+            raise DomainValidationError("TargetInteractionSchema destination_type cannot be empty.")
+        raw_prov = (self.target_schema_provenance or TargetSchemaProvenance.USER_PROVIDED.value).strip().lower()
+        if raw_prov not in TargetSchemaProvenance._value2member_map_:
+            raise DomainValidationError(
+                f"Unsupported target_schema_provenance '{self.target_schema_provenance}'. Must be one of {[e.value for e in TargetSchemaProvenance]}."
+            )
+        if raw_prov != self.target_schema_provenance:
+            object.__setattr__(self, "target_schema_provenance", raw_prov)
+
         f_ids = [f.target_field_id for f in self.fields]
         if len(f_ids) != len(set(f_ids)):
             raise DomainValidationError("Duplicate target_field_id found in TargetInteractionSchema fields.")
@@ -504,9 +517,11 @@ class TargetInteractionSchema:
             if data.get("final_submit_control")
             else None
         )
+        if "destination_type" not in data or not str(data["destination_type"]).strip():
+            raise DomainValidationError("TargetInteractionSchema destination_type is required.")
         return cls(
             schema_id=data["schema_id"],
-            destination_type=data.get("destination_type", "ats_form"),
+            destination_type=data["destination_type"],
             target_schema_provenance=data.get("target_schema_provenance", TargetSchemaProvenance.USER_PROVIDED.value),
             fields=[TargetSchemaField.from_dict(f) for f in data.get("fields", [])],
             upload_slots=[TargetSchemaUploadSlot.from_dict(s) for s in data.get("upload_slots", [])],
@@ -530,6 +545,14 @@ class ExecutionDestination:
     normalized_hostname: str = ""
 
     def __post_init__(self) -> None:
+        raw_prov = (self.destination_provenance or DestinationProvenance.USER_PROVIDED.value).strip().lower()
+        if raw_prov not in DestinationProvenance._value2member_map_:
+            raise DomainValidationError(
+                f"Unsupported destination_provenance '{self.destination_provenance}'. Must be one of {[e.value for e in DestinationProvenance]}."
+            )
+        if raw_prov != self.destination_provenance:
+            object.__setattr__(self, "destination_provenance", raw_prov)
+
         origin, hostname = assert_safe_destination(
             canonical_url=self.canonical_url,
             destination_type=self.destination_type,
@@ -1108,7 +1131,11 @@ def compute_execution_plan_staleness(
                 reasons.append(f"Durable upload asset '{u.asset_id}' for slot '{u.role}' is missing from database.")
             else:
                 if (
-                    stored_asset.source_artifact_id != u.source_artifact_id
+                    stored_asset.asset_id != u.asset_id
+                    or stored_asset.plan_id != plan.plan_id
+                    or stored_asset.case_id != plan.case_id
+                    or stored_asset.user_id != plan.user_id
+                    or stored_asset.source_artifact_id != u.source_artifact_id
                     or stored_asset.source_artifact_version != u.source_artifact_version
                     or stored_asset.role != u.role
                     or stored_asset.filename != u.filename
@@ -1116,7 +1143,7 @@ def compute_execution_plan_staleness(
                     or stored_asset.byte_size != u.byte_size
                     or stored_asset.content_sha256 != u.content_sha256
                 ):
-                    reasons.append(f"Upload asset '{u.role}' metadata mismatch in database.")
+                    reasons.append(f"Upload asset '{u.role}' ownership or metadata mismatch in database.")
                 actual_bytes = stored_asset.content_bytes or b""
                 actual_hash = compute_sha256_bytes(actual_bytes)
                 if actual_hash != u.content_sha256 or len(actual_bytes) != u.byte_size:

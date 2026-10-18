@@ -3963,7 +3963,6 @@
         "additionalProperties": false,
         "properties": {
           "destination_type": {
-            "default": "ats_form",
             "title": "Destination Type",
             "type": "string"
           },
@@ -4001,7 +4000,7 @@
             "type": "array"
           },
           "target_schema_provenance": {
-            "default": "USER_PROVIDED",
+            "default": "user_provided",
             "title": "Target Schema Provenance",
             "type": "string"
           },
@@ -4014,7 +4013,8 @@
           }
         },
         "required": [
-          "schema_id"
+          "schema_id",
+          "destination_type"
         ],
         "title": "TargetInteractionSchemaSchema",
         "type": "object"
@@ -4136,17 +4136,17 @@
             "type": "string"
           },
           "control_provenance": {
-            "default": "",
+            "default": "user_provided",
             "title": "Control Provenance",
             "type": "string"
           },
           "control_type": {
-            "default": "button_submit",
+            "default": "",
             "title": "Control Type",
             "type": "string"
           },
           "method": {
-            "default": "POST",
+            "default": "",
             "title": "Method",
             "type": "string"
           },
@@ -4161,7 +4161,7 @@
             "type": "string"
           },
           "semantic_target": {
-            "default": "Submit Application",
+            "default": "",
             "title": "Semantic Target",
             "type": "string"
           }

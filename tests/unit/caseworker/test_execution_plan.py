@@ -157,6 +157,7 @@ class TestExecutionPlanDomain(unittest.TestCase):
             control_type="button_submit",
             semantic_target="Submit",
             selector="#btn-submit",
+            method="POST",
         )
 
         plan = ExternalExecutionPlan(
@@ -420,6 +421,7 @@ class TestExecutionPlanCompiler(unittest.TestCase):
                 control_type="button_submit",
                 semantic_target="Submit Application",
                 selector="#submit-app",
+                method="POST",
             ),
         )
         dest_override = ExecutionDestination(
@@ -730,6 +732,7 @@ class TestExecutionPlanServiceAndIntegration(unittest.TestCase):
                 control_type="button_submit",
                 semantic_target="Submit",
                 selector="#submit",
+                method="POST",
             ),
         )
         self.bindings = [
@@ -1298,6 +1301,7 @@ class TestExecutionPlanServiceAndIntegration(unittest.TestCase):
                 semantic_target="Submit",
                 selector="",  # Missing selector and control_id
                 control_id="",
+                method="POST",
             ),
         )
         plan_draft = self.service.create_execution_plan(
@@ -1345,6 +1349,221 @@ class TestExecutionPlanServiceAndIntegration(unittest.TestCase):
             events = uow.events.get_events_by_user(self.user_id)
             event_types = [e.event_type for e in events]
             self.assertIn("context.access_granted", event_types)
+
+    def test_no_guessed_schema_can_become_ready(self) -> None:
+        """Residual guessing removal: Without explicit target interaction schema, plan remains DRAFT."""
+        plan = self.service.create_execution_plan(
+            user_id=self.user_id,
+            case_id=self.case.case_id,
+            target_schema=None,
+            field_bindings=self.bindings,
+        )
+        self.assertEqual(plan.status, ExternalExecutionPlanStatus.DRAFT)
+        codes = [f.code for f in plan.findings]
+        self.assertIn("TARGET_SCHEMA_REQUIRED", codes)
+
+    def test_omitted_submit_method_cannot_become_ready(self) -> None:
+        """Residual guessing removal: Submit control without explicit method emits error and remains DRAFT."""
+        schema_no_method = TargetInteractionSchema(
+            schema_id="schema-no-method",
+            destination_type="ats_form",
+            fields=list(self.schema.fields),
+            upload_slots=list(self.schema.upload_slots),
+            screening_questions=[],
+            final_submit_control=TargetSubmitControlSpec(
+                control_type="button_submit",
+                semantic_target="Submit",
+                selector="#submit",
+                method="",  # Omitted method
+            ),
+        )
+        plan = self.service.create_execution_plan(
+            user_id=self.user_id,
+            case_id=self.case.case_id,
+            target_schema=schema_no_method,
+            field_bindings=self.bindings,
+        )
+        self.assertEqual(plan.status, ExternalExecutionPlanStatus.DRAFT)
+        codes = [f.code for f in plan.findings]
+        self.assertIn("SUBMIT_CONTROL_METHOD_REQUIRED", codes)
+
+    def test_omitted_control_type_or_semantic_target_cannot_become_ready(self) -> None:
+        """Residual guessing removal: Partial submit control is valid DRAFT input but fails compilation."""
+        incomplete_ctrl = TargetSubmitControlSpec(
+            control_type="",
+            semantic_target="",
+            selector="#submit",
+            method="POST",
+        )
+        self.assertEqual(incomplete_ctrl.control_type, "")
+        self.assertEqual(incomplete_ctrl.semantic_target, "")
+
+        schema_incomplete = TargetInteractionSchema(
+            schema_id="schema-incomplete-ctrl",
+            destination_type="ats_form",
+            fields=list(self.schema.fields),
+            upload_slots=list(self.schema.upload_slots),
+            screening_questions=[],
+            final_submit_control=incomplete_ctrl,
+        )
+        plan = self.service.create_execution_plan(
+            user_id=self.user_id,
+            case_id=self.case.case_id,
+            target_schema=schema_incomplete,
+            field_bindings=self.bindings,
+        )
+        self.assertEqual(plan.status, ExternalExecutionPlanStatus.DRAFT)
+        codes = [f.code for f in plan.findings]
+        self.assertIn("SUBMIT_CONTROL_TYPE_REQUIRED", codes)
+        self.assertIn("SUBMIT_CONTROL_SEMANTIC_TARGET_REQUIRED", codes)
+
+    def test_malformed_date_screening_answer_remains_draft(self) -> None:
+        """Residual guessing removal: Date screening answers must conform strictly to ISO YYYY-MM-DD."""
+        schema_date = TargetInteractionSchema(
+            schema_id="schema-date-test",
+            destination_type="ats_form",
+            fields=list(self.schema.fields),
+            upload_slots=list(self.schema.upload_slots),
+            screening_questions=[
+                TargetSchemaQuestion(
+                    question_id="q-start-date",
+                    question_text="Tell us about your Python experience?",  # Answer is "Yes, 10 years Python experience."
+                    answer_type=TargetAnswerType.DATE.value,
+                    required=True,
+                )
+            ],
+            final_submit_control=self.schema.final_submit_control,
+        )
+        plan = self.service.create_execution_plan(
+            user_id=self.user_id,
+            case_id=self.case.case_id,
+            target_schema=schema_date,
+            field_bindings=self.bindings,
+        )
+        self.assertEqual(plan.status, ExternalExecutionPlanStatus.DRAFT)
+        codes = [f.code for f in plan.findings]
+        self.assertIn("INVALID_QUESTION_ANSWER_CONVERSION", codes)
+
+    def test_malformed_number_screening_answer_remains_draft(self) -> None:
+        """Residual guessing removal: Number screening answers must be locale-neutral and reject ambiguous formats."""
+        schema_number = TargetInteractionSchema(
+            schema_id="schema-num-test",
+            destination_type="ats_form",
+            fields=list(self.schema.fields),
+            upload_slots=list(self.schema.upload_slots),
+            screening_questions=[
+                TargetSchemaQuestion(
+                    question_id="q-years",
+                    question_text="Tell us about your Python experience?",
+                    answer_type=TargetAnswerType.NUMBER.value,
+                    required=True,
+                )
+            ],
+            final_submit_control=self.schema.final_submit_control,
+        )
+        plan = self.service.create_execution_plan(
+            user_id=self.user_id,
+            case_id=self.case.case_id,
+            target_schema=schema_number,
+            field_bindings=self.bindings,
+        )
+        self.assertEqual(plan.status, ExternalExecutionPlanStatus.DRAFT)
+        codes = [f.code for f in plan.findings]
+        self.assertIn("INVALID_QUESTION_ANSWER_CONVERSION", codes)
+
+    def test_empty_select_options_remains_draft(self) -> None:
+        """Residual guessing removal: Select screening questions with empty allowed_options emit SCREENING_SELECT_OPTIONS_EMPTY."""
+        schema_empty_select = TargetInteractionSchema(
+            schema_id="schema-empty-select",
+            destination_type="ats_form",
+            fields=list(self.schema.fields),
+            upload_slots=list(self.schema.upload_slots),
+            screening_questions=[
+                TargetSchemaQuestion(
+                    question_id="q-select-empty",
+                    question_text="Tell us about your Python experience?",
+                    answer_type=TargetAnswerType.SELECT.value,
+                    allowed_options=[],
+                    required=True,
+                )
+            ],
+            final_submit_control=self.schema.final_submit_control,
+        )
+        plan = self.service.create_execution_plan(
+            user_id=self.user_id,
+            case_id=self.case.case_id,
+            target_schema=schema_empty_select,
+            field_bindings=self.bindings,
+        )
+        self.assertEqual(plan.status, ExternalExecutionPlanStatus.DRAFT)
+        codes = [f.code for f in plan.findings]
+        self.assertIn("SCREENING_SELECT_OPTIONS_EMPTY", codes)
+
+    def test_ownership_tampered_asset_makes_plan_stale(self) -> None:
+        """Residual guessing removal: Tampering with upload asset user/case/plan ownership marks plan stale."""
+        plan = self.service.create_execution_plan(
+            user_id=self.user_id,
+            case_id=self.case.case_id,
+            target_schema=self.schema,
+            field_bindings=self.bindings,
+        )
+        self.assertEqual(plan.status, ExternalExecutionPlanStatus.READY_FOR_AUTHORIZATION)
+
+        # Alter user_id ownership on the stored durable upload asset
+        with self.storage.unit_of_work() as uow:
+            u_asset = plan.upload_mappings[0]
+            cur = uow.conn.cursor()
+            cur.execute(
+                "UPDATE execution_upload_assets SET user_id = ? WHERE asset_id = ?",
+                ("tampered_user_999", u_asset.asset_id),
+            )
+            uow.commit()
+
+        # Staleness computation must detect the tampered ownership
+        fetched = self.service.get_latest_execution_plan(self.user_id, self.case.case_id)
+        self.assertIsNotNone(fetched)
+        self.assertTrue(fetched.is_stale)
+        self.assertTrue(any("ownership or metadata mismatch" in r for r in fetched.staleness_reasons))
+
+    def test_provenance_casing_canonicalizes_deterministically(self) -> None:
+        """Residual guessing removal: Provenance strings normalize to lowercase; invalid values fail validation."""
+        ctrl = TargetSubmitControlSpec(
+            control_type="button_submit",
+            semantic_target="Submit",
+            control_provenance=" USER_PROVIDED ",
+        )
+        self.assertEqual(ctrl.control_provenance, "user_provided")
+
+        dest = ExecutionDestination(
+            destination_type="ats_form",
+            destination_provenance=" OPPORTUNITY_APPLICATION_URL ",
+            canonical_url="https://acme.org/jobs/1",
+            organization="Acme",
+        )
+        self.assertEqual(dest.destination_provenance, "opportunity_application_url")
+
+        schema = TargetInteractionSchema(
+            schema_id="schema-prov-case",
+            destination_type="ats_form",
+            target_schema_provenance=" USER_PROVIDED ",
+        )
+        self.assertEqual(schema.target_schema_provenance, "user_provided")
+
+        # Invalid provenance values fail domain validation
+        with self.assertRaises(DomainValidationError):
+            TargetSubmitControlSpec(
+                control_type="button",
+                semantic_target="Submit",
+                control_provenance="fabricated_provenance",
+            )
+
+        with self.assertRaises(DomainValidationError):
+            ExecutionDestination(
+                destination_type="ats_form",
+                destination_provenance="untrusted_guess",
+                canonical_url="https://acme.org/jobs/1",
+                organization="Acme",
+            )
 
 
 if __name__ == "__main__":

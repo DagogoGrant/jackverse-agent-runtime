@@ -3,7 +3,13 @@
 from __future__ import annotations
 
 from typing import Any
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
+
+from caseworker.domain.enums import (
+    DestinationProvenance,
+    ExecutionDestinationType,
+    TargetSchemaProvenance,
+)
 
 
 class TargetSchemaFieldSchema(BaseModel):
@@ -39,26 +45,52 @@ class TargetSchemaQuestionSchema(BaseModel):
 class TargetSubmitControlSpecSchema(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    control_type: str = "button_submit"
-    semantic_target: str = "Submit Application"
+    control_type: str = ""
+    semantic_target: str = ""
     selector: str = ""
     control_id: str = ""
-    control_provenance: str = ""
-    method: str = "POST"
+    control_provenance: str = "user_provided"
+    method: str = ""
     requires_double_confirmation: bool = True
+
+    @field_validator("control_provenance", mode="before")
+    @classmethod
+    def validate_control_provenance(cls, v: Any) -> str:
+        s = str(v or TargetSchemaProvenance.USER_PROVIDED.value).strip().lower()
+        if s not in TargetSchemaProvenance._value2member_map_:
+            raise ValueError(f"Invalid control_provenance '{v}'.")
+        return s
 
 
 class TargetInteractionSchemaSchema(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     schema_id: str
-    target_schema_provenance: str = "USER_PROVIDED"
-    destination_type: str = "ats_form"
+    destination_type: str
+    target_schema_provenance: str = "user_provided"
     fields: list[TargetSchemaFieldSchema] = Field(default_factory=list)
     upload_slots: list[TargetSchemaUploadSlotSchema] = Field(default_factory=list)
     screening_questions: list[TargetSchemaQuestionSchema] = Field(default_factory=list)
     final_submit_control: TargetSubmitControlSpecSchema | None = None
     schema_hash: str = ""
+
+    @field_validator("destination_type")
+    @classmethod
+    def validate_destination_type(cls, v: str) -> str:
+        s = v.strip().lower()
+        if not s:
+            raise ValueError("destination_type cannot be empty.")
+        if s not in ExecutionDestinationType._value2member_map_:
+            raise ValueError(f"Invalid destination_type '{v}'.")
+        return s
+
+    @field_validator("target_schema_provenance", mode="before")
+    @classmethod
+    def validate_target_schema_provenance(cls, v: Any) -> str:
+        s = str(v or TargetSchemaProvenance.USER_PROVIDED.value).strip().lower()
+        if s not in TargetSchemaProvenance._value2member_map_:
+            raise ValueError(f"Invalid target_schema_provenance '{v}'.")
+        return s
 
 
 class ExecutionDestinationSchema(BaseModel):
@@ -72,6 +104,14 @@ class ExecutionDestinationSchema(BaseModel):
     is_exact_destination: bool = True
     normalized_origin: str = ""
     normalized_hostname: str = ""
+
+    @field_validator("destination_provenance", mode="before")
+    @classmethod
+    def validate_destination_provenance(cls, v: Any) -> str:
+        s = str(v or "").strip().lower()
+        if s not in DestinationProvenance._value2member_map_:
+            raise ValueError(f"Invalid destination_provenance '{v}'.")
+        return s
 
 
 class TargetFieldBindingSchema(BaseModel):

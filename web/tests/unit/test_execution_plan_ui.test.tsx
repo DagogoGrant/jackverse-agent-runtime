@@ -83,8 +83,14 @@ describe("Phase 5.3.1 Exact External Action Planning UI Dossier", () => {
     target_schema: {
       schema_id: "greenhouse-v1",
       destination_type: "ats_form",
-      fields: [],
-      upload_slots: [],
+      target_schema_provenance: "user_provided",
+      fields: [
+        { target_field_id: "first_name", label: "First Name", field_type: "text", required: true, allowed_options: [] },
+        { target_field_id: "email", label: "Email Address", field_type: "email", required: true, allowed_options: [] },
+      ],
+      upload_slots: [
+        { slot_id: "resume", role: "RESUME", label: "Resume", required: true, accepted_mime_types: ["application/pdf"] },
+      ],
       screening_questions: [],
       final_submit_control: null,
       schema_hash: "schema_hash_123",
@@ -366,9 +372,12 @@ describe("Phase 5.3.1 Exact External Action Planning UI Dossier", () => {
     const emailSelect = screen.getByLabelText(/Vault Fact for Email Address/i);
     fireEvent.change(emailSelect, { target: { value: "fact_email" } });
 
-    // Set submit selector
+    // Set submit selector and semantic target
     const selectorInput = screen.getByPlaceholderText(/button\[data-automation-id='submit-button'\]/i);
     fireEvent.change(selectorInput, { target: { value: "button#submit-application" } });
+
+    const labelInput = screen.getByPlaceholderText(/Submit Application/i);
+    fireEvent.change(labelInput, { target: { value: "Submit Application" } });
 
     // Submit modal
     const compileBtn = screen.getByText(/Compile Action Plan with Resolved Bindings →/i);
@@ -385,7 +394,7 @@ describe("Phase 5.3.1 Exact External Action Planning UI Dossier", () => {
     expect(capturedCompilePayload.final_submit_control).toMatchObject({
       selector: "button#submit-application",
       semantic_target: "Submit Application",
-      control_provenance: "USER_PROVIDED",
+      control_provenance: "user_provided",
     });
   });
 
@@ -400,7 +409,7 @@ describe("Phase 5.3.1 Exact External Action Planning UI Dossier", () => {
         control_id: "submit-btn-1",
         selector: "button#submit-application",
         semantic_target: "Submit Application",
-        control_provenance: "USER_PROVIDED",
+        control_provenance: "user_provided",
         control_type: "button_submit",
         method: "POST",
         requires_double_confirmation: true,
@@ -458,5 +467,75 @@ describe("Phase 5.3.1 Exact External Action Planning UI Dossier", () => {
     expect(screen.getByText(/Exact Final Submit Control/i)).toBeInTheDocument();
     expect(screen.getByText("button#submit-application")).toBeInTheDocument();
     expect(screen.getByText("SEALED LOCATOR")).toBeInTheDocument();
+  });
+
+  it("displays notice when target interaction schema is not declared and avoids guessing fields or upload slots", async () => {
+    const mockPlanNoSchema = {
+      ...mockPlan,
+      status: "draft",
+      target_schema: null,
+      field_mappings: [],
+      upload_mappings: [],
+      findings: [
+        {
+          check_name: "target_schema_verification",
+          passed: false,
+          severity: "error",
+          code: "TARGET_SCHEMA_REQUIRED",
+          message: "Target interaction schema is absent.",
+          details: {},
+        },
+      ],
+    };
+
+    vi.spyOn(globalThis, "fetch").mockImplementation((input: any) => {
+      const url = String(input);
+      if (url.includes("/cases/case-001/execution/plan/latest")) {
+        return Promise.resolve(new Response(JSON.stringify(mockPlanNoSchema), { status: 200 }));
+      }
+      if (url.includes("/cases/case-001/preparation/packages/latest")) {
+        return Promise.resolve(new Response(JSON.stringify(mockPackage), { status: 200 }));
+      }
+      if (url.includes("/cases/case-001/preparation/artifacts")) {
+        return Promise.resolve(new Response(JSON.stringify({ artifacts: mockArtifacts, total: 1 }), { status: 200 }));
+      }
+      if (url.includes("/cases/case-001/actions")) {
+        return Promise.resolve(new Response(JSON.stringify([]), { status: 200 }));
+      }
+      if (url.includes("/cases/case-001/claims")) {
+        return Promise.resolve(new Response(JSON.stringify([]), { status: 200 }));
+      }
+      if (url.includes("/cases/case-001/preparation/report/latest")) {
+        return Promise.resolve(new Response(JSON.stringify({}), { status: 200 }));
+      }
+      if (url.includes("/cases/case-001")) {
+        return Promise.resolve(new Response(JSON.stringify(mockCase), { status: 200 }));
+      }
+      if (url.includes("/events")) {
+        return Promise.resolve(new Response(JSON.stringify({ events: [], next_cursor: null }), { status: 200 }));
+      }
+      return Promise.resolve(new Response("Not found", { status: 404 }));
+    });
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter initialEntries={["/cases/case-001"]}>
+          <Routes>
+            <Route path="/cases/:caseId" element={<CaseDetailView />} />
+          </Routes>
+        </MemoryRouter>
+      </QueryClientProvider>
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText(/Resolve plan inputs →/i)).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByText(/Resolve plan inputs →/i));
+
+    await waitFor(() => {
+      expect(screen.getByText(/NO TARGET INTERACTION SCHEMA DECLARED/i)).toBeInTheDocument();
+      expect(screen.getByText(/No upload slots declared in target schema/i)).toBeInTheDocument();
+    });
   });
 });

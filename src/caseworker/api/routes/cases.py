@@ -778,12 +778,15 @@ def _to_execution_plan_response(plan: ExternalExecutionPlan) -> ExternalExecutio
                 control_type=ctrl.control_type,
                 semantic_target=ctrl.semantic_target,
                 selector=ctrl.selector,
+                control_id=ctrl.control_id,
+                control_provenance=ctrl.control_provenance,
                 method=ctrl.method,
                 requires_double_confirmation=ctrl.requires_double_confirmation,
             )
         target_schema_dto = TargetInteractionSchemaSchema(
             schema_id=plan.target_schema.schema_id,
             destination_type=plan.target_schema.destination_type,
+            target_schema_provenance=plan.target_schema.target_schema_provenance,
             fields=[
                 TargetSchemaFieldSchema(
                     target_field_id=f.target_field_id,
@@ -824,6 +827,8 @@ def _to_execution_plan_response(plan: ExternalExecutionPlan) -> ExternalExecutio
             control_type=ctrl.control_type,
             semantic_target=ctrl.semantic_target,
             selector=ctrl.selector,
+            control_id=ctrl.control_id,
+            control_provenance=ctrl.control_provenance,
             method=ctrl.method,
             requires_double_confirmation=ctrl.requires_double_confirmation,
         )

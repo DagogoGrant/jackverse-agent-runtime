@@ -22,7 +22,7 @@ import {
   useContextFacts,
 } from '../hooks/useCaseworker';
 import { apiRequest, PreconditionFailedError } from '../api/client';
-import type { Claim, TargetFieldBinding, TargetSchemaField, TargetInteractionSchema, ExecutionDestination } from '../api/types';
+import type { Claim, TargetFieldBinding, TargetInteractionSchema, ExecutionDestination } from '../api/types';
 import { TextureBadge } from '../components/ui/TextureBadge';
 import { TactileButton } from '../components/ui/TactileButton';
 import { humanizeEvent, formatEventTime } from '../lib/eventPresentation';
@@ -120,17 +120,7 @@ export const CaseDetailView: React.FC = () => {
   const [resolveFieldBindings, setResolveFieldBindings] = useState<Record<string, string>>({});
   const [resolveSubmitSelector, setResolveSubmitSelector] = useState('');
   const [resolveSubmitControlId, setResolveSubmitControlId] = useState('');
-  const [resolveSubmitLabel, setResolveSubmitLabel] = useState('Submit Application');
-
-  const defaultSchemaFields: TargetSchemaField[] = [
-    { target_field_id: 'first_name', label: 'First Name', field_type: 'text', required: true },
-    { target_field_id: 'last_name', label: 'Last Name', field_type: 'text', required: true },
-    { target_field_id: 'email', label: 'Email Address', field_type: 'email', required: true },
-    { target_field_id: 'phone', label: 'Phone Number', field_type: 'phone', required: true },
-    { target_field_id: 'linkedin_url', label: 'LinkedIn Profile', field_type: 'url', required: false },
-    { target_field_id: 'github_url', label: 'GitHub Profile', field_type: 'url', required: false },
-    { target_field_id: 'work_authorization', label: 'Work Authorization', field_type: 'select', required: true },
-  ];
+  const [resolveSubmitLabel, setResolveSubmitLabel] = useState('');
 
   const openResolvePlanModal = () => {
     setResolveDestinationUrl(latestPlan?.destination?.canonical_url || '');
@@ -148,7 +138,7 @@ export const CaseDetailView: React.FC = () => {
 
     setResolveSubmitSelector(latestPlan?.final_submit_control?.selector || '');
     setResolveSubmitControlId(latestPlan?.final_submit_control?.control_id || '');
-    setResolveSubmitLabel(latestPlan?.final_submit_control?.semantic_target || 'Submit Application');
+    setResolveSubmitLabel(latestPlan?.final_submit_control?.semantic_target || '');
 
     setShowResolvePlanModal(true);
   };
@@ -165,30 +155,24 @@ export const CaseDetailView: React.FC = () => {
         source_fact_id: factId,
       }));
 
-    const activeFields = (latestPlan?.target_schema?.fields && latestPlan.target_schema.fields.length > 0)
-      ? latestPlan.target_schema.fields
-      : defaultSchemaFields;
-
-    const targetSchema: TargetInteractionSchema = {
-      schema_id: latestPlan?.target_schema?.schema_id || 'manual-resolved-v1',
-      destination_type: 'ats_form',
-      target_schema_provenance: 'USER_PROVIDED',
-      fields: activeFields,
-      upload_slots: latestPlan?.target_schema?.upload_slots || [
-        { slot_id: 'resume', label: 'Resume', role: 'RESUME', required: true, accepted_mime_types: ['application/pdf'] },
-      ],
-      screening_questions: latestPlan?.target_schema?.screening_questions || [],
-      final_submit_control: (resolveSubmitSelector || resolveSubmitControlId) ? {
+    const targetSchema: TargetInteractionSchema | null = latestPlan?.target_schema ? {
+      schema_id: latestPlan.target_schema.schema_id,
+      destination_type: latestPlan.target_schema.destination_type,
+      target_schema_provenance: latestPlan.target_schema.target_schema_provenance || 'user_provided',
+      fields: latestPlan.target_schema.fields || [],
+      upload_slots: latestPlan.target_schema.upload_slots || [],
+      screening_questions: latestPlan.target_schema.screening_questions || [],
+      final_submit_control: (resolveSubmitSelector || resolveSubmitControlId || resolveSubmitLabel) ? {
         control_id: resolveSubmitControlId || '',
         selector: resolveSubmitSelector || '',
-        semantic_target: resolveSubmitLabel || 'Submit Application',
-        control_provenance: 'USER_PROVIDED',
-        control_type: 'button_submit',
-        method: 'POST',
+        semantic_target: resolveSubmitLabel || '',
+        control_provenance: latestPlan.target_schema.final_submit_control?.control_provenance || 'user_provided',
+        control_type: latestPlan.target_schema.final_submit_control?.control_type || '',
+        method: latestPlan.target_schema.final_submit_control?.method || '',
         requires_double_confirmation: true,
       } : null,
       schema_hash: '',
-    };
+    } : null;
 
     let normOrigin = '';
     let normHost = '';
@@ -205,9 +189,9 @@ export const CaseDetailView: React.FC = () => {
     const destinationOverride: ExecutionDestination | null = resolveDestinationUrl ? {
       canonical_url: resolveDestinationUrl,
       organization: resolveDestinationOrg || '',
-      destination_type: 'ats_form',
-      destination_provenance: 'USER_PROVIDED',
-      channel_metadata: {},
+      destination_type: latestPlan?.destination?.destination_type || 'ats_form',
+      destination_provenance: 'user_provided',
+      channel_metadata: latestPlan?.destination?.channel_metadata || {},
       is_exact_destination: true,
       normalized_origin: normOrigin,
       normalized_hostname: normHost,
@@ -220,7 +204,7 @@ export const CaseDetailView: React.FC = () => {
         destinationOverride,
         targetSchema,
         fieldBindings: bindings,
-        finalSubmitControl: targetSchema.final_submit_control,
+        finalSubmitControl: targetSchema?.final_submit_control,
         etag: caseData.etag,
       });
       setShowResolvePlanModal(false);
@@ -1938,84 +1922,92 @@ export const CaseDetailView: React.FC = () => {
                 Each target form field must be explicitly bound to an authorized Vault fact. Missing required bindings will keep the action plan in DRAFT status.
               </p>
 
-              <div className="divide-y divide-jv-rule border border-jv-rule bg-jv-bg">
-                {((latestPlan?.target_schema?.fields && latestPlan.target_schema.fields.length > 0)
-                  ? latestPlan.target_schema.fields
-                  : defaultSchemaFields
-                ).map((field) => {
-                  const currentBindingFactId = resolveFieldBindings[field.target_field_id] || '';
-                  const boundFact = (contextFacts || []).find((f) => f.fact_id === currentBindingFactId);
-                  const isBound = Boolean(currentBindingFactId);
+              {(!latestPlan?.target_schema || !latestPlan.target_schema.fields || latestPlan.target_schema.fields.length === 0) ? (
+                <div className="p-4 border border-dashed border-jv-rule bg-jv-bg text-center space-y-1">
+                  <div className="font-machine text-xs text-amber-600 font-semibold">
+                    NO TARGET INTERACTION SCHEMA DECLARED
+                  </div>
+                  <p className="text-[11px] text-jv-muted">
+                    Without a declared target schema, exact form fields cannot be resolved. The action plan remains in DRAFT status with finding TARGET_SCHEMA_REQUIRED.
+                  </p>
+                </div>
+              ) : (
+                <div className="divide-y divide-jv-rule border border-jv-rule bg-jv-bg">
+                  {latestPlan.target_schema.fields.map((field) => {
+                    const currentBindingFactId = resolveFieldBindings[field.target_field_id] || '';
+                    const boundFact = (contextFacts || []).find((f) => f.fact_id === currentBindingFactId);
+                    const isBound = Boolean(currentBindingFactId);
 
-                  return (
-                    <div key={field.target_field_id} className="p-3 space-y-2 text-xs">
-                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1">
-                        <div className="flex items-center gap-2">
-                          <span className="font-medium text-jv-ink">{field.label}</span>
-                          <span className="font-mono text-[11px] text-jv-muted">({field.target_field_id})</span>
-                          <span className="font-machine text-[10px] px-1.5 py-0.2 border border-jv-rule bg-jv-surface uppercase text-jv-muted">
-                            {field.field_type}
-                          </span>
-                          {field.required && (
-                            <span className="text-[10px] text-red-500 font-bold">*REQUIRED</span>
-                          )}
+                    return (
+                      <div key={field.target_field_id} className="p-3 space-y-2 text-xs">
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1">
+                          <div className="flex items-center gap-2">
+                            <span className="font-medium text-jv-ink">{field.label}</span>
+                            <span className="font-mono text-[11px] text-jv-muted">({field.target_field_id})</span>
+                            <span className="font-machine text-[10px] px-1.5 py-0.2 border border-jv-rule bg-jv-surface uppercase text-jv-muted">
+                              {field.field_type}
+                            </span>
+                            {field.required && (
+                              <span className="text-[10px] text-red-500 font-bold">*REQUIRED</span>
+                            )}
+                          </div>
+                          <div>
+                            {isBound ? (
+                              <span className="font-machine text-[10px] text-emerald-600 bg-emerald-600/10 border border-emerald-600/30 px-1.5 py-0.5">
+                                BOUND
+                              </span>
+                            ) : field.required ? (
+                              <span className="font-machine text-[10px] text-amber-600 bg-amber-600/10 border border-amber-600/30 px-1.5 py-0.5">
+                                UNBOUND (REQUIRED)
+                              </span>
+                            ) : (
+                              <span className="font-machine text-[10px] text-jv-muted bg-jv-surface border border-jv-rule px-1.5 py-0.5">
+                                OPTIONAL
+                              </span>
+                            )}
+                          </div>
                         </div>
-                        <div>
-                          {isBound ? (
-                            <span className="font-machine text-[10px] text-emerald-600 bg-emerald-600/10 border border-emerald-600/30 px-1.5 py-0.5">
-                              BOUND
-                            </span>
-                          ) : field.required ? (
-                            <span className="font-machine text-[10px] text-amber-600 bg-amber-600/10 border border-amber-600/30 px-1.5 py-0.5">
-                              UNBOUND (REQUIRED)
-                            </span>
-                          ) : (
-                            <span className="font-machine text-[10px] text-jv-muted bg-jv-surface border border-jv-rule px-1.5 py-0.5">
-                              OPTIONAL
-                            </span>
-                          )}
+
+                        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+                          <select
+                            aria-label={`Vault Fact for ${field.label}`}
+                            value={currentBindingFactId}
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              setResolveFieldBindings((prev) => ({
+                                ...prev,
+                                [field.target_field_id]: val,
+                              }));
+                            }}
+                            className="flex-1 p-2 border border-jv-rule bg-jv-surface text-xs font-interface text-jv-ink rounded-none"
+                          >
+                            <option value="">-- No Vault Fact Bound (Unbound) --</option>
+                            {(contextFacts || []).map((fact) => (
+                              <option key={fact.fact_id} value={fact.fact_id}>
+                                [{fact.verification_status}] {fact.key} ({fact.namespace}) — {fact.preview ? fact.preview.slice(0, 40) : '(empty)'}
+                              </option>
+                            ))}
+                          </select>
                         </div>
+
+                        {boundFact && (
+                          <div className="font-machine text-[11px] text-jv-muted flex items-center gap-2 bg-jv-surface/50 p-1.5 border border-jv-rule/50">
+                            <span className="text-jv-ink font-semibold">FACT ID: {boundFact.fact_id}</span>
+                            <span>·</span>
+                            <span className="text-jv-accent">{boundFact.verification_status}</span>
+                            {boundFact.preview && (
+                              <>
+                                <span>·</span>
+                                <span className="truncate max-w-[250px] font-mono">{boundFact.preview}</span>
+                              </>
+                            )}
+                          </div>
+                        )}
                       </div>
-
-                      <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
-                        <select
-                          aria-label={`Vault Fact for ${field.label}`}
-                          value={currentBindingFactId}
-                          onChange={(e) => {
-                            const val = e.target.value;
-                            setResolveFieldBindings((prev) => ({
-                              ...prev,
-                              [field.target_field_id]: val,
-                            }));
-                          }}
-                          className="flex-1 p-2 border border-jv-rule bg-jv-surface text-xs font-interface text-jv-ink rounded-none"
-                        >
-                          <option value="">-- No Vault Fact Bound (Unbound) --</option>
-                          {(contextFacts || []).map((fact) => (
-                            <option key={fact.fact_id} value={fact.fact_id}>
-                              [{fact.verification_status}] {fact.key} ({fact.namespace}) — {fact.preview ? fact.preview.slice(0, 40) : '(empty)'}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-
-                      {boundFact && (
-                        <div className="font-machine text-[11px] text-jv-muted flex items-center gap-2 bg-jv-surface/50 p-1.5 border border-jv-rule/50">
-                          <span className="text-jv-ink font-semibold">FACT ID: {boundFact.fact_id}</span>
-                          <span>·</span>
-                          <span className="text-jv-accent">{boundFact.verification_status}</span>
-                          {boundFact.preview && (
-                            <>
-                              <span>·</span>
-                              <span className="truncate max-w-[250px] font-mono">{boundFact.preview}</span>
-                            </>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
 
             {/* Section 3: Materialized Upload Slots */}
@@ -2027,17 +2019,27 @@ export const CaseDetailView: React.FC = () => {
               <p className="text-[11px] text-jv-muted">
                 Frozen package artifacts will be materialized into immutable byte assets with SHA-256 integrity verification.
               </p>
-              <div className="border border-jv-rule bg-jv-bg p-3 space-y-1 font-machine text-xs">
-                <div className="flex items-center justify-between text-jv-ink">
-                  <span className="font-semibold">RESUME // slot: resume</span>
-                  <span className="text-emerald-600 text-[10px] border border-emerald-600/30 px-1.5 py-0.5 bg-emerald-600/10">
-                    APPROVED PACKAGE ARTIFACT
-                  </span>
+              {(!latestPlan?.target_schema?.upload_slots || latestPlan.target_schema.upload_slots.length === 0) ? (
+                <div className="p-3 border border-dashed border-jv-rule bg-jv-bg text-center text-[11px] text-jv-muted">
+                  No upload slots declared in target schema.
                 </div>
-                <div className="text-[11px] text-jv-muted">
-                  Binds to approved package: <span className="font-mono text-jv-ink">{latestPackage?.package_id || 'none'}</span>
+              ) : (
+                <div className="divide-y divide-jv-rule border border-jv-rule bg-jv-bg">
+                  {latestPlan.target_schema.upload_slots.map((slot) => (
+                    <div key={slot.slot_id} className="p-3 space-y-1 font-machine text-xs">
+                      <div className="flex items-center justify-between text-jv-ink">
+                        <span className="font-semibold">{slot.label} // slot: {slot.slot_id} ({slot.role})</span>
+                        <span className="text-emerald-600 text-[10px] border border-emerald-600/30 px-1.5 py-0.5 bg-emerald-600/10">
+                          {slot.required ? 'REQUIRED' : 'OPTIONAL'}
+                        </span>
+                      </div>
+                      <div className="text-[11px] text-jv-muted">
+                        Accepted MIME types: {(slot.accepted_mime_types || []).join(', ')} · Binds to approved package: <span className="font-mono text-jv-ink">{latestPackage?.package_id || 'none'}</span>
+                      </div>
+                    </div>
+                  ))}
                 </div>
-              </div>
+              )}
             </div>
 
             {/* Section 4: Exact Final Submit Control */}

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+import decimal
 import re
 from typing import Any
 import uuid
@@ -461,32 +462,43 @@ class ExecutionPlanCompiler:
                         sq_type = (sq.answer_type or TargetAnswerType.TEXT.value).lower()
                         if sq_type == TargetAnswerType.SELECT.value:
                             allowed = sq.allowed_options or []
-                            if allowed:
-                                matched_opt = None
-                                if ans_val in allowed:
-                                    matched_opt = ans_val
-                                else:
-                                    ci = [opt for opt in allowed if opt.lower() == ans_val.lower()]
-                                    if len(ci) == 1:
-                                        matched_opt = ci[0]
-                                    elif {opt.lower() for opt in allowed} == {"yes", "no"}:
-                                        if ans_val.lower() in ("true", "1", "yes"):
-                                            matched_opt = [opt for opt in allowed if opt.lower() == "yes"][0]
-                                        elif ans_val.lower() in ("false", "0", "no"):
-                                            matched_opt = [opt for opt in allowed if opt.lower() == "no"][0]
-                                if matched_opt is None:
-                                    findings.append(
-                                        ExecutionPlanFinding(
-                                            check_name="screening_resolution",
-                                            passed=False,
-                                            severity="error",
-                                            code="INVALID_QUESTION_ANSWER_CONVERSION",
-                                            message=f"Screening question '{sq.question_id}' of type 'select' could not be resolved from answer text '{ans_val}'. Must match one of {allowed}.",
-                                            details={"question_id": sq.question_id, "answer": ans_val, "allowed_options": allowed},
-                                        )
+                            if not allowed:
+                                findings.append(
+                                    ExecutionPlanFinding(
+                                        check_name="screening_resolution",
+                                        passed=False,
+                                        severity="error",
+                                        code="SCREENING_SELECT_OPTIONS_EMPTY",
+                                        message=f"Screening question '{sq.question_id}' of type 'select' has no declared allowed_options.",
+                                        details={"question_id": sq.question_id},
                                     )
-                                    continue
-                                ans_val = matched_opt
+                                )
+                                continue
+                            matched_opt = None
+                            if ans_val in allowed:
+                                matched_opt = ans_val
+                            else:
+                                ci = [opt for opt in allowed if opt.lower() == ans_val.lower()]
+                                if len(ci) == 1:
+                                    matched_opt = ci[0]
+                                elif {opt.lower() for opt in allowed} == {"yes", "no"}:
+                                    if ans_val.lower() in ("true", "1", "yes"):
+                                        matched_opt = [opt for opt in allowed if opt.lower() == "yes"][0]
+                                    elif ans_val.lower() in ("false", "0", "no"):
+                                        matched_opt = [opt for opt in allowed if opt.lower() == "no"][0]
+                            if matched_opt is None:
+                                findings.append(
+                                    ExecutionPlanFinding(
+                                        check_name="screening_resolution",
+                                        passed=False,
+                                        severity="error",
+                                        code="INVALID_QUESTION_ANSWER_CONVERSION",
+                                        message=f"Screening question '{sq.question_id}' of type 'select' could not be resolved from answer text '{ans_val}'. Must match one of {allowed}.",
+                                        details={"question_id": sq.question_id, "answer": ans_val, "allowed_options": allowed},
+                                    )
+                                )
+                                continue
+                            ans_val = matched_opt
                         elif sq_type == TargetAnswerType.BOOLEAN.value:
                             if ans_val.lower() in ("true", "yes", "1"):
                                 ans_val = "true"
@@ -500,6 +512,54 @@ class ExecutionPlanCompiler:
                                         severity="error",
                                         code="INVALID_QUESTION_ANSWER_CONVERSION",
                                         message=f"Screening question '{sq.question_id}' of type 'boolean' cannot be deterministically converted from '{ans_val}'.",
+                                        details={"question_id": sq.question_id, "answer": ans_val},
+                                    )
+                                )
+                                continue
+                        elif sq_type == TargetAnswerType.DATE.value:
+                            raw_clean = ans_val.strip()
+                            try:
+                                datetime.strptime(raw_clean, "%Y-%m-%d")
+                                ans_val = raw_clean
+                            except (ValueError, TypeError):
+                                findings.append(
+                                    ExecutionPlanFinding(
+                                        check_name="screening_resolution",
+                                        passed=False,
+                                        severity="error",
+                                        code="INVALID_QUESTION_ANSWER_CONVERSION",
+                                        message=f"Screening question '{sq.question_id}' of type 'date' cannot be parsed as ISO date (YYYY-MM-DD) from '{ans_val}'.",
+                                        details={"question_id": sq.question_id, "answer": ans_val},
+                                    )
+                                )
+                                continue
+                        elif sq_type == TargetAnswerType.NUMBER.value:
+                            raw_clean = ans_val.strip()
+                            if "," in raw_clean or " " in raw_clean:
+                                findings.append(
+                                    ExecutionPlanFinding(
+                                        check_name="screening_resolution",
+                                        passed=False,
+                                        severity="error",
+                                        code="INVALID_QUESTION_ANSWER_CONVERSION",
+                                        message=f"Screening question '{sq.question_id}' of type 'number' contains ambiguous formatting or invalid characters: '{ans_val}'.",
+                                        details={"question_id": sq.question_id, "answer": ans_val},
+                                    )
+                                )
+                                continue
+                            try:
+                                dec = decimal.Decimal(raw_clean)
+                                if not dec.is_finite():
+                                    raise decimal.InvalidOperation("Non-finite decimal")
+                                ans_val = str(dec)
+                            except (decimal.InvalidOperation, TypeError, ValueError):
+                                findings.append(
+                                    ExecutionPlanFinding(
+                                        check_name="screening_resolution",
+                                        passed=False,
+                                        severity="error",
+                                        code="INVALID_QUESTION_ANSWER_CONVERSION",
+                                        message=f"Screening question '{sq.question_id}' of type 'number' cannot be parsed as a valid decimal number from '{ans_val}'.",
                                         details={"question_id": sq.question_id, "answer": ans_val},
                                     )
                                 )
@@ -541,7 +601,37 @@ class ExecutionPlanCompiler:
                 )
             )
         elif final_control is not None:
-            # For READY_FOR_AUTHORIZATION, require a stable locator (selector or control_id)
+            if not final_control.control_type or not final_control.control_type.strip():
+                findings.append(
+                    ExecutionPlanFinding(
+                        check_name="submit_control_resolution",
+                        passed=False,
+                        severity="error",
+                        code="SUBMIT_CONTROL_TYPE_REQUIRED",
+                        message="Final submit control must explicitly specify control_type.",
+                    )
+                )
+            if not final_control.semantic_target or not final_control.semantic_target.strip():
+                findings.append(
+                    ExecutionPlanFinding(
+                        check_name="submit_control_resolution",
+                        passed=False,
+                        severity="error",
+                        code="SUBMIT_CONTROL_SEMANTIC_TARGET_REQUIRED",
+                        message="Final submit control must explicitly specify semantic_target.",
+                    )
+                )
+            if not final_control.method or not final_control.method.strip():
+                findings.append(
+                    ExecutionPlanFinding(
+                        check_name="submit_control_resolution",
+                        passed=False,
+                        severity="error",
+                        code="SUBMIT_CONTROL_METHOD_REQUIRED",
+                        message="Final submit control must explicitly specify submission method (e.g. POST, PUT, CLICK).",
+                        details={"control_type": final_control.control_type},
+                    )
+                )
             if not final_control.selector and not final_control.control_id:
                 findings.append(
                     ExecutionPlanFinding(
