@@ -19,6 +19,7 @@ from caseworker.services.execution_plan_service import ExecutionPlanService
 from caseworker.services.package_service import PackageService
 from caseworker.services.case_service import CaseService
 from caseworker.services.claim_service import ClaimLedgerService as ClaimService
+from caseworker.services.governed_execution_service import GovernedExecutionService
 from caseworker.services.mission_service import MissionService
 from caseworker.services.opportunity_service import OpportunityService
 from caseworker.services.vault_service import ContextVaultService
@@ -109,6 +110,12 @@ def get_execution_plan_service(
     storage: Annotated[SQLiteCaseworkerStorage, Depends(get_storage)],
 ) -> ExecutionPlanService:
     return ExecutionPlanService(storage)
+
+
+def get_governed_execution_service(
+    storage: Annotated[SQLiteCaseworkerStorage, Depends(get_storage)],
+) -> GovernedExecutionService:
+    return GovernedExecutionService(storage)
 
 
 

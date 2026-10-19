@@ -66,6 +66,13 @@ from caseworker.api.schemas.preparation import (
     PreparationIntelligenceReportResponse,
     PreparationStrategyResponse,
 )
+from caseworker.api.schemas.execution import (
+    ExecuteActionRequest,
+    ExecuteActionResponse,
+    ExecutionAttemptListResponse,
+    ExecutionAttemptResponse,
+    ExecutionReceiptResponse,
+)
 
 __all__ = [
     "ActionResponse",
@@ -116,4 +123,9 @@ __all__ = [
     "TransitionMissionRequest",
     "TransitionOpportunityRequest",
     "VerifyFactRequest",
+    "ExecuteActionRequest",
+    "ExecuteActionResponse",
+    "ExecutionAttemptListResponse",
+    "ExecutionAttemptResponse",
+    "ExecutionReceiptResponse",
 ]

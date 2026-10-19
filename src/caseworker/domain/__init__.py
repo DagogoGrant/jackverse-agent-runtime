@@ -49,6 +49,20 @@ from caseworker.domain.enums import (
     TargetFieldType,
     TargetSchemaProvenance,
     VerificationStatus,
+    ExecutionLeaseStatus,
+    ExecutionAttemptStatus,
+    ExecutionProviderKind,
+    ExecutionReceiptStatus,
+    ExecutionErrorCategory,
+)
+from caseworker.domain.execution_attempt import ExecutionAttempt, ExecutionLease
+from caseworker.domain.execution_receipt import ExecutionReceipt
+from caseworker.domain.provider_adapter import (
+    ExecutionProviderAdapter,
+    ProviderSubmissionResult,
+    SimulatedExecutionProvider,
+    SimulationMode,
+    StagingOutcome,
 )
 from caseworker.domain.package import (
     ArtifactPackageSnapshot,
@@ -102,6 +116,11 @@ from caseworker.domain.events import (
     make_preparation_package_superseded_event,
     make_preparation_package_verified_event,
     make_preparation_report_created_event,
+    make_external_execution_plan_executed_event,
+    make_execution_attempt_started_event,
+    make_execution_reversible_point_passed_event,
+    make_execution_attempt_completed_event,
+    make_execution_receipt_created_event,
 )
 from caseworker.domain.mission import Mission
 from caseworker.domain.namespaces import (
@@ -266,4 +285,23 @@ __all__ = [
     "from_iso_utc",
     "canonical_json_dumps",
     "compute_sha256",
+    # Governed Execution (Phase 5.3.3)
+    "ExecutionLease",
+    "ExecutionAttempt",
+    "ExecutionReceipt",
+    "ExecutionProviderAdapter",
+    "SimulatedExecutionProvider",
+    "SimulationMode",
+    "StagingOutcome",
+    "ProviderSubmissionResult",
+    "ExecutionLeaseStatus",
+    "ExecutionAttemptStatus",
+    "ExecutionProviderKind",
+    "ExecutionReceiptStatus",
+    "ExecutionErrorCategory",
+    "make_external_execution_plan_executed_event",
+    "make_execution_attempt_started_event",
+    "make_execution_reversible_point_passed_event",
+    "make_execution_attempt_completed_event",
+    "make_execution_receipt_created_event",
 ]

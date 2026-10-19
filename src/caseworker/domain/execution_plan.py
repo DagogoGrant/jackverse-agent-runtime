@@ -860,8 +860,10 @@ _VALID_PLAN_TRANSITIONS: dict[ExternalExecutionPlanStatus, set[ExternalExecution
         ExternalExecutionPlanStatus.SUPERSEDED,
     },
     ExternalExecutionPlanStatus.READY_FOR_AUTHORIZATION: {
+        ExternalExecutionPlanStatus.EXECUTED,
         ExternalExecutionPlanStatus.SUPERSEDED,
     },
+    ExternalExecutionPlanStatus.EXECUTED: set(),
     ExternalExecutionPlanStatus.SUPERSEDED: set(),
 }
 
@@ -976,6 +978,11 @@ class ExternalExecutionPlan:
 
     def mark_superseded(self, reason: str = "Superseded by newer execution plan") -> None:
         self.transition_to(ExternalExecutionPlanStatus.SUPERSEDED, reason=reason)
+
+    def mark_executed(self, reason: str = "External transmission executed successfully") -> None:
+        if self.status == ExternalExecutionPlanStatus.EXECUTED:
+            raise DomainValidationError("Execution plan has already been executed and cannot be re-executed.")
+        self.transition_to(ExternalExecutionPlanStatus.EXECUTED, reason=reason)
 
     def to_dict(self) -> dict[str, Any]:
         return {

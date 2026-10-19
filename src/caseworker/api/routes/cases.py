@@ -7,12 +7,15 @@ from fastapi import APIRouter, Depends, Request, Response, status
 
 from caseworker.api.dependencies import (
     PaginationParams,
+    get_action_service,
     get_artifact_service,
     get_execution_plan_service,
+    get_governed_execution_service,
     get_package_service,
     get_case_service,
     get_mission_service,
     get_principal,
+    get_storage,
 )
 from caseworker.api.etag import check_if_match, set_etag_header
 from caseworker.api.identity import Principal
@@ -86,6 +89,20 @@ from caseworker.api.schemas.package import (
 )
 from caseworker.domain.package import PreparationPackage
 from caseworker.services.package_service import PackageService
+from caseworker.api.schemas.execution import (
+    ExecuteActionRequest,
+    ExecuteActionResponse,
+    ExecutionAttemptListResponse,
+    ExecutionReceiptResponse,
+)
+from caseworker.api.routes.actions import (
+    _to_attempt_response,
+    _to_receipt_response,
+    execute_action,
+)
+from caseworker.persistence.sqlite import SQLiteCaseworkerStorage
+from caseworker.services.action_service import ActionService
+from caseworker.services.governed_execution_service import GovernedExecutionService
 
 router = APIRouter(tags=["cases"])
 
@@ -1173,3 +1190,83 @@ async def request_plan_authorization(
         approval=_to_approval_response(approval),
         action=_to_action_response(action),
     )
+
+
+@router.post(
+    "/api/v1/cases/{case_id}/execution/actions/{action_id}/execute",
+    response_model=ExecuteActionResponse,
+)
+async def execute_case_action(
+    case_id: str,
+    action_id: str,
+    request: Request,
+    response: Response,
+    principal: Annotated[Principal, Depends(get_principal)],
+    case_service: Annotated[CaseService, Depends(get_case_service)],
+    action_service: Annotated[ActionService, Depends(get_action_service)],
+    exec_service: Annotated[GovernedExecutionService, Depends(get_governed_execution_service)],
+    storage: Annotated[SQLiteCaseworkerStorage, Depends(get_storage)],
+    req: ExecuteActionRequest | None = None,
+) -> ExecuteActionResponse:
+    """Execute an approved transmission action for a case under governed execution pipeline."""
+    case = case_service.get_case_for_user(principal.user_id, case_id)
+    if case is None:
+        raise EntityNotFoundError("Case", case_id)
+    action = action_service.get_action_for_user(principal.user_id, action_id)
+    if action is None or action.case_id != case_id:
+        raise EntityNotFoundError("Action", action_id)
+    return await execute_action(
+        action_id=action_id,
+        request=request,
+        response=response,
+        principal=principal,
+        action_service=action_service,
+        exec_service=exec_service,
+        storage=storage,
+        req=req,
+    )
+
+
+@router.get(
+    "/api/v1/cases/{case_id}/execution/receipt",
+    response_model=ExecutionReceiptResponse,
+)
+async def get_execution_receipt(
+    case_id: str,
+    response: Response,
+    principal: Annotated[Principal, Depends(get_principal)],
+    case_service: Annotated[CaseService, Depends(get_case_service)],
+    storage: Annotated[SQLiteCaseworkerStorage, Depends(get_storage)],
+) -> ExecutionReceiptResponse:
+    """Get the latest verified execution receipt for a case."""
+    case = case_service.get_case_for_user(principal.user_id, case_id)
+    if case is None:
+        raise EntityNotFoundError("Case", case_id)
+    with storage.unit_of_work() as uow:
+        receipt = uow.execution_receipts.get_by_case_id(case_id)
+        if receipt is None:
+            raise EntityNotFoundError("ExecutionReceipt", case_id)
+        set_etag_header(response, "execution_receipt", receipt.receipt_id, receipt.version)
+        return _to_receipt_response(receipt)
+
+
+@router.get(
+    "/api/v1/cases/{case_id}/execution/attempts",
+    response_model=ExecutionAttemptListResponse,
+)
+async def list_execution_attempts(
+    case_id: str,
+    principal: Annotated[Principal, Depends(get_principal)],
+    case_service: Annotated[CaseService, Depends(get_case_service)],
+    storage: Annotated[SQLiteCaseworkerStorage, Depends(get_storage)],
+) -> ExecutionAttemptListResponse:
+    """List all execution attempts for a case in chronological order."""
+    case = case_service.get_case_for_user(principal.user_id, case_id)
+    if case is None:
+        raise EntityNotFoundError("Case", case_id)
+    with storage.unit_of_work() as uow:
+        attempts = uow.execution_attempts.list_by_case(case_id)
+        return ExecutionAttemptListResponse(
+            attempts=[_to_attempt_response(att) for att in attempts],
+            total=len(attempts),
+        )

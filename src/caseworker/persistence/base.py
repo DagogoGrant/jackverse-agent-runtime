@@ -14,7 +14,9 @@ from caseworker.domain.claim import Claim
 from caseworker.domain.context import ContextFact
 from caseworker.domain.enums import ArtifactStatus, CaseStatus, ClaimStatus, MissionStatus, OpportunityStatus
 from caseworker.domain.events import DomainEvent
+from caseworker.domain.execution_attempt import ExecutionAttempt, ExecutionLease
 from caseworker.domain.execution_plan import ExecutionUploadAsset, ExternalExecutionPlan
+from caseworker.domain.execution_receipt import ExecutionReceipt
 from caseworker.domain.mission import Mission
 from caseworker.domain.opportunity import Opportunity
 from caseworker.domain.package import PreparationPackage
@@ -395,6 +397,93 @@ class ExecutionUploadAssetRepository(Protocol):
 
 
 @runtime_checkable
+class ExecutionLeaseRepository(Protocol):
+    """Repository interface for ExecutionLease mutual exclusion locks."""
+
+    def acquire_lease(
+        self,
+        case_id: str,
+        plan_id: str,
+        action_id: str,
+        user_id: str,
+        attempt_id: str,
+        ttl_seconds: int = 300,
+    ) -> ExecutionLease:
+        """Atomically acquire an execution lease with monotonic fencing token."""
+        ...
+
+    def update_heartbeat(self, lease_id: str, lease_token: str, extension_seconds: int = 300) -> bool:
+        """Extend lease duration if still active and lease_token matches."""
+        ...
+
+    def release_lease(self, lease_id: str, lease_token: str) -> None:
+        """Release an active lease."""
+        ...
+
+    def get_active_lease(self, case_id: str, plan_id: str, action_id: str) -> ExecutionLease | None:
+        """Retrieve active unexpired lease for a case/plan/action tuple."""
+        ...
+
+    def get_by_id(self, lease_id: str) -> ExecutionLease | None:
+        """Retrieve lease by its unique lease_id."""
+        ...
+
+    def get_by_token(self, lease_token: str) -> ExecutionLease | None:
+        """Retrieve lease by its unique lease_token."""
+        ...
+
+
+@runtime_checkable
+class ExecutionAttemptRepository(Protocol):
+    """Repository interface for ExecutionAttempt entities."""
+
+    def save(self, attempt: ExecutionAttempt) -> None:
+        """Persist or update an execution attempt."""
+        ...
+
+    def get_by_id(self, attempt_id: str) -> ExecutionAttempt | None:
+        """Retrieve execution attempt by unique attempt_id."""
+        ...
+
+    def list_by_case(self, case_id: str) -> list[ExecutionAttempt]:
+        """List all execution attempts for a case in chronological order."""
+        ...
+
+    def get_latest_for_action(self, action_id: str) -> ExecutionAttempt | None:
+        """Retrieve the latest execution attempt for an action."""
+        ...
+
+
+@runtime_checkable
+class ExecutionReceiptRepository(Protocol):
+    """Repository interface for immutable ExecutionReceipt entities."""
+
+    def save(self, receipt: ExecutionReceipt) -> None:
+        """Persist an immutable execution receipt."""
+        ...
+
+    def get_by_id(self, receipt_id: str) -> ExecutionReceipt | None:
+        """Retrieve execution receipt by receipt_id."""
+        ...
+
+    def get_by_attempt_id(self, attempt_id: str) -> ExecutionReceipt | None:
+        """Retrieve execution receipt by attempt_id."""
+        ...
+
+    def get_by_action_id(self, action_id: str) -> ExecutionReceipt | None:
+        """Retrieve execution receipt by action_id."""
+        ...
+
+    def get_by_plan_id(self, plan_id: str) -> ExecutionReceipt | None:
+        """Retrieve execution receipt by plan_id."""
+        ...
+
+    def get_by_case_id(self, case_id: str) -> ExecutionReceipt | None:
+        """Retrieve execution receipt for a case."""
+        ...
+
+
+@runtime_checkable
 class CaseworkerUnitOfWork(Protocol):
     """Transaction / Unit-of-Work boundary ensuring atomic domain state and event persistence."""
 
@@ -411,6 +500,9 @@ class CaseworkerUnitOfWork(Protocol):
     preparation_packages: PreparationPackageRepository
     execution_plans: ExternalExecutionPlanRepository
     upload_assets: ExecutionUploadAssetRepository
+    execution_leases: ExecutionLeaseRepository
+    execution_attempts: ExecutionAttemptRepository
+    execution_receipts: ExecutionReceiptRepository
     events: EventStore
 
     def commit(self) -> None:

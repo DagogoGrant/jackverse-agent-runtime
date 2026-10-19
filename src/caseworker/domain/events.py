@@ -801,4 +801,157 @@ def make_external_execution_plan_superseded_event(
     )
 
 
+def make_external_execution_plan_executed_event(
+    user_id: str,
+    case_id: str,
+    plan_id: str,
+    plan_fingerprint: str,
+    receipt_id: str,
+    reason: str | None = None,
+    aggregate_version: int = 2,
+) -> DomainEvent:
+    """Create privacy-safe execution.plan_executed event."""
+    return DomainEvent(
+        event_type="execution.plan_executed",
+        aggregate_type="external_execution_plan",
+        aggregate_id=plan_id,
+        aggregate_version=aggregate_version,
+        user_id=user_id,
+        payload={
+            "plan_id": plan_id,
+            "case_id": case_id,
+            "plan_fingerprint": plan_fingerprint,
+            "receipt_id": receipt_id,
+            "reason": reason,
+        },
+    )
+
+
+def make_execution_attempt_started_event(
+    user_id: str,
+    case_id: str,
+    plan_id: str,
+    action_id: str,
+    attempt_id: str,
+    provider_kind: str,
+    fencing_token: int,
+    attempt_number: int = 1,
+) -> DomainEvent:
+    """Create privacy-safe execution.attempt_started event."""
+    return DomainEvent(
+        event_type="execution.attempt_started",
+        aggregate_type="execution_attempt",
+        aggregate_id=attempt_id,
+        aggregate_version=1,
+        user_id=user_id,
+        payload={
+            "attempt_id": attempt_id,
+            "case_id": case_id,
+            "plan_id": plan_id,
+            "action_id": action_id,
+            "provider_kind": provider_kind,
+            "fencing_token": fencing_token,
+            "attempt_number": attempt_number,
+        },
+    )
+
+
+def make_execution_reversible_point_passed_event(
+    user_id: str,
+    case_id: str,
+    plan_id: str,
+    action_id: str,
+    attempt_id: str,
+    fencing_token: int,
+    staged_field_count: int,
+    staged_upload_count: int,
+) -> DomainEvent:
+    """Create privacy-safe execution.last_reversible_point_reached event."""
+    return DomainEvent(
+        event_type="execution.last_reversible_point_reached",
+        aggregate_type="execution_attempt",
+        aggregate_id=attempt_id,
+        aggregate_version=2,
+        user_id=user_id,
+        payload={
+            "attempt_id": attempt_id,
+            "case_id": case_id,
+            "plan_id": plan_id,
+            "action_id": action_id,
+            "fencing_token": fencing_token,
+            "staged_field_count": staged_field_count,
+            "staged_upload_count": staged_upload_count,
+        },
+    )
+
+
+def make_execution_attempt_completed_event(
+    user_id: str,
+    case_id: str,
+    plan_id: str,
+    action_id: str,
+    attempt_id: str,
+    status: str,
+    irreversible_action_taken: bool,
+    receipt_id: str | None = None,
+    error_category: str | None = None,
+    error_message: str | None = None,
+) -> DomainEvent:
+    """Create privacy-safe execution.attempt_completed event."""
+    return DomainEvent(
+        event_type="execution.attempt_completed",
+        aggregate_type="execution_attempt",
+        aggregate_id=attempt_id,
+        aggregate_version=3,
+        user_id=user_id,
+        payload={
+            "attempt_id": attempt_id,
+            "case_id": case_id,
+            "plan_id": plan_id,
+            "action_id": action_id,
+            "status": status,
+            "irreversible_action_taken": irreversible_action_taken,
+            "receipt_id": receipt_id,
+            "error_category": error_category,
+            "error_message": error_message,
+        },
+    )
+
+
+def make_execution_receipt_created_event(
+    user_id: str,
+    case_id: str,
+    plan_id: str,
+    action_id: str,
+    attempt_id: str,
+    receipt_id: str,
+    receipt_hash: str,
+    status: str,
+    destination_hostname: str,
+    destination_type: str,
+    external_reference_id: str | None = None,
+) -> DomainEvent:
+    """Create privacy-safe execution.receipt_created event."""
+    return DomainEvent(
+        event_type="execution.receipt_created",
+        aggregate_type="execution_receipt",
+        aggregate_id=receipt_id,
+        aggregate_version=1,
+        user_id=user_id,
+        payload={
+            "receipt_id": receipt_id,
+            "attempt_id": attempt_id,
+            "case_id": case_id,
+            "plan_id": plan_id,
+            "action_id": action_id,
+            "receipt_hash": receipt_hash,
+            "status": status,
+            "destination_hostname": destination_hostname,
+            "destination_type": destination_type,
+            "external_reference_id": external_reference_id,
+        },
+    )
+
+
+
 

@@ -24,6 +24,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/actions/{action_id}/execute": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Execute Action
+         * @description Execute an approved transmission action under two-barrier live integrity and lease fencing.
+         */
+        post: operations["execute_action_api_v1_actions__action_id__execute_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/actions/{action_id}/request-approval": {
         parameters: {
             query?: never;
@@ -192,6 +212,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/cases/{case_id}/execution/actions/{action_id}/execute": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Execute Case Action
+         * @description Execute an approved transmission action for a case under governed execution pipeline.
+         */
+        post: operations["execute_case_action_api_v1_cases__case_id__execution_actions__action_id__execute_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/cases/{case_id}/execution/attempts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Execution Attempts
+         * @description List all execution attempts for a case in chronological order.
+         */
+        get: operations["list_execution_attempts_api_v1_cases__case_id__execution_attempts_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/cases/{case_id}/execution/plan": {
         parameters: {
             query?: never;
@@ -289,6 +349,26 @@ export interface paths {
          * @description List all execution plans for a case.
          */
         get: operations["list_execution_plans_api_v1_cases__case_id__execution_plans_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/cases/{case_id}/execution/receipt": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Execution Receipt
+         * @description Get the latest verified execution receipt for a case.
+         */
+        get: operations["get_execution_receipt_api_v1_cases__case_id__execution_receipt_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1842,6 +1922,75 @@ export interface components {
             /** Verification Status */
             verification_status?: string | null;
         };
+        /** ExecuteActionRequest */
+        ExecuteActionRequest: {
+            /**
+             * Simulation Mode
+             * @description Optional simulation mode for test execution (e.g. success, pre_stage_failure, staging_failure, submit_confirmed_failure, submit_timeout).
+             */
+            simulation_mode?: string | null;
+        };
+        /** ExecuteActionResponse */
+        ExecuteActionResponse: {
+            action: components["schemas"]["ActionResponse"];
+            attempt: components["schemas"]["ExecutionAttemptResponse"];
+            /** Case Status */
+            case_status: string;
+            receipt?: components["schemas"]["ExecutionReceiptResponse"] | null;
+        };
+        /** ExecutionAttemptListResponse */
+        ExecutionAttemptListResponse: {
+            /** Attempts */
+            attempts?: components["schemas"]["ExecutionAttemptResponse"][];
+            /** Total */
+            total: number;
+        };
+        /** ExecutionAttemptResponse */
+        ExecutionAttemptResponse: {
+            /** Action Id */
+            action_id: string;
+            /** Approval Id */
+            approval_id: string;
+            /** Attempt Id */
+            attempt_id: string;
+            /** Attempt Number */
+            attempt_number: number;
+            /** Case Id */
+            case_id: string;
+            /** Completed At */
+            completed_at?: string | null;
+            error_category?: components["schemas"]["ExecutionErrorCategory"] | null;
+            /** Error Message */
+            error_message?: string | null;
+            /** Fencing Token */
+            fencing_token: number;
+            /** Irreversible Action Taken */
+            irreversible_action_taken: boolean;
+            /** Last Reversible Point Reached At */
+            last_reversible_point_reached_at?: string | null;
+            /** Lease Token */
+            lease_token: string;
+            /** Plan Id */
+            plan_id: string;
+            provider_kind: components["schemas"]["ExecutionProviderKind"];
+            /** Raw Response Snippet */
+            raw_response_snippet?: string | null;
+            /** Staged Field Count */
+            staged_field_count: number;
+            /** Staged Upload Count */
+            staged_upload_count: number;
+            /** Started At */
+            started_at: string;
+            status: components["schemas"]["ExecutionAttemptStatus"];
+            /** User Id */
+            user_id: string;
+        };
+        /**
+         * ExecutionAttemptStatus
+         * @description Lifecycle states of an execution attempt.
+         * @enum {string}
+         */
+        ExecutionAttemptStatus: "initializing" | "staging" | "at_reversible_point" | "submitting" | "succeeded" | "failed" | "ambiguous";
         /** ExecutionDestinationSchema */
         ExecutionDestinationSchema: {
             /** Canonical Url */
@@ -1872,6 +2021,12 @@ export interface components {
             /** Organization */
             organization: string;
         };
+        /**
+         * ExecutionErrorCategory
+         * @description Classification of execution errors.
+         * @enum {string}
+         */
+        ExecutionErrorCategory: "pre_submit_network" | "selector_not_found" | "staging_validation_failed" | "submit_timeout" | "submit_rejected" | "integrity_violation" | "fencing_violation" | "unknown";
         /** ExecutionFieldMappingResponse */
         ExecutionFieldMappingResponse: {
             /** Allowed Purposes */
@@ -1908,6 +2063,68 @@ export interface components {
             /** Severity */
             severity: string;
         };
+        /**
+         * ExecutionProviderKind
+         * @description Execution adapter provider types.
+         * @enum {string}
+         */
+        ExecutionProviderKind: "simulated_test";
+        /** ExecutionReceiptResponse */
+        ExecutionReceiptResponse: {
+            /** Action Id */
+            action_id: string;
+            /** Approval Id */
+            approval_id: string;
+            /** Attempt Id */
+            attempt_id: string;
+            /** Authorized Action Fingerprint */
+            authorized_action_fingerprint: string;
+            /** Case Id */
+            case_id: string;
+            /** Destination Hostname */
+            destination_hostname: string;
+            /** Destination Type */
+            destination_type: string;
+            /** Destination Url */
+            destination_url: string;
+            /** Executed At */
+            executed_at: string;
+            /** Execution Plan Fingerprint */
+            execution_plan_fingerprint: string;
+            /** External Reference Id */
+            external_reference_id?: string | null;
+            /** Field Count */
+            field_count: number;
+            /** Package Fingerprint */
+            package_fingerprint: string;
+            /** Plan Id */
+            plan_id: string;
+            /** Receipt Hash */
+            receipt_hash: string;
+            /** Receipt Id */
+            receipt_id: string;
+            /** Safe Provider Metadata */
+            safe_provider_metadata?: {
+                [key: string]: unknown;
+            };
+            /** Screening Response Count */
+            screening_response_count: number;
+            status: components["schemas"]["ExecutionReceiptStatus"];
+            /** Upload Asset Ids */
+            upload_asset_ids?: string[];
+            /** Upload Asset Shas */
+            upload_asset_shas?: string[];
+            /** User Id */
+            user_id: string;
+            /** Version */
+            version: number;
+        };
+        /**
+         * ExecutionReceiptStatus
+         * @description Status classification of an execution receipt.
+         * @enum {string}
+         */
+        ExecutionReceiptStatus: "verified_success" | "confirmed_failed" | "ambiguous_submission";
         /** ExecutionScreeningResponseDTO */
         ExecutionScreeningResponseDTO: {
             /** Answer */
@@ -3156,6 +3373,41 @@ export interface operations {
             };
         };
     };
+    execute_action_api_v1_actions__action_id__execute_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                action_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["ExecuteActionRequest"] | null;
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExecuteActionResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     request_approval_api_v1_actions__action_id__request_approval_post: {
         parameters: {
             query?: never;
@@ -3484,6 +3736,73 @@ export interface operations {
             };
         };
     };
+    execute_case_action_api_v1_cases__case_id__execution_actions__action_id__execute_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                case_id: string;
+                action_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["ExecuteActionRequest"] | null;
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExecuteActionResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_execution_attempts_api_v1_cases__case_id__execution_attempts_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                case_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExecutionAttemptListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     create_execution_plan_api_v1_cases__case_id__execution_plan_post: {
         parameters: {
             query?: never;
@@ -3632,6 +3951,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ExternalExecutionPlanListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_execution_receipt_api_v1_cases__case_id__execution_receipt_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                case_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExecutionReceiptResponse"];
                 };
             };
             /** @description Validation Error */

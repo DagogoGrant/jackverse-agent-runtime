@@ -1552,6 +1552,225 @@
         "title": "EvidenceMappingItemResponse",
         "type": "object"
       },
+      "ExecuteActionRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "simulation_mode": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Optional simulation mode for test execution (e.g. success, pre_stage_failure, staging_failure, submit_confirmed_failure, submit_timeout).",
+            "title": "Simulation Mode"
+          }
+        },
+        "title": "ExecuteActionRequest",
+        "type": "object"
+      },
+      "ExecuteActionResponse": {
+        "properties": {
+          "action": {
+            "$ref": "#/components/schemas/ActionResponse"
+          },
+          "attempt": {
+            "$ref": "#/components/schemas/ExecutionAttemptResponse"
+          },
+          "case_status": {
+            "title": "Case Status",
+            "type": "string"
+          },
+          "receipt": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ExecutionReceiptResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "action",
+          "attempt",
+          "case_status"
+        ],
+        "title": "ExecuteActionResponse",
+        "type": "object"
+      },
+      "ExecutionAttemptListResponse": {
+        "properties": {
+          "attempts": {
+            "items": {
+              "$ref": "#/components/schemas/ExecutionAttemptResponse"
+            },
+            "title": "Attempts",
+            "type": "array"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "total"
+        ],
+        "title": "ExecutionAttemptListResponse",
+        "type": "object"
+      },
+      "ExecutionAttemptResponse": {
+        "properties": {
+          "action_id": {
+            "title": "Action Id",
+            "type": "string"
+          },
+          "approval_id": {
+            "title": "Approval Id",
+            "type": "string"
+          },
+          "attempt_id": {
+            "title": "Attempt Id",
+            "type": "string"
+          },
+          "attempt_number": {
+            "title": "Attempt Number",
+            "type": "integer"
+          },
+          "case_id": {
+            "title": "Case Id",
+            "type": "string"
+          },
+          "completed_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Completed At"
+          },
+          "error_category": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ExecutionErrorCategory"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "error_message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Message"
+          },
+          "fencing_token": {
+            "title": "Fencing Token",
+            "type": "integer"
+          },
+          "irreversible_action_taken": {
+            "title": "Irreversible Action Taken",
+            "type": "boolean"
+          },
+          "last_reversible_point_reached_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Reversible Point Reached At"
+          },
+          "lease_token": {
+            "title": "Lease Token",
+            "type": "string"
+          },
+          "plan_id": {
+            "title": "Plan Id",
+            "type": "string"
+          },
+          "provider_kind": {
+            "$ref": "#/components/schemas/ExecutionProviderKind"
+          },
+          "raw_response_snippet": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Raw Response Snippet"
+          },
+          "staged_field_count": {
+            "title": "Staged Field Count",
+            "type": "integer"
+          },
+          "staged_upload_count": {
+            "title": "Staged Upload Count",
+            "type": "integer"
+          },
+          "started_at": {
+            "title": "Started At",
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/ExecutionAttemptStatus"
+          },
+          "user_id": {
+            "title": "User Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "attempt_id",
+          "action_id",
+          "approval_id",
+          "plan_id",
+          "case_id",
+          "user_id",
+          "lease_token",
+          "fencing_token",
+          "status",
+          "provider_kind",
+          "started_at",
+          "irreversible_action_taken",
+          "staged_field_count",
+          "staged_upload_count",
+          "attempt_number"
+        ],
+        "title": "ExecutionAttemptResponse",
+        "type": "object"
+      },
+      "ExecutionAttemptStatus": {
+        "description": "Lifecycle states of an execution attempt.",
+        "enum": [
+          "initializing",
+          "staging",
+          "at_reversible_point",
+          "submitting",
+          "succeeded",
+          "failed",
+          "ambiguous"
+        ],
+        "title": "ExecutionAttemptStatus",
+        "type": "string"
+      },
       "ExecutionDestinationSchema": {
         "additionalProperties": false,
         "properties": {
@@ -1600,6 +1819,21 @@
         ],
         "title": "ExecutionDestinationSchema",
         "type": "object"
+      },
+      "ExecutionErrorCategory": {
+        "description": "Classification of execution errors.",
+        "enum": [
+          "pre_submit_network",
+          "selector_not_found",
+          "staging_validation_failed",
+          "submit_timeout",
+          "submit_rejected",
+          "integrity_violation",
+          "fencing_violation",
+          "unknown"
+        ],
+        "title": "ExecutionErrorCategory",
+        "type": "string"
       },
       "ExecutionFieldMappingResponse": {
         "properties": {
@@ -1687,6 +1921,156 @@
         ],
         "title": "ExecutionPlanFindingResponse",
         "type": "object"
+      },
+      "ExecutionProviderKind": {
+        "description": "Execution adapter provider types.",
+        "enum": [
+          "simulated_test"
+        ],
+        "title": "ExecutionProviderKind",
+        "type": "string"
+      },
+      "ExecutionReceiptResponse": {
+        "properties": {
+          "action_id": {
+            "title": "Action Id",
+            "type": "string"
+          },
+          "approval_id": {
+            "title": "Approval Id",
+            "type": "string"
+          },
+          "attempt_id": {
+            "title": "Attempt Id",
+            "type": "string"
+          },
+          "authorized_action_fingerprint": {
+            "title": "Authorized Action Fingerprint",
+            "type": "string"
+          },
+          "case_id": {
+            "title": "Case Id",
+            "type": "string"
+          },
+          "destination_hostname": {
+            "title": "Destination Hostname",
+            "type": "string"
+          },
+          "destination_type": {
+            "title": "Destination Type",
+            "type": "string"
+          },
+          "destination_url": {
+            "title": "Destination Url",
+            "type": "string"
+          },
+          "executed_at": {
+            "title": "Executed At",
+            "type": "string"
+          },
+          "execution_plan_fingerprint": {
+            "title": "Execution Plan Fingerprint",
+            "type": "string"
+          },
+          "external_reference_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "External Reference Id"
+          },
+          "field_count": {
+            "title": "Field Count",
+            "type": "integer"
+          },
+          "package_fingerprint": {
+            "title": "Package Fingerprint",
+            "type": "string"
+          },
+          "plan_id": {
+            "title": "Plan Id",
+            "type": "string"
+          },
+          "receipt_hash": {
+            "title": "Receipt Hash",
+            "type": "string"
+          },
+          "receipt_id": {
+            "title": "Receipt Id",
+            "type": "string"
+          },
+          "safe_provider_metadata": {
+            "additionalProperties": true,
+            "title": "Safe Provider Metadata",
+            "type": "object"
+          },
+          "screening_response_count": {
+            "title": "Screening Response Count",
+            "type": "integer"
+          },
+          "status": {
+            "$ref": "#/components/schemas/ExecutionReceiptStatus"
+          },
+          "upload_asset_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Upload Asset Ids",
+            "type": "array"
+          },
+          "upload_asset_shas": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Upload Asset Shas",
+            "type": "array"
+          },
+          "user_id": {
+            "title": "User Id",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "receipt_id",
+          "attempt_id",
+          "action_id",
+          "approval_id",
+          "plan_id",
+          "case_id",
+          "user_id",
+          "status",
+          "destination_hostname",
+          "destination_url",
+          "destination_type",
+          "execution_plan_fingerprint",
+          "authorized_action_fingerprint",
+          "package_fingerprint",
+          "executed_at",
+          "field_count",
+          "screening_response_count",
+          "receipt_hash",
+          "version"
+        ],
+        "title": "ExecutionReceiptResponse",
+        "type": "object"
+      },
+      "ExecutionReceiptStatus": {
+        "description": "Status classification of an execution receipt.",
+        "enum": [
+          "verified_success",
+          "confirmed_failed",
+          "ambiguous_submission"
+        ],
+        "title": "ExecutionReceiptStatus",
+        "type": "string"
       },
       "ExecutionScreeningResponseDTO": {
         "properties": {
@@ -4461,6 +4845,66 @@
         ]
       }
     },
+    "/api/v1/actions/{action_id}/execute": {
+      "post": {
+        "description": "Execute an approved transmission action under two-barrier live integrity and lease fencing.",
+        "operationId": "execute_action_api_v1_actions__action_id__execute_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "action_id",
+            "required": true,
+            "schema": {
+              "title": "Action Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/ExecuteActionRequest"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Req"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExecuteActionResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Execute Action",
+        "tags": [
+          "actions"
+        ]
+      }
+    },
     "/api/v1/actions/{action_id}/request-approval": {
       "post": {
         "description": "Request human approval for an action with ETag precondition enforcement.",
@@ -4965,6 +5409,118 @@
         ]
       }
     },
+    "/api/v1/cases/{case_id}/execution/actions/{action_id}/execute": {
+      "post": {
+        "description": "Execute an approved transmission action for a case under governed execution pipeline.",
+        "operationId": "execute_case_action_api_v1_cases__case_id__execution_actions__action_id__execute_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "case_id",
+            "required": true,
+            "schema": {
+              "title": "Case Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "action_id",
+            "required": true,
+            "schema": {
+              "title": "Action Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/ExecuteActionRequest"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Req"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExecuteActionResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Execute Case Action",
+        "tags": [
+          "cases"
+        ]
+      }
+    },
+    "/api/v1/cases/{case_id}/execution/attempts": {
+      "get": {
+        "description": "List all execution attempts for a case in chronological order.",
+        "operationId": "list_execution_attempts_api_v1_cases__case_id__execution_attempts_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "case_id",
+            "required": true,
+            "schema": {
+              "title": "Case Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExecutionAttemptListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Execution Attempts",
+        "tags": [
+          "cases"
+        ]
+      }
+    },
     "/api/v1/cases/{case_id}/execution/plan": {
       "post": {
         "description": "Compile and seal an exact ExternalExecutionPlan for a case.\n\nConcurrency & Idempotency:\n- Exact replay resolution occurs before If-Match check.\n- If a plan with matching content fingerprint already exists, it is returned idempotently.\n- If compiling a new plan, If-Match header on Case is strictly validated.",
@@ -5203,6 +5759,49 @@
           }
         },
         "summary": "List Execution Plans",
+        "tags": [
+          "cases"
+        ]
+      }
+    },
+    "/api/v1/cases/{case_id}/execution/receipt": {
+      "get": {
+        "description": "Get the latest verified execution receipt for a case.",
+        "operationId": "get_execution_receipt_api_v1_cases__case_id__execution_receipt_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "case_id",
+            "required": true,
+            "schema": {
+              "title": "Case Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExecutionReceiptResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Execution Receipt",
         "tags": [
           "cases"
         ]

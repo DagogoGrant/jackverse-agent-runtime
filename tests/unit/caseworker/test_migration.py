@@ -14,7 +14,7 @@ class TestSQLiteMigration(unittest.TestCase):
         cur = conn.cursor()
         cur.execute("PRAGMA user_version;")
         version = cur.fetchone()[0]
-        self.assertEqual(version, 9)
+        self.assertEqual(version, 10)
 
         # Verify all tables exist
         cur.execute("SELECT name FROM sqlite_master WHERE type='table';")
@@ -34,6 +34,9 @@ class TestSQLiteMigration(unittest.TestCase):
             "preparation_packages",
             "external_execution_plans",
             "execution_upload_assets",
+            "execution_leases",
+            "execution_attempts",
+            "execution_receipts",
         }
         for table in expected_tables:
             self.assertIn(table, tables, f"Expected table '{table}' missing after migration.")
@@ -460,7 +463,7 @@ class TestSQLiteMigration(unittest.TestCase):
         SQLiteMigrator.migrate(conn)
 
         cur.execute("PRAGMA user_version;")
-        self.assertEqual(cur.fetchone()[0], 9)
+        self.assertEqual(cur.fetchone()[0], SQLiteMigrator.LATEST_SCHEMA_VERSION)
 
         # Verify table exists
         cur.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='preparation_intelligence_reports';")
@@ -553,7 +556,7 @@ class TestSQLiteMigration(unittest.TestCase):
 
         cur = conn.cursor()
         cur.execute("PRAGMA user_version;")
-        self.assertEqual(cur.fetchone()[0], 9)
+        self.assertEqual(cur.fetchone()[0], SQLiteMigrator.LATEST_SCHEMA_VERSION)
         conn.close()
 
     def test_migration_from_v6_schema_preserves_claims_and_creates_artifacts(self) -> None:
@@ -591,9 +594,9 @@ class TestSQLiteMigration(unittest.TestCase):
             ),
         )
 
-        # 2. Run migrator to upgrade to v9
+        # 2. Run migrator to upgrade to latest
         new_version = SQLiteMigrator.migrate(conn)
-        self.assertEqual(new_version, 9)
+        self.assertEqual(new_version, SQLiteMigrator.LATEST_SCHEMA_VERSION)
 
         # 3. Verify legacy claim is intact and has NULL for new columns
         cur.execute(
@@ -632,9 +635,9 @@ class TestSQLiteMigration(unittest.TestCase):
         conn.executescript(MIGRATION_V8_TABLES_DDL)
         conn.execute("PRAGMA user_version = 8;")
 
-        # Migrate to v9
+        # Migrate to latest (v10)
         new_version = SQLiteMigrator.migrate(conn)
-        self.assertEqual(new_version, 9)
+        self.assertEqual(new_version, 10)
 
         cur = conn.cursor()
         cur.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='external_execution_plans';")
@@ -654,6 +657,43 @@ class TestSQLiteMigration(unittest.TestCase):
         upload_indexes = {row[0] for row in cur.fetchall()}
         self.assertIn("idx_exec_upload_assets_plan", upload_indexes)
         self.assertIn("idx_exec_upload_assets_case", upload_indexes)
+        conn.close()
+
+    def test_migration_from_v9_to_v10_creates_governed_execution_tables(self) -> None:
+        """Verify explicit migration from v9 baseline to v10 adds execution leases, attempts, and receipts."""
+        conn = sqlite3.connect(":memory:")
+        from caseworker.persistence.migration import (
+            MIGRATION_V1_DDL,
+            MIGRATION_V2_TABLES_DDL,
+            MIGRATION_V6_TABLES_DDL,
+            MIGRATION_V7_TABLES_DDL,
+            MIGRATION_V8_TABLES_DDL,
+            MIGRATION_V9_TABLES_DDL,
+        )
+        conn.executescript(MIGRATION_V1_DDL)
+        conn.executescript(MIGRATION_V2_TABLES_DDL)
+        conn.executescript(MIGRATION_V6_TABLES_DDL)
+        conn.executescript(MIGRATION_V7_TABLES_DDL)
+        conn.executescript(MIGRATION_V8_TABLES_DDL)
+        conn.executescript(MIGRATION_V9_TABLES_DDL)
+        conn.execute("PRAGMA user_version = 9;")
+
+        # Run migration 9 -> 10
+        new_version = SQLiteMigrator.migrate(conn)
+        self.assertEqual(new_version, 10)
+
+        cur = conn.cursor()
+        for tbl in ("execution_leases", "execution_attempts", "execution_receipts"):
+            cur.execute(f"SELECT name FROM sqlite_master WHERE type='table' AND name='{tbl}';")
+            self.assertIsNotNone(cur.fetchone(), f"Table {tbl} must exist after 9->10 migration")
+
+        # Verify lease unique active index
+        cur.execute("SELECT name FROM sqlite_master WHERE type='index' AND name='idx_exec_leases_active';")
+        self.assertIsNotNone(cur.fetchone())
+
+        # Verify receipt hash unique index
+        cur.execute("SELECT name FROM sqlite_master WHERE type='index' AND name='idx_exec_receipts_hash';")
+        self.assertIsNotNone(cur.fetchone())
         conn.close()
 
 

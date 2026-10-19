@@ -28,6 +28,10 @@ import type {
   ExecutionDestination,
   TargetInteractionSchema,
   TargetFieldBinding,
+  ExecuteActionResponse,
+  ExecutionReceipt,
+  ExecutionAttempt,
+  ExecutionAttemptList,
 } from '../api/types';
 
 // Invalidate on dev user switch
@@ -576,6 +580,88 @@ export function useRequestExecutionPlanAuthorization() {
       queryClient.invalidateQueries({ queryKey: ['approvals'] });
       queryClient.invalidateQueries({ queryKey: ['events'] });
     },
+  });
+}
+
+export function useExecuteAction() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({
+      actionId,
+      etag,
+      simulationMode,
+      caseId,
+    }: {
+      actionId: string;
+      etag?: string | null;
+      simulationMode?: string | null;
+      caseId?: string;
+    }) => {
+      const url = caseId
+        ? `/cases/${caseId}/execution/actions/${actionId}/execute`
+        : `/actions/${actionId}/execute`;
+      const res = await apiRequest<ExecuteActionResponse>(
+        url,
+        {
+          method: 'POST',
+          body: JSON.stringify(simulationMode ? { simulation_mode: simulationMode } : {}),
+        },
+        etag
+      );
+      return res.data;
+    },
+    onSuccess: (_, vars) => {
+      queryClient.invalidateQueries({ queryKey: ['actions'] });
+      queryClient.invalidateQueries({ queryKey: ['actions', vars.actionId] });
+      queryClient.invalidateQueries({ queryKey: ['approvals'] });
+      if (vars.caseId) {
+        queryClient.invalidateQueries({ queryKey: ['cases', vars.caseId] });
+        queryClient.invalidateQueries({ queryKey: ['execution-receipt', vars.caseId] });
+        queryClient.invalidateQueries({ queryKey: ['execution-attempts', vars.caseId] });
+        queryClient.invalidateQueries({ queryKey: ['execution-plans', vars.caseId] });
+        queryClient.invalidateQueries({ queryKey: ['execution-plan-latest', vars.caseId] });
+      }
+      queryClient.invalidateQueries({ queryKey: ['cases'] });
+      queryClient.invalidateQueries({ queryKey: ['events'] });
+    },
+  });
+}
+
+export function useExecutionReceipt(caseId?: string) {
+  return useQuery({
+    queryKey: ['execution-receipt', caseId],
+    queryFn: async () => {
+      if (!caseId) return null;
+      try {
+        const res = await apiRequest<ExecutionReceipt>(`/cases/${caseId}/execution/receipt`);
+        return { receipt: res.data, etag: res.etag };
+      } catch (err) {
+        if (err instanceof ApiError && err.status === 404) {
+          return null;
+        }
+        throw err;
+      }
+    },
+    enabled: Boolean(caseId),
+  });
+}
+
+export function useExecutionAttempts(caseId?: string) {
+  return useQuery({
+    queryKey: ['execution-attempts', caseId],
+    queryFn: async (): Promise<ExecutionAttempt[]> => {
+      if (!caseId) return [];
+      try {
+        const res = await apiRequest<ExecutionAttemptList>(`/cases/${caseId}/execution/attempts`);
+        return res.data.attempts || [];
+      } catch (err) {
+        if (err instanceof ApiError && err.status === 404) {
+          return [];
+        }
+        throw err;
+      }
+    },
+    enabled: Boolean(caseId),
   });
 }
 

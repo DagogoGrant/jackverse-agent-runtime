@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import sqlite3
 
-LATEST_SCHEMA_VERSION = 9
+LATEST_SCHEMA_VERSION = 10
 
 MIGRATION_V1_DDL = """
 CREATE TABLE IF NOT EXISTS missions (
@@ -334,6 +334,99 @@ CREATE INDEX IF NOT EXISTS idx_prep_artifacts_user ON preparation_artifacts(user
 """
 
 
+MIGRATION_V10_TABLES_DDL = """
+CREATE TABLE IF NOT EXISTS execution_leases (
+    lease_id TEXT PRIMARY KEY,
+    case_id TEXT NOT NULL,
+    plan_id TEXT NOT NULL,
+    action_id TEXT NOT NULL,
+    user_id TEXT NOT NULL,
+    attempt_id TEXT NOT NULL,
+    lease_token TEXT NOT NULL UNIQUE,
+    fencing_token INTEGER NOT NULL DEFAULT 1,
+    status TEXT NOT NULL,
+    acquired_at TEXT NOT NULL,
+    heartbeat_at TEXT NOT NULL,
+    expires_at TEXT NOT NULL,
+    released_at TEXT,
+    FOREIGN KEY (case_id) REFERENCES cases(case_id) ON DELETE CASCADE,
+    FOREIGN KEY (plan_id) REFERENCES external_execution_plans(plan_id) ON DELETE CASCADE,
+    FOREIGN KEY (action_id) REFERENCES actions(action_id) ON DELETE CASCADE
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_exec_leases_active ON execution_leases(case_id, plan_id, action_id) WHERE status = 'active';
+CREATE INDEX IF NOT EXISTS idx_exec_leases_case ON execution_leases(case_id);
+CREATE INDEX IF NOT EXISTS idx_exec_leases_token ON execution_leases(lease_token);
+
+CREATE TABLE IF NOT EXISTS execution_attempts (
+    attempt_id TEXT PRIMARY KEY,
+    action_id TEXT NOT NULL,
+    approval_id TEXT NOT NULL,
+    plan_id TEXT NOT NULL,
+    case_id TEXT NOT NULL,
+    user_id TEXT NOT NULL,
+    lease_token TEXT NOT NULL,
+    fencing_token INTEGER NOT NULL DEFAULT 1,
+    status TEXT NOT NULL,
+    provider_kind TEXT NOT NULL,
+    started_at TEXT NOT NULL,
+    completed_at TEXT,
+    last_reversible_point_reached_at TEXT,
+    irreversible_action_taken INTEGER NOT NULL DEFAULT 0,
+    staged_field_count INTEGER NOT NULL DEFAULT 0,
+    staged_upload_count INTEGER NOT NULL DEFAULT 0,
+    error_category TEXT,
+    error_message TEXT,
+    raw_response_snippet TEXT,
+    attempt_number INTEGER NOT NULL DEFAULT 1,
+    FOREIGN KEY (case_id) REFERENCES cases(case_id) ON DELETE CASCADE,
+    FOREIGN KEY (plan_id) REFERENCES external_execution_plans(plan_id) ON DELETE CASCADE,
+    FOREIGN KEY (action_id) REFERENCES actions(action_id) ON DELETE CASCADE,
+    FOREIGN KEY (approval_id) REFERENCES approvals(approval_id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_exec_attempts_case ON execution_attempts(case_id);
+CREATE INDEX IF NOT EXISTS idx_exec_attempts_action ON execution_attempts(action_id);
+CREATE INDEX IF NOT EXISTS idx_exec_attempts_plan ON execution_attempts(plan_id);
+
+CREATE TABLE IF NOT EXISTS execution_receipts (
+    receipt_id TEXT PRIMARY KEY,
+    attempt_id TEXT NOT NULL UNIQUE,
+    action_id TEXT NOT NULL,
+    approval_id TEXT NOT NULL,
+    plan_id TEXT NOT NULL,
+    case_id TEXT NOT NULL,
+    user_id TEXT NOT NULL,
+    status TEXT NOT NULL,
+    destination_hostname TEXT NOT NULL,
+    destination_url TEXT NOT NULL,
+    destination_type TEXT NOT NULL,
+    execution_plan_fingerprint TEXT NOT NULL,
+    authorized_action_fingerprint TEXT NOT NULL,
+    package_fingerprint TEXT NOT NULL,
+    executed_at TEXT NOT NULL,
+    external_reference_id TEXT,
+    field_count INTEGER NOT NULL DEFAULT 0,
+    upload_asset_ids_json TEXT NOT NULL,
+    upload_asset_shas_json TEXT NOT NULL,
+    screening_response_count INTEGER NOT NULL DEFAULT 0,
+    safe_provider_metadata_json TEXT NOT NULL,
+    receipt_hash TEXT NOT NULL UNIQUE,
+    version INTEGER NOT NULL DEFAULT 1,
+    FOREIGN KEY (attempt_id) REFERENCES execution_attempts(attempt_id) ON DELETE CASCADE,
+    FOREIGN KEY (case_id) REFERENCES cases(case_id) ON DELETE CASCADE,
+    FOREIGN KEY (plan_id) REFERENCES external_execution_plans(plan_id) ON DELETE CASCADE,
+    FOREIGN KEY (action_id) REFERENCES actions(action_id) ON DELETE CASCADE,
+    FOREIGN KEY (approval_id) REFERENCES approvals(approval_id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_exec_receipts_case ON execution_receipts(case_id);
+CREATE INDEX IF NOT EXISTS idx_exec_receipts_action ON execution_receipts(action_id);
+CREATE INDEX IF NOT EXISTS idx_exec_receipts_plan ON execution_receipts(plan_id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_exec_receipts_hash ON execution_receipts(receipt_hash);
+"""
+
+
 class SQLiteMigrator:
     """Manages transactional database schema upgrades for Caseworker persistence."""
 
@@ -507,6 +600,12 @@ class SQLiteMigrator:
             conn.executescript(MIGRATION_V9_TABLES_DDL)
             conn.execute("PRAGMA user_version = 9;")
             current_version = 9
+
+        # Migrate 9 -> 10 (Phase 5.3.3: Governed External Execution)
+        if current_version < 10:
+            conn.executescript(MIGRATION_V10_TABLES_DDL)
+            conn.execute("PRAGMA user_version = 10;")
+            current_version = 10
 
         return current_version
 

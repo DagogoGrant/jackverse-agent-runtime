@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
-import { ArrowLeft, AlertTriangle, CheckCircle2, XCircle, Search, ChevronDown, FileText, Copy, Check, ShieldCheck, ShieldAlert, X, Lock, Send, Eye, EyeOff, FileCode, Settings } from 'lucide-react';
+import { ArrowLeft, AlertTriangle, CheckCircle2, XCircle, Search, ChevronDown, FileText, Copy, Check, ShieldCheck, ShieldAlert, X, Lock, Send, Eye, EyeOff, FileCode, Settings, Zap, CheckCircle } from 'lucide-react';
 import {
   useCase,
   useCaseActions,
@@ -21,6 +21,9 @@ import {
   useCreateExecutionPlan,
   useRequestExecutionPlanAuthorization,
   useContextFacts,
+  useExecuteAction,
+  useExecutionReceipt,
+  useExecutionAttempts,
 } from '../hooks/useCaseworker';
 import { apiRequest, PreconditionFailedError } from '../api/client';
 import type {
@@ -92,6 +95,51 @@ export const CaseDetailView: React.FC = () => {
 
   const requestAuthorization = useRequestExecutionPlanAuthorization();
   const [authorizationError, setAuthorizationError] = useState<string | null>(null);
+
+  const { data: receiptData, refetch: refetchReceipt } = useExecutionReceipt(caseId);
+  const receipt = receiptData?.receipt && 'receipt_hash' in receiptData.receipt ? receiptData.receipt : null;
+  const { data: attempts = [], refetch: refetchAttempts } = useExecutionAttempts(caseId);
+  const executeActionMutation = useExecuteAction();
+
+  const [executionError, setExecutionError] = useState<string | null>(null);
+  const [showExecutionModal, setShowExecutionModal] = useState(false);
+  const [simulationMode, setSimulationMode] = useState<string>('success');
+  const [copiedReceiptHash, setCopiedReceiptHash] = useState(false);
+
+  const approvedTransmissionAction = actions?.find(
+    (a) =>
+      a.action_type === 'submit_form' &&
+      a.status === 'approved'
+  );
+
+  const handleExecuteTransmission = async () => {
+    if (!caseId || !approvedTransmissionAction) return;
+    setExecutionError(null);
+    setConcurrencyNotice(null);
+    try {
+      const actionEtag = `"action:${approvedTransmissionAction.action_id}:v${approvedTransmissionAction.version}"`;
+      await executeActionMutation.mutateAsync({
+        actionId: approvedTransmissionAction.action_id,
+        caseId,
+        etag: actionEtag,
+        simulationMode: simulationMode || undefined,
+      });
+      setShowExecutionModal(false);
+      await refetchCase();
+      await refetchReceipt();
+      await refetchAttempts();
+    } catch (err: unknown) {
+      if (err instanceof PreconditionFailedError) {
+        setConcurrencyNotice(
+          'Action was modified concurrently. Reloading current state…'
+        );
+        await refetchCase();
+      } else {
+        const msg = err instanceof Error ? err.message : 'Execution failed.';
+        setExecutionError(msg);
+      }
+    }
+  };
 
   const toggleRevealField = (fieldId: string) => {
     setRevealedFields((prev) => ({
@@ -1424,7 +1472,7 @@ export const CaseDetailView: React.FC = () => {
                                 {latestPlan ? 'Recompile Plan →' : 'Compile Action Plan →'}
                               </TactileButton>
                             )}
-                            {latestPlan?.status === 'ready_for_authorization' && caseItem.status.toLowerCase() === 'action_required' && (
+                            {latestPlan?.status === 'ready_for_authorization' && caseItem.status.toLowerCase() === 'action_required' && !approvedTransmissionAction && (!receipt || receipt.status !== 'verified_success') && (
                               <TactileButton
                                 variant="primary"
                                 size="sm"
@@ -1435,10 +1483,21 @@ export const CaseDetailView: React.FC = () => {
                                 Request Transmission Authorization →
                               </TactileButton>
                             )}
+                            {approvedTransmissionAction && !receipt && (
+                              <TactileButton
+                                variant="primary"
+                                size="sm"
+                                className="bg-emerald-700 hover:bg-emerald-800 text-white border-emerald-600"
+                                onClick={() => setShowExecutionModal(true)}
+                              >
+                                <Zap className="w-3.5 h-3.5 mr-1.5 inline" />
+                                Execute Authorized Transmission →
+                              </TactileButton>
+                            )}
                           </div>
                         </div>
 
-                        {caseItem.status.toLowerCase() === 'awaiting_approval' && latestPlan?.status === 'ready_for_authorization' && (
+                        {caseItem.status.toLowerCase() === 'awaiting_approval' && latestPlan?.status === 'ready_for_authorization' && !approvedTransmissionAction && (
                           <div className="p-3 border border-amber-500/30 bg-amber-500/10 text-amber-800 dark:text-amber-300 font-interface text-xs space-y-1">
                             <div className="font-semibold flex items-center justify-between">
                               <span className="flex items-center gap-1.5">
@@ -1455,6 +1514,112 @@ export const CaseDetailView: React.FC = () => {
                             <p className="text-[11px] text-jv-muted">
                               An exact transmission authorization request has been proposed. Review and sign in the Needs You queue to grant transmission authority.
                             </p>
+                          </div>
+                        )}
+
+                        {/* Verified Execution Receipt Card */}
+                        {receipt && receipt.status === 'verified_success' && (
+                          <div className="p-4 border border-emerald-600/40 bg-emerald-500/5 space-y-3 font-interface">
+                            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-emerald-600/20 pb-2">
+                              <div className="flex items-center gap-2">
+                                <CheckCircle className="w-5 h-5 text-emerald-600" />
+                                <span className="font-display text-lg text-jv-ink font-semibold">Verified Execution Receipt</span>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <span className="px-2 py-0.5 border border-emerald-600/40 bg-emerald-600/10 text-emerald-700 dark:text-emerald-300 font-machine text-xs font-semibold">
+                                  VERIFIED SUCCESS
+                                </span>
+                                <span className="px-2 py-0.5 border border-jv-rule bg-jv-surface text-jv-muted font-machine text-xs">
+                                  WAITING EXTERNAL
+                                </span>
+                              </div>
+                            </div>
+
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                              <div>
+                                <span className="text-jv-muted">External Confirmation Ref:</span>{' '}
+                                <span className="font-mono font-semibold text-emerald-700 dark:text-emerald-400">
+                                  {receipt.external_reference_id || 'N/A'}
+                                </span>
+                              </div>
+                              <div>
+                                <span className="text-jv-muted">Executed At:</span>{' '}
+                                <span className="font-machine text-jv-ink">{new Date(receipt.executed_at).toLocaleString()}</span>
+                              </div>
+                              <div>
+                                <span className="text-jv-muted">Destination Host:</span>{' '}
+                                <span className="font-mono text-jv-ink">{receipt.destination_hostname}</span>
+                              </div>
+                              <div>
+                                <span className="text-jv-muted">Channel / Type:</span>{' '}
+                                <span className="font-mono text-jv-ink">{receipt.destination_type}</span>
+                              </div>
+                              <div className="sm:col-span-2">
+                                <span className="text-jv-muted">Target URL:</span>{' '}
+                                <span className="font-mono text-jv-accent truncate inline-block max-w-full align-bottom" title={receipt.destination_url}>
+                                  {receipt.destination_url}
+                                </span>
+                              </div>
+                            </div>
+
+                            <div className="flex flex-wrap gap-4 pt-2 border-t border-emerald-600/20 text-xs font-machine text-jv-muted">
+                              <div>FIELDS TRANSMITTED: <span className="font-bold text-jv-ink">{receipt.field_count}</span></div>
+                              <div>UPLOADS DISPATCHED: <span className="font-bold text-jv-ink">{receipt.upload_asset_ids?.length || 0}</span></div>
+                              <div>SCREENING RESPONSES: <span className="font-bold text-jv-ink">{receipt.screening_response_count}</span></div>
+                            </div>
+
+                            {/* Cryptographic Proof Hash */}
+                            <div className="p-2.5 border border-emerald-600/20 bg-emerald-500/10 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs font-machine">
+                              <div className="flex items-center gap-2 overflow-hidden">
+                                <Lock className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                                <span className="text-jv-muted shrink-0">RECEIPT HASH:</span>
+                                <span className="text-jv-ink font-mono truncate" title={receipt.receipt_hash}>
+                                  {receipt.receipt_hash}
+                                </span>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  navigator.clipboard.writeText(receipt.receipt_hash);
+                                  setCopiedReceiptHash(true);
+                                  setTimeout(() => setCopiedReceiptHash(false), 2000);
+                                }}
+                                className="text-jv-muted hover:text-jv-ink px-2 py-1 border border-emerald-600/30 bg-jv-surface shrink-0 flex items-center gap-1 text-[11px]"
+                              >
+                                {copiedReceiptHash ? <Check className="w-3 h-3 text-emerald-600" /> : <Copy className="w-3 h-3" />}
+                                <span>{copiedReceiptHash ? 'COPIED' : 'COPY HASH'}</span>
+                              </button>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Ambiguous Submission Warning */}
+                        {((receipt && receipt.status === 'ambiguous_submission') ||
+                          (attempts.length > 0 && attempts[attempts.length - 1].status === 'ambiguous')) && (
+                          <div className="p-4 border border-amber-600/50 bg-amber-500/10 space-y-2 font-interface">
+                            <div className="flex items-center gap-2 text-amber-800 dark:text-amber-300 font-semibold text-sm">
+                              <ShieldAlert className="w-5 h-5 text-amber-600 shrink-0" />
+                              <span>CRITICAL: Ambiguous External Transmission</span>
+                            </div>
+                            <p className="text-xs text-amber-800/90 dark:text-amber-300/90">
+                              The transmission crossed the Last Reversible Point, but external confirmation was not received.
+                              In accordance with constitutional governance, automated retries are strictly blocked to prevent duplicate real-world effects.
+                            </p>
+                            <div className="text-xs font-machine text-amber-900 dark:text-amber-200">
+                              STATUS: MANUAL OPERATOR RESOLUTION REQUIRED
+                            </div>
+                          </div>
+                        )}
+
+                        {executionError && (
+                          <div className="p-3 border border-red-500/30 bg-red-500/10 text-red-600 font-interface text-xs flex items-center justify-between gap-2">
+                            <div className="flex items-center gap-2">
+                              <AlertTriangle className="w-4 h-4 shrink-0" />
+                              <span>{executionError}</span>
+                            </div>
+                            <TactileButton variant="outline" size="sm" onClick={() => setExecutionError(null)}>
+                              Dismiss
+                            </TactileButton>
                           </div>
                         )}
 
@@ -2713,6 +2878,104 @@ export const CaseDetailView: React.FC = () => {
                 onClick={handleSaveAndCompileResolvedPlan}
               >
                 Compile Action Plan with Resolved Bindings →
+              </TactileButton>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Governed External Execution Modal */}
+      {showExecutionModal && approvedTransmissionAction && (
+        <div className="fixed inset-0 z-50 bg-jv-ink/40 flex items-center justify-center p-4">
+          <div className="w-full max-w-lg border border-jv-rule bg-jv-bg p-6 space-y-5 font-interface">
+            <div className="flex items-start justify-between border-b border-jv-rule pb-3">
+              <div className="flex items-center gap-2">
+                <Zap className="w-5 h-5 text-amber-600" />
+                <h3 className="font-display text-xl text-jv-ink">
+                  Execute Governed Transmission
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowExecutionModal(false)}
+                className="text-jv-muted hover:text-jv-ink p-1 border border-jv-rule bg-jv-surface"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="p-3 border border-amber-500/30 bg-amber-500/10 space-y-1 text-xs text-amber-800 dark:text-amber-300">
+              <div className="font-semibold flex items-center gap-1.5">
+                <ShieldAlert className="w-4 h-4 text-amber-600 shrink-0" />
+                <span>IRREVERSIBLE EXTERNAL ACTION</span>
+              </div>
+              <p className="text-[11px] text-jv-muted">
+                Executing will cross the Last Reversible Point (Barrier B) and dispatch this application to the external host. This action cannot be automatically revoked once submitted.
+              </p>
+            </div>
+
+            <div className="space-y-2 text-xs border border-jv-rule bg-jv-surface/40 p-3">
+              <div className="font-machine text-[11px] uppercase text-jv-muted font-semibold">
+                Execution Target & Security Gates
+              </div>
+              <div className="space-y-1">
+                <div>
+                  <span className="text-jv-muted">Destination:</span>{' '}
+                  <span className="font-mono text-jv-accent">{latestPlan?.destination?.canonical_url}</span>
+                </div>
+                <div>
+                  <span className="text-jv-muted">Action ID:</span>{' '}
+                  <span className="font-mono text-jv-ink">{approvedTransmissionAction.action_id}</span>
+                </div>
+                <div>
+                  <span className="text-jv-muted">Integrity Verification:</span>{' '}
+                  <span className="font-machine text-emerald-600">TWO-BARRIER LIVE INTEGRITY (A & B)</span>
+                </div>
+                <div>
+                  <span className="text-jv-muted">Concurrency Control:</span>{' '}
+                  <span className="font-machine text-jv-ink">EXCLUSIVE LEASE + MONOTONIC FENCING TOKEN</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Simulation Mode selector (for demo / dev testing) */}
+            <div className="space-y-1.5 text-xs">
+              <label className="font-machine text-[11px] uppercase text-jv-muted font-semibold">
+                Execution Provider Mode
+              </label>
+              <select
+                value={simulationMode}
+                onChange={(e) => setSimulationMode(e.target.value)}
+                className="w-full p-2 border border-jv-rule bg-jv-bg font-mono text-xs text-jv-ink rounded-none"
+              >
+                <option value="success">simulated_test: Deterministic Verified Success</option>
+                <option value="pre_stage_failure">simulated_test: Barrier A Integrity Failure</option>
+                <option value="staging_failure">simulated_test: Form Staging Failure</option>
+                <option value="submit_confirmed_failure">simulated_test: External Rejection</option>
+                <option value="submit_timeout">simulated_test: Ambiguous Submit Timeout</option>
+              </select>
+              <p className="text-[10px] text-jv-muted">
+                Under Phase 5.3.3, execution uses the deterministic SimulatedExecutionProvider.
+              </p>
+            </div>
+
+            <div className="flex justify-end gap-2 pt-2 border-t border-jv-rule">
+              <TactileButton
+                variant="outline"
+                size="sm"
+                onClick={() => setShowExecutionModal(false)}
+              >
+                Cancel
+              </TactileButton>
+              <TactileButton
+                variant="primary"
+                size="sm"
+                className="bg-emerald-700 hover:bg-emerald-800 text-white border-emerald-600"
+                loading={executeActionMutation.isPending}
+                onClick={handleExecuteTransmission}
+              >
+                <Zap className="w-3.5 h-3.5 mr-1.5 inline" />
+                Confirm & Execute →
               </TactileButton>
             </div>
           </div>

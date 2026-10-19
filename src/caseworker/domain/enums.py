@@ -355,6 +355,7 @@ class ExternalExecutionPlanStatus(StrEnum):
 
     DRAFT = "draft"
     READY_FOR_AUTHORIZATION = "ready_for_authorization"
+    EXECUTED = "executed"
     SUPERSEDED = "superseded"
 
 
@@ -386,6 +387,54 @@ class TargetAnswerType(StrEnum):
     BOOLEAN = "boolean"
     DATE = "date"
     NUMBER = "number"
+
+
+class ExecutionLeaseStatus(StrEnum):
+    """Status of an execution lease locking an action/plan against concurrent runs."""
+
+    ACTIVE = "active"
+    RELEASED = "released"
+    EXPIRED = "expired"
+
+
+class ExecutionAttemptStatus(StrEnum):
+    """Lifecycle states of an execution attempt."""
+
+    INITIALIZING = "initializing"
+    STAGING = "staging"
+    AT_REVERSIBLE_POINT = "at_reversible_point"
+    SUBMITTING = "submitting"
+    SUCCEEDED = "succeeded"
+    FAILED = "failed"
+    AMBIGUOUS = "ambiguous"
+
+
+class ExecutionProviderKind(StrEnum):
+    """Execution adapter provider types."""
+
+    SIMULATED_TEST = "simulated_test"
+
+
+class ExecutionReceiptStatus(StrEnum):
+    """Status classification of an execution receipt."""
+
+    VERIFIED_SUCCESS = "verified_success"
+    CONFIRMED_FAILED = "confirmed_failed"
+    AMBIGUOUS_SUBMISSION = "ambiguous_submission"
+
+
+class ExecutionErrorCategory(StrEnum):
+    """Classification of execution errors."""
+
+    PRE_SUBMIT_NETWORK = "pre_submit_network"
+    SELECTOR_NOT_FOUND = "selector_not_found"
+    STAGING_VALIDATION_FAILED = "staging_validation_failed"
+    SUBMIT_TIMEOUT = "submit_timeout"
+    SUBMIT_REJECTED = "submit_rejected"
+    INTEGRITY_VIOLATION = "integrity_violation"
+    FENCING_VIOLATION = "fencing_violation"
+    UNKNOWN = "unknown"
+
 
 
 

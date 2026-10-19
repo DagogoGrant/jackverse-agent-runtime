@@ -34,6 +34,11 @@ from caseworker.domain.enums import (
     CaseType,
     ClaimStatus,
     ExternalExecutionPlanStatus,
+    ExecutionLeaseStatus,
+    ExecutionAttemptStatus,
+    ExecutionReceiptStatus,
+    ExecutionProviderKind,
+    ExecutionErrorCategory,
     MissionKind,
     MissionStatus,
     OpportunityStatus,
@@ -46,6 +51,8 @@ from caseworker.domain.enums import (
     SourceType,
     VerificationStatus,
 )
+from caseworker.domain.execution_attempt import ExecutionAttempt, ExecutionLease
+from caseworker.domain.execution_receipt import ExecutionReceipt
 from caseworker.domain.errors import (
     DomainValidationError,
     EntityNotFoundError,
@@ -93,6 +100,9 @@ from caseworker.persistence.base import (
     ContextRepository,
     ContextSourceRepository,
     EventStore,
+    ExecutionAttemptRepository,
+    ExecutionLeaseRepository,
+    ExecutionReceiptRepository,
     ExecutionUploadAssetRepository,
     ExternalExecutionPlanRepository,
     MissionRepository,
@@ -2543,6 +2553,517 @@ class SQLiteExternalExecutionPlanRepository(ExternalExecutionPlanRepository):
         return [self._row_to_plan(row) for row in cur.fetchall()]
 
 
+class SQLiteExecutionLeaseRepository(ExecutionLeaseRepository):
+    def __init__(self, conn: sqlite3.Connection) -> None:
+        self.conn = conn
+
+    def acquire_lease(
+        self,
+        case_id: str,
+        plan_id: str,
+        action_id: str,
+        user_id: str,
+        attempt_id: str,
+        ttl_seconds: int = 300,
+    ) -> ExecutionLease:
+        cur = self.conn.cursor()
+        now = now_utc()
+        now_iso = to_iso_utc(now)
+
+        # Expire stale active leases whose expires_at has passed
+        cur.execute(
+            """
+            UPDATE execution_leases
+            SET status = ?
+            WHERE case_id = ? AND plan_id = ? AND action_id = ? AND status = ? AND expires_at <= ?
+            """,
+            (
+                ExecutionLeaseStatus.EXPIRED.value,
+                case_id,
+                plan_id,
+                action_id,
+                ExecutionLeaseStatus.ACTIVE.value,
+                now_iso,
+            ),
+        )
+
+        # Check if an active unexpired lease still exists
+        cur.execute(
+            """
+            SELECT lease_id, case_id, plan_id, action_id, user_id, attempt_id,
+                   lease_token, fencing_token, status, acquired_at, heartbeat_at,
+                   expires_at, released_at
+            FROM execution_leases
+            WHERE case_id = ? AND plan_id = ? AND action_id = ? AND status = ? AND expires_at > ?
+            """,
+            (case_id, plan_id, action_id, ExecutionLeaseStatus.ACTIVE.value, now_iso),
+        )
+        row = cur.fetchone()
+        if row:
+            raise DomainValidationError(
+                f"Active execution lease already held for case '{case_id}' action '{action_id}' (attempt '{row[5]}')."
+            )
+
+        # Monotonically increment fencing token for this action
+        cur.execute(
+            """
+            SELECT COALESCE(MAX(fencing_token), 0) + 1
+            FROM execution_leases
+            WHERE action_id = ?
+            """,
+            (action_id,),
+        )
+        next_fencing_token = int(cur.fetchone()[0])
+
+        expires_at = datetime.fromtimestamp(now.timestamp() + ttl_seconds, tz=now.tzinfo)
+        lease = ExecutionLease(
+            case_id=case_id,
+            plan_id=plan_id,
+            action_id=action_id,
+            user_id=user_id,
+            attempt_id=attempt_id,
+            fencing_token=next_fencing_token,
+            status=ExecutionLeaseStatus.ACTIVE,
+            acquired_at=now,
+            heartbeat_at=now,
+            expires_at=expires_at,
+        )
+
+        cur.execute(
+            """
+            INSERT INTO execution_leases (
+                lease_id, case_id, plan_id, action_id, user_id, attempt_id,
+                lease_token, fencing_token, status, acquired_at, heartbeat_at,
+                expires_at, released_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                lease.lease_id,
+                lease.case_id,
+                lease.plan_id,
+                lease.action_id,
+                lease.user_id,
+                lease.attempt_id,
+                lease.lease_token,
+                lease.fencing_token,
+                lease.status.value,
+                to_iso_utc(lease.acquired_at),
+                to_iso_utc(lease.heartbeat_at),
+                to_iso_utc(lease.expires_at),
+                to_iso_utc(lease.released_at) if lease.released_at else None,
+            ),
+        )
+        return lease
+
+    def update_heartbeat(self, lease_id: str, lease_token: str, extension_seconds: int = 300) -> bool:
+        cur = self.conn.cursor()
+        now = now_utc()
+        now_iso = to_iso_utc(now)
+        new_expires_at = to_iso_utc(datetime.fromtimestamp(now.timestamp() + extension_seconds, tz=now.tzinfo))
+
+        cur.execute(
+            """
+            UPDATE execution_leases
+            SET heartbeat_at = ?, expires_at = ?
+            WHERE lease_id = ? AND lease_token = ? AND status = ? AND expires_at > ?
+            """,
+            (now_iso, new_expires_at, lease_id, lease_token, ExecutionLeaseStatus.ACTIVE.value, now_iso),
+        )
+        return cur.rowcount > 0
+
+    def release_lease(self, lease_id: str, lease_token: str) -> None:
+        cur = self.conn.cursor()
+        now_iso = to_iso_utc(now_utc())
+        cur.execute(
+            """
+            UPDATE execution_leases
+            SET status = ?, released_at = ?
+            WHERE lease_id = ? AND lease_token = ? AND status = ?
+            """,
+            (ExecutionLeaseStatus.RELEASED.value, now_iso, lease_id, lease_token, ExecutionLeaseStatus.ACTIVE.value),
+        )
+
+    def get_active_lease(self, case_id: str, plan_id: str, action_id: str) -> ExecutionLease | None:
+        cur = self.conn.cursor()
+        now_iso = to_iso_utc(now_utc())
+        cur.execute(
+            """
+            SELECT lease_id, case_id, plan_id, action_id, user_id, attempt_id,
+                   lease_token, fencing_token, status, acquired_at, heartbeat_at,
+                   expires_at, released_at
+            FROM execution_leases
+            WHERE case_id = ? AND plan_id = ? AND action_id = ? AND status = ? AND expires_at > ?
+            """,
+            (case_id, plan_id, action_id, ExecutionLeaseStatus.ACTIVE.value, now_iso),
+        )
+        row = cur.fetchone()
+        if not row:
+            return None
+        return self._row_to_lease(row)
+
+    def get_by_id(self, lease_id: str) -> ExecutionLease | None:
+        cur = self.conn.cursor()
+        cur.execute(
+            """
+            SELECT lease_id, case_id, plan_id, action_id, user_id, attempt_id,
+                   lease_token, fencing_token, status, acquired_at, heartbeat_at,
+                   expires_at, released_at
+            FROM execution_leases
+            WHERE lease_id = ?
+            """,
+            (lease_id,),
+        )
+        row = cur.fetchone()
+        if not row:
+            return None
+        return self._row_to_lease(row)
+
+    def get_by_token(self, lease_token: str) -> ExecutionLease | None:
+        cur = self.conn.cursor()
+        cur.execute(
+            """
+            SELECT lease_id, case_id, plan_id, action_id, user_id, attempt_id,
+                   lease_token, fencing_token, status, acquired_at, heartbeat_at,
+                   expires_at, released_at
+            FROM execution_leases
+            WHERE lease_token = ?
+            """,
+            (lease_token,),
+        )
+        row = cur.fetchone()
+        if not row:
+            return None
+        return self._row_to_lease(row)
+
+    def _row_to_lease(self, row: tuple[Any, ...]) -> ExecutionLease:
+        return ExecutionLease(
+            lease_id=row[0],
+            case_id=row[1],
+            plan_id=row[2],
+            action_id=row[3],
+            user_id=row[4],
+            attempt_id=row[5],
+            lease_token=row[6],
+            fencing_token=int(row[7]),
+            status=ExecutionLeaseStatus(row[8]),
+            acquired_at=from_iso_utc(row[9]),
+            heartbeat_at=from_iso_utc(row[10]),
+            expires_at=from_iso_utc(row[11]),
+            released_at=from_iso_utc(row[12]) if row[12] else None,
+        )
+
+
+class SQLiteExecutionAttemptRepository(ExecutionAttemptRepository):
+    def __init__(self, conn: sqlite3.Connection) -> None:
+        self.conn = conn
+
+    def save(self, attempt: ExecutionAttempt) -> None:
+        cur = self.conn.cursor()
+        cur.execute(
+            """
+            INSERT INTO execution_attempts (
+                attempt_id, action_id, approval_id, plan_id, case_id, user_id,
+                lease_token, fencing_token, status, provider_kind, started_at,
+                completed_at, last_reversible_point_reached_at, irreversible_action_taken,
+                staged_field_count, staged_upload_count, error_category, error_message,
+                raw_response_snippet, attempt_number
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(attempt_id) DO UPDATE SET
+                status = excluded.status,
+                completed_at = excluded.completed_at,
+                last_reversible_point_reached_at = excluded.last_reversible_point_reached_at,
+                irreversible_action_taken = excluded.irreversible_action_taken,
+                staged_field_count = excluded.staged_field_count,
+                staged_upload_count = excluded.staged_upload_count,
+                error_category = excluded.error_category,
+                error_message = excluded.error_message,
+                raw_response_snippet = excluded.raw_response_snippet
+            """,
+            (
+                attempt.attempt_id,
+                attempt.action_id,
+                attempt.approval_id,
+                attempt.plan_id,
+                attempt.case_id,
+                attempt.user_id,
+                attempt.lease_token,
+                attempt.fencing_token,
+                attempt.status.value,
+                attempt.provider_kind.value,
+                to_iso_utc(attempt.started_at),
+                to_iso_utc(attempt.completed_at) if attempt.completed_at else None,
+                to_iso_utc(attempt.last_reversible_point_reached_at) if attempt.last_reversible_point_reached_at else None,
+                1 if attempt.irreversible_action_taken else 0,
+                attempt.staged_field_count,
+                attempt.staged_upload_count,
+                attempt.error_category.value if attempt.error_category else None,
+                attempt.error_message,
+                attempt.raw_response_snippet,
+                attempt.attempt_number,
+            ),
+        )
+
+    def get_by_id(self, attempt_id: str) -> ExecutionAttempt | None:
+        cur = self.conn.cursor()
+        cur.execute(
+            """
+            SELECT attempt_id, action_id, approval_id, plan_id, case_id, user_id,
+                   lease_token, fencing_token, status, provider_kind, started_at,
+                   completed_at, last_reversible_point_reached_at, irreversible_action_taken,
+                   staged_field_count, staged_upload_count, error_category, error_message,
+                   raw_response_snippet, attempt_number
+            FROM execution_attempts
+            WHERE attempt_id = ?
+            """,
+            (attempt_id,),
+        )
+        row = cur.fetchone()
+        if not row:
+            return None
+        return self._row_to_attempt(row)
+
+    def list_by_case(self, case_id: str) -> list[ExecutionAttempt]:
+        cur = self.conn.cursor()
+        cur.execute(
+            """
+            SELECT attempt_id, action_id, approval_id, plan_id, case_id, user_id,
+                   lease_token, fencing_token, status, provider_kind, started_at,
+                   completed_at, last_reversible_point_reached_at, irreversible_action_taken,
+                   staged_field_count, staged_upload_count, error_category, error_message,
+                   raw_response_snippet, attempt_number
+            FROM execution_attempts
+            WHERE case_id = ?
+            ORDER BY started_at ASC, attempt_number ASC
+            """,
+            (case_id,),
+        )
+        return [self._row_to_attempt(r) for r in cur.fetchall()]
+
+    def get_latest_for_action(self, action_id: str) -> ExecutionAttempt | None:
+        cur = self.conn.cursor()
+        cur.execute(
+            """
+            SELECT attempt_id, action_id, approval_id, plan_id, case_id, user_id,
+                   lease_token, fencing_token, status, provider_kind, started_at,
+                   completed_at, last_reversible_point_reached_at, irreversible_action_taken,
+                   staged_field_count, staged_upload_count, error_category, error_message,
+                   raw_response_snippet, attempt_number
+            FROM execution_attempts
+            WHERE action_id = ?
+            ORDER BY started_at DESC, attempt_number DESC
+            LIMIT 1
+            """,
+            (action_id,),
+        )
+        row = cur.fetchone()
+        if not row:
+            return None
+        return self._row_to_attempt(row)
+
+    def _row_to_attempt(self, row: tuple[Any, ...]) -> ExecutionAttempt:
+        return ExecutionAttempt(
+            attempt_id=row[0],
+            action_id=row[1],
+            approval_id=row[2],
+            plan_id=row[3],
+            case_id=row[4],
+            user_id=row[5],
+            lease_token=row[6],
+            fencing_token=int(row[7]),
+            status=ExecutionAttemptStatus(row[8]),
+            provider_kind=ExecutionProviderKind(row[9]),
+            started_at=from_iso_utc(row[10]),
+            completed_at=from_iso_utc(row[11]) if row[11] else None,
+            last_reversible_point_reached_at=from_iso_utc(row[12]) if row[12] else None,
+            irreversible_action_taken=bool(row[13]),
+            staged_field_count=int(row[14]),
+            staged_upload_count=int(row[15]),
+            error_category=ExecutionErrorCategory(row[16]) if row[16] else None,
+            error_message=row[17],
+            raw_response_snippet=row[18],
+            attempt_number=int(row[19]),
+        )
+
+
+class SQLiteExecutionReceiptRepository(ExecutionReceiptRepository):
+    def __init__(self, conn: sqlite3.Connection) -> None:
+        self.conn = conn
+
+    def save(self, receipt: ExecutionReceipt) -> None:
+        cur = self.conn.cursor()
+        cur.execute(
+            """
+            INSERT INTO execution_receipts (
+                receipt_id, attempt_id, action_id, approval_id, plan_id, case_id,
+                user_id, status, destination_hostname, destination_url, destination_type,
+                execution_plan_fingerprint, authorized_action_fingerprint, package_fingerprint,
+                executed_at, external_reference_id, field_count, upload_asset_ids_json,
+                upload_asset_shas_json, screening_response_count, safe_provider_metadata_json,
+                receipt_hash, version
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(receipt_id) DO NOTHING
+            """,
+            (
+                receipt.receipt_id,
+                receipt.attempt_id,
+                receipt.action_id,
+                receipt.approval_id,
+                receipt.plan_id,
+                receipt.case_id,
+                receipt.user_id,
+                receipt.status.value,
+                receipt.destination_hostname,
+                receipt.destination_url,
+                receipt.destination_type,
+                receipt.execution_plan_fingerprint,
+                receipt.authorized_action_fingerprint,
+                receipt.package_fingerprint,
+                to_iso_utc(receipt.executed_at),
+                receipt.external_reference_id,
+                receipt.field_count,
+                json.dumps(receipt.upload_asset_ids),
+                json.dumps(receipt.upload_asset_shas),
+                receipt.screening_response_count,
+                json.dumps(receipt.safe_provider_metadata),
+                receipt.receipt_hash,
+                receipt.version,
+            ),
+        )
+
+    def get_by_id(self, receipt_id: str) -> ExecutionReceipt | None:
+        cur = self.conn.cursor()
+        cur.execute(
+            """
+            SELECT receipt_id, attempt_id, action_id, approval_id, plan_id, case_id,
+                   user_id, status, destination_hostname, destination_url, destination_type,
+                   execution_plan_fingerprint, authorized_action_fingerprint, package_fingerprint,
+                   executed_at, external_reference_id, field_count, upload_asset_ids_json,
+                   upload_asset_shas_json, screening_response_count, safe_provider_metadata_json,
+                   receipt_hash, version
+            FROM execution_receipts
+            WHERE receipt_id = ?
+            """,
+            (receipt_id,),
+        )
+        row = cur.fetchone()
+        if not row:
+            return None
+        return self._row_to_receipt(row)
+
+    def get_by_attempt_id(self, attempt_id: str) -> ExecutionReceipt | None:
+        cur = self.conn.cursor()
+        cur.execute(
+            """
+            SELECT receipt_id, attempt_id, action_id, approval_id, plan_id, case_id,
+                   user_id, status, destination_hostname, destination_url, destination_type,
+                   execution_plan_fingerprint, authorized_action_fingerprint, package_fingerprint,
+                   executed_at, external_reference_id, field_count, upload_asset_ids_json,
+                   upload_asset_shas_json, screening_response_count, safe_provider_metadata_json,
+                   receipt_hash, version
+            FROM execution_receipts
+            WHERE attempt_id = ?
+            """,
+            (attempt_id,),
+        )
+        row = cur.fetchone()
+        if not row:
+            return None
+        return self._row_to_receipt(row)
+
+    def get_by_action_id(self, action_id: str) -> ExecutionReceipt | None:
+        cur = self.conn.cursor()
+        cur.execute(
+            """
+            SELECT receipt_id, attempt_id, action_id, approval_id, plan_id, case_id,
+                   user_id, status, destination_hostname, destination_url, destination_type,
+                   execution_plan_fingerprint, authorized_action_fingerprint, package_fingerprint,
+                   executed_at, external_reference_id, field_count, upload_asset_ids_json,
+                   upload_asset_shas_json, screening_response_count, safe_provider_metadata_json,
+                   receipt_hash, version
+            FROM execution_receipts
+            WHERE action_id = ?
+            ORDER BY executed_at DESC
+            LIMIT 1
+            """,
+            (action_id,),
+        )
+        row = cur.fetchone()
+        if not row:
+            return None
+        return self._row_to_receipt(row)
+
+    def get_by_plan_id(self, plan_id: str) -> ExecutionReceipt | None:
+        cur = self.conn.cursor()
+        cur.execute(
+            """
+            SELECT receipt_id, attempt_id, action_id, approval_id, plan_id, case_id,
+                   user_id, status, destination_hostname, destination_url, destination_type,
+                   execution_plan_fingerprint, authorized_action_fingerprint, package_fingerprint,
+                   executed_at, external_reference_id, field_count, upload_asset_ids_json,
+                   upload_asset_shas_json, screening_response_count, safe_provider_metadata_json,
+                   receipt_hash, version
+            FROM execution_receipts
+            WHERE plan_id = ?
+            ORDER BY executed_at DESC
+            LIMIT 1
+            """,
+            (plan_id,),
+        )
+        row = cur.fetchone()
+        if not row:
+            return None
+        return self._row_to_receipt(row)
+
+    def get_by_case_id(self, case_id: str) -> ExecutionReceipt | None:
+        cur = self.conn.cursor()
+        cur.execute(
+            """
+            SELECT receipt_id, attempt_id, action_id, approval_id, plan_id, case_id,
+                   user_id, status, destination_hostname, destination_url, destination_type,
+                   execution_plan_fingerprint, authorized_action_fingerprint, package_fingerprint,
+                   executed_at, external_reference_id, field_count, upload_asset_ids_json,
+                   upload_asset_shas_json, screening_response_count, safe_provider_metadata_json,
+                   receipt_hash, version
+            FROM execution_receipts
+            WHERE case_id = ?
+            ORDER BY executed_at DESC
+            LIMIT 1
+            """,
+            (case_id,),
+        )
+        row = cur.fetchone()
+        if not row:
+            return None
+        return self._row_to_receipt(row)
+
+    def _row_to_receipt(self, row: tuple[Any, ...]) -> ExecutionReceipt:
+        return ExecutionReceipt(
+            receipt_id=row[0],
+            attempt_id=row[1],
+            action_id=row[2],
+            approval_id=row[3],
+            plan_id=row[4],
+            case_id=row[5],
+            user_id=row[6],
+            status=ExecutionReceiptStatus(row[7]),
+            destination_hostname=row[8],
+            destination_url=row[9],
+            destination_type=row[10],
+            execution_plan_fingerprint=row[11],
+            authorized_action_fingerprint=row[12],
+            package_fingerprint=row[13],
+            executed_at=from_iso_utc(row[14]),
+            external_reference_id=row[15],
+            field_count=int(row[16]),
+            upload_asset_ids=json.loads(row[17]),
+            upload_asset_shas=json.loads(row[18]),
+            screening_response_count=int(row[19]),
+            safe_provider_metadata=json.loads(row[20]),
+            receipt_hash=row[21],
+            version=int(row[22]),
+        )
+
+
 class SQLiteCaseworkerUnitOfWork(CaseworkerUnitOfWork):
     """Transaction / Unit-of-Work boundary using SQLite."""
 
@@ -2562,6 +3083,9 @@ class SQLiteCaseworkerUnitOfWork(CaseworkerUnitOfWork):
         self.preparation_packages = SQLitePreparationPackageRepository(conn)
         self.execution_plans = SQLiteExternalExecutionPlanRepository(conn)
         self.upload_assets = SQLiteExecutionUploadAssetRepository(conn)
+        self.execution_leases = SQLiteExecutionLeaseRepository(conn)
+        self.execution_attempts = SQLiteExecutionAttemptRepository(conn)
+        self.execution_receipts = SQLiteExecutionReceiptRepository(conn)
         self.events = SQLiteEventStore(conn)
         self._in_transaction = False
 

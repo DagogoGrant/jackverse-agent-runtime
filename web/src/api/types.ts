@@ -131,6 +131,19 @@ export type TargetSchemaQuestion = Schemas['TargetSchemaQuestionSchema'];
 export type TargetUploadSlot = Schemas['TargetSchemaUploadSlotSchema'];
 export type TargetSubmitControlSpec = Schemas['TargetSubmitControlSpecSchema'];
 
+// ----------------------------------------------------------------------------
+// Governed External Execution (Phase 5.3.3)
+// ----------------------------------------------------------------------------
+export type ExecutionReceiptStatus = Schemas['ExecutionReceiptStatus'];
+export type ExecutionReceipt = Schemas['ExecutionReceiptResponse'];
+export type ExecutionAttemptStatus = Schemas['ExecutionAttemptStatus'];
+export type ExecutionAttempt = Schemas['ExecutionAttemptResponse'];
+export type ExecutionAttemptList = Schemas['ExecutionAttemptListResponse'];
+export type ExecuteActionRequest = Schemas['ExecuteActionRequest'];
+export type ExecuteActionResponse = Schemas['ExecuteActionResponse'];
+export type ExecutionErrorCategory = Schemas['ExecutionErrorCategory'];
+export type ExecutionProviderKind = Schemas['ExecutionProviderKind'];
+
 
 // ----------------------------------------------------------------------------
 // Activity & Domain Events
