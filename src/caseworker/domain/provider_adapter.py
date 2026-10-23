@@ -43,6 +43,9 @@ class StagingOutcome:
     error_category: ExecutionErrorCategory | None = None
     error_message: str | None = None
     submit_control_ready: bool = False
+    staged_field_keys: list[str] = field(default_factory=list)
+    staged_upload_slot_ids: list[str] = field(default_factory=list)
+    staged_screening_question_ids: list[str] = field(default_factory=list)
 
 
 @dataclass(frozen=True)
@@ -136,13 +139,20 @@ class SimulatedExecutionProvider(ExecutionProviderAdapter):
             )
 
         # Happy staging: verify inputs match plan
-        field_count = len(plan.field_mappings) + len(plan.screening_responses)
+        field_keys = [m.target_field_id for m in plan.field_mappings]
+        upload_slot_ids = [u.asset_id for u in upload_assets]
+        screening_ids = [q.question_id for q in plan.screening_responses]
+        field_count = len(field_keys) + len(screening_ids)
         upload_count = len(upload_assets)
+        has_submit_control = plan.final_submit_control is not None
         return StagingOutcome(
             success=True,
             staged_field_count=field_count,
             staged_upload_count=upload_count,
-            submit_control_ready=True,
+            submit_control_ready=has_submit_control,
+            staged_field_keys=field_keys,
+            staged_upload_slot_ids=upload_slot_ids,
+            staged_screening_question_ids=screening_ids,
         )
 
     def execute_irreversible_submit(
@@ -162,6 +172,8 @@ class SimulatedExecutionProvider(ExecutionProviderAdapter):
                     "duration_ms": 30000,
                     "response_category": "timeout",
                     "mode": self.mode.value,
+                    "is_simulated": True,
+                    "provider_kind": ExecutionProviderKind.SIMULATED_TEST.value,
                 },
             )
 
@@ -177,6 +189,8 @@ class SimulatedExecutionProvider(ExecutionProviderAdapter):
                     "duration_ms": 450,
                     "response_category": "rejected",
                     "mode": self.mode.value,
+                    "is_simulated": True,
+                    "provider_kind": ExecutionProviderKind.SIMULATED_TEST.value,
                 },
             )
 
@@ -190,5 +204,7 @@ class SimulatedExecutionProvider(ExecutionProviderAdapter):
                 "response_category": "success",
                 "confirmation_reference": conf_id,
                 "mode": self.mode.value,
+                "is_simulated": True,
+                "provider_kind": ExecutionProviderKind.SIMULATED_TEST.value,
             },
         )

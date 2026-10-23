@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
+import re
 import uuid
 
 from caseworker.domain.action import Action
@@ -38,12 +39,61 @@ from caseworker.domain.execution_plan_integrity import ExecutionPlanIntegrityVal
 from caseworker.domain.execution_receipt import ExecutionReceipt
 from caseworker.domain.provider_adapter import (
     ExecutionProviderAdapter,
+    ProviderSubmissionResult,
     SimulatedExecutionProvider,
     SimulationMode,
 )
+from caseworker.domain.types import now_utc
 
 if TYPE_CHECKING:
     from caseworker.persistence.sqlite import SQLiteCaseworkerStorage
+
+
+_SENSITIVE_PATTERNS = [
+    re.compile(r'(?i)(bearer\s+)[a-zA-Z0-9_\-\.]{10,}'),
+    re.compile(r'(?i)(token[=:\s]+)[a-zA-Z0-9_\-\.]{10,}'),
+    re.compile(r'(?i)(password[=:\s]+)[^\s,;&]+'),
+    re.compile(r'(?i)(secret[=:\s]+)[^\s,;&]+'),
+    re.compile(r'(?i)(api[_\-]?key[=:\s]+)[a-zA-Z0-9_\-\.]{10,}'),
+    re.compile(r'(?i)(authorization[=:\s]+)[^\r\n]+'),
+    re.compile(r'(?i)(cookie[=:\s]+)[^\r\n]+'),
+]
+
+
+def _sanitize_diagnostic_message(msg: str | None) -> str:
+    """Sanitize diagnostic text by redacting credentials, tokens, and sensitive headers."""
+    if not msg:
+        return ""
+    cleaned = str(msg)
+    for pat in _SENSITIVE_PATTERNS:
+        cleaned = pat.sub(r'\1[REDACTED]', cleaned)
+    if len(cleaned) > 500:
+        cleaned = cleaned[:497] + "..."
+    return cleaned
+
+
+def _sanitize_provider_metadata(meta: dict[str, Any] | None) -> dict[str, Any]:
+    """Sanitize provider metadata dictionary by redacting sensitive keys and values."""
+    if not meta:
+        return {}
+    clean: dict[str, Any] = {}
+    for k, v in meta.items():
+        if any(secret in k.lower() for secret in ("auth", "token", "password", "secret", "cookie", "key", "credential")):
+            clean[k] = "[REDACTED]"
+        elif isinstance(v, str):
+            clean[k] = _sanitize_diagnostic_message(v)
+        elif isinstance(v, (int, float, bool)):
+            clean[k] = v
+        elif isinstance(v, (list, tuple)):
+            clean[k] = [
+                _sanitize_diagnostic_message(str(item)) if isinstance(item, str) else item
+                for item in v
+            ]
+        elif isinstance(v, dict):
+            clean[k] = _sanitize_provider_metadata(v)
+        else:
+            clean[k] = str(v)[:200]
+    return clean
 
 
 class GovernedExecutionService:
@@ -104,13 +154,92 @@ class GovernedExecutionService:
                         },
                     )
 
-            # Check for existing unverified ambiguous attempts
+            # Check for existing unverified ambiguous attempts or interrupted dispatch (Amendment 1 & 3)
             latest_attempt = uow.execution_attempts.get_latest_for_action(action_id)
             if latest_attempt is not None:
                 if (
                     latest_attempt.status == ExecutionAttemptStatus.AMBIGUOUS
                     or (latest_attempt.irreversible_action_taken and latest_attempt.status != ExecutionAttemptStatus.SUCCEEDED)
                 ):
+                    # Interrupted past irreversible boundary without an existing ambiguous receipt
+                    if existing_receipt is None and latest_attempt.status == ExecutionAttemptStatus.SUBMITTING:
+                        latest_attempt.mark_ambiguous(
+                            message="Transmission attempt was interrupted during irreversible submission dispatch. Outcome is unverified.",
+                        )
+                        uow.execution_attempts.save(latest_attempt)
+
+                        plan_id_param = action.parameters.get("plan_id", "")
+                        plan_rec = uow.execution_plans.get_by_id(plan_id_param) if plan_id_param else None
+                        approval_rec = uow.approvals.get_by_action_id(action_id)
+
+                        reconciled_receipt = ExecutionReceipt(
+                            attempt_id=latest_attempt.attempt_id,
+                            action_id=action.action_id,
+                            approval_id=approval_rec.approval_id if approval_rec else "app-unknown",
+                            plan_id=plan_rec.plan_id if plan_rec else "plan-unknown",
+                            case_id=case.case_id,
+                            user_id=user_id,
+                            status=ExecutionReceiptStatus.AMBIGUOUS_SUBMISSION,
+                            destination_hostname=plan_rec.destination.normalized_hostname if plan_rec else "unknown",
+                            destination_url=plan_rec.destination.canonical_url if plan_rec else "unknown",
+                            destination_type=plan_rec.destination.destination_type if plan_rec else "form_submission",
+                            execution_plan_fingerprint=plan_rec.execution_plan_fingerprint if plan_rec else "",
+                            authorized_action_fingerprint=approval_rec.action_fingerprint if approval_rec else "",
+                            package_fingerprint=plan_rec.package_fingerprint if plan_rec else "",
+                            external_reference_id=None,
+                            safe_provider_metadata={
+                                "reconciled_after_interruption": True,
+                                "is_simulated": latest_attempt.provider_kind == ExecutionProviderKind.SIMULATED_TEST,
+                                "provider_kind": latest_attempt.provider_kind.value,
+                            },
+                        )
+                        uow.execution_receipts.save(reconciled_receipt)
+
+                        if action.status != ActionStatus.FAILED:
+                            action.status = ActionStatus.FAILED
+                            action.version += 1
+                            action.updated_at = now_utc()
+                            uow.actions.save(action)
+
+                        if case.status != CaseStatus.ACTION_REQUIRED:
+                            case.transition_to(CaseStatus.ACTION_REQUIRED, reason="Interrupted transmission reconciled as ambiguous. Operator intervention required.")
+                            uow.cases.save(case)
+
+                        stale_lease = uow.execution_leases.get_active_lease(action.case_id, plan_id_param, action_id) if plan_id_param else None
+                        if stale_lease:
+                            uow.execution_leases.release_lease(stale_lease.lease_id, stale_lease.lease_token)
+
+                        uow.events.append(
+                            make_execution_receipt_created_event(
+                                user_id=user_id,
+                                case_id=case.case_id,
+                                plan_id=plan_rec.plan_id if plan_rec else "",
+                                action_id=action.action_id,
+                                attempt_id=latest_attempt.attempt_id,
+                                receipt_id=reconciled_receipt.receipt_id,
+                                receipt_hash=reconciled_receipt.receipt_hash,
+                                status=reconciled_receipt.status.value,
+                                destination_hostname=reconciled_receipt.destination_hostname,
+                                destination_type=reconciled_receipt.destination_type,
+                                external_reference_id=None,
+                            )
+                        )
+                        uow.events.append(
+                            make_execution_attempt_completed_event(
+                                user_id=user_id,
+                                case_id=case.case_id,
+                                plan_id=plan_rec.plan_id if plan_rec else "",
+                                action_id=action.action_id,
+                                attempt_id=latest_attempt.attempt_id,
+                                status=latest_attempt.status.value,
+                                irreversible_action_taken=True,
+                                receipt_id=reconciled_receipt.receipt_id,
+                                error_category=ExecutionErrorCategory.UNKNOWN.value,
+                                error_message=latest_attempt.error_message,
+                            )
+                        )
+                        uow.commit()
+
                     raise ApprovalValidationError(
                         "Previous transmission attempt crossed the irreversible boundary with unverified outcome. Automatic retry is strictly forbidden; manual operator resolution is required.",
                         details={
@@ -118,6 +247,36 @@ class GovernedExecutionService:
                             "attempt_id": latest_attempt.attempt_id,
                         },
                     )
+
+                elif not latest_attempt.irreversible_action_taken and latest_attempt.status in (
+                    ExecutionAttemptStatus.INITIALIZING,
+                    ExecutionAttemptStatus.STAGING,
+                    ExecutionAttemptStatus.AT_REVERSIBLE_POINT,
+                ):
+                    plan_id_param = action.parameters.get("plan_id", "")
+                    active_lease_check = uow.execution_leases.get_active_lease(action.case_id, plan_id_param, action_id) if plan_id_param else None
+                    if active_lease_check is None or active_lease_check.is_expired():
+                        latest_attempt.mark_failed(
+                            category=ExecutionErrorCategory.LEASE_EXPIRED,
+                            message="Previous execution attempt abandoned before crossing irreversible boundary: lease expired.",
+                        )
+                        uow.execution_attempts.save(latest_attempt)
+                        if active_lease_check:
+                            uow.execution_leases.release_lease(active_lease_check.lease_id, active_lease_check.lease_token)
+                        uow.events.append(
+                            make_execution_attempt_completed_event(
+                                user_id=user_id,
+                                case_id=case.case_id,
+                                plan_id=plan_id_param,
+                                action_id=action.action_id,
+                                attempt_id=latest_attempt.attempt_id,
+                                status=latest_attempt.status.value,
+                                irreversible_action_taken=False,
+                                error_category=ExecutionErrorCategory.LEASE_EXPIRED.value,
+                                error_message=latest_attempt.error_message,
+                            )
+                        )
+                        uow.commit()
 
             # Check for active unexpired execution lease
             plan_id = action.parameters.get("plan_id")
@@ -268,18 +427,18 @@ class GovernedExecutionService:
         with self.storage.unit_of_work() as uow:
             uow.execution_attempts.save(attempt)
 
-        staging_outcome = active_provider.stage_submission(
-            plan=plan,
-            package=package,
-            upload_assets=upload_assets,
-        )
-
-        if not staging_outcome.success:
-            # Reversible staging failure: Action remains APPROVED, Case remains ACTION_REQUIRED
+        try:
+            staging_outcome = active_provider.stage_submission(
+                plan=plan,
+                package=package,
+                upload_assets=upload_assets,
+            )
+        except Exception as exc:
+            sanitized_err = _sanitize_diagnostic_message(str(exc))
             with self.storage.unit_of_work() as uow:
                 attempt.mark_failed(
-                    category=staging_outcome.error_category or ExecutionErrorCategory.STAGING_VALIDATION_FAILED,
-                    message=staging_outcome.error_message or "Pre-submit staging failed.",
+                    category=ExecutionErrorCategory.PRE_SUBMIT_NETWORK,
+                    message=f"Provider staging raised unexpected exception: {sanitized_err}",
                 )
                 uow.execution_attempts.save(attempt)
                 uow.execution_leases.release_lease(lease.lease_id, lease.lease_token)
@@ -296,8 +455,70 @@ class GovernedExecutionService:
                         error_message=attempt.error_message,
                     )
                 )
+                uow.commit()
             raise ApprovalValidationError(
-                f"Pre-submit staging failed: {staging_outcome.error_message}",
+                f"Provider staging failed unexpectedly: {sanitized_err}",
+                details={"failure_kind": "staging_failed", "attempt_id": attempt.attempt_id},
+            )
+
+        # Complete staging verification (Amendment 2)
+        staging_failures: list[str] = []
+        if not staging_outcome.success:
+            staging_failures.append(staging_outcome.error_message or "Provider reported staging failure.")
+        if not staging_outcome.submit_control_ready:
+            staging_failures.append("Final submit control is not ready at destination.")
+        if plan.final_submit_control is None:
+            staging_failures.append("Execution plan has no sealed final submit control.")
+
+        # Check required fields
+        required_target_keys = {m.target_field_id for m in plan.field_mappings}
+        staged_keys_set = set(staging_outcome.staged_field_keys)
+        if staging_outcome.staged_field_keys or plan.field_mappings:
+            missing_fields = required_target_keys - staged_keys_set
+            if missing_fields:
+                staging_failures.append(f"Missing required staged field keys: {sorted(missing_fields)}")
+
+        # Check required upload slots
+        required_upload_slots = {u.asset_id for u in upload_assets if u.asset_id}
+        staged_slots_set = set(staging_outcome.staged_upload_slot_ids)
+        if staging_outcome.staged_upload_slot_ids or required_upload_slots:
+            missing_slots = required_upload_slots - staged_slots_set
+            if missing_slots:
+                staging_failures.append(f"Missing required staged upload slot IDs: {sorted(missing_slots)}")
+
+        # Check required screening responses
+        required_screening_ids = {q.question_id for q in plan.screening_responses}
+        staged_screening_set = set(staging_outcome.staged_screening_question_ids)
+        if staging_outcome.staged_screening_question_ids or required_screening_ids:
+            missing_screening = required_screening_ids - staged_screening_set
+            if missing_screening:
+                staging_failures.append(f"Missing required staged screening response IDs: {sorted(missing_screening)}")
+
+        if staging_failures:
+            err_msg = _sanitize_diagnostic_message("; ".join(staging_failures))
+            with self.storage.unit_of_work() as uow:
+                attempt.mark_failed(
+                    category=staging_outcome.error_category or ExecutionErrorCategory.STAGING_VALIDATION_FAILED,
+                    message=f"Pre-submit staging validation failed: {err_msg}",
+                )
+                uow.execution_attempts.save(attempt)
+                uow.execution_leases.release_lease(lease.lease_id, lease.lease_token)
+                uow.events.append(
+                    make_execution_attempt_completed_event(
+                        user_id=user_id,
+                        case_id=case.case_id,
+                        plan_id=plan.plan_id,
+                        action_id=action.action_id,
+                        attempt_id=attempt.attempt_id,
+                        status=attempt.status.value,
+                        irreversible_action_taken=False,
+                        error_category=attempt.error_category.value if attempt.error_category else None,
+                        error_message=attempt.error_message,
+                    )
+                )
+                uow.commit()
+            raise ApprovalValidationError(
+                f"Pre-submit staging validation failed: {err_msg}",
                 details={"failure_kind": "staging_failed", "attempt_id": attempt.attempt_id},
             )
 
@@ -323,7 +544,7 @@ class GovernedExecutionService:
 
         # Step 6: Barrier B — Live Revalidation Immediately At Last Reversible Point + Fencing Token Check
         with self.storage.unit_of_work() as uow:
-            # Verify lease and fencing token are still current and active
+            # 1. Verify lease and fencing token are still current and active
             current_lease = uow.execution_leases.get_by_id(lease.lease_id)
             if (
                 current_lease is None
@@ -337,12 +558,28 @@ class GovernedExecutionService:
                     message="Execution lease expired or fencing token superseded at Last Reversible Point.",
                 )
                 uow.execution_attempts.save(attempt)
+                if current_lease and current_lease.lease_token == lease.lease_token:
+                    uow.execution_leases.release_lease(lease.lease_id, lease.lease_token)
+                uow.events.append(
+                    make_execution_attempt_completed_event(
+                        user_id=user_id,
+                        case_id=case.case_id,
+                        plan_id=plan.plan_id,
+                        action_id=action.action_id,
+                        attempt_id=attempt.attempt_id,
+                        status=attempt.status.value,
+                        irreversible_action_taken=False,
+                        error_category=ExecutionErrorCategory.FENCING_VIOLATION.value,
+                        error_message=attempt.error_message,
+                    )
+                )
+                uow.commit()
                 raise ApprovalValidationError(
                     "Execution fencing token is no longer active at Last Reversible Point. Submit aborted.",
                     details={"failure_kind": "fencing_violation"},
                 )
 
-            # Full cryptographic revalidation of Action, Approval, Plan, Package, Vault facts, and Upload BLOBs
+            # 2. Fresh entity lookups
             fresh_action = uow.actions.get_by_id(action_id)
             fresh_approval = uow.approvals.get_by_action_id(action_id)
             fresh_plan = uow.execution_plans.get_by_id(plan.plan_id)
@@ -355,11 +592,133 @@ class GovernedExecutionService:
                 )
                 uow.execution_attempts.save(attempt)
                 uow.execution_leases.release_lease(lease.lease_id, lease.lease_token)
+                uow.events.append(
+                    make_execution_attempt_completed_event(
+                        user_id=user_id,
+                        case_id=case.case_id,
+                        plan_id=plan.plan_id,
+                        action_id=action.action_id,
+                        attempt_id=attempt.attempt_id,
+                        status=attempt.status.value,
+                        irreversible_action_taken=False,
+                        error_category=ExecutionErrorCategory.INTEGRITY_VIOLATION.value,
+                        error_message=attempt.error_message,
+                    )
+                )
+                uow.commit()
                 raise ApprovalValidationError(
                     "Barrier B live revalidation failed at Last Reversible Point: entity missing.",
                     details={"failure_kind": "entity_not_found"},
                 )
 
+            # 3. Fresh check of Action, Approval, and Case statuses (Amendment 4 from review)
+            if fresh_action.status != ActionStatus.APPROVED:
+                attempt.mark_failed(
+                    category=ExecutionErrorCategory.INTEGRITY_VIOLATION,
+                    message=f"Barrier B live revalidation failed: Action status is '{fresh_action.status.value}', expected APPROVED.",
+                )
+                uow.execution_attempts.save(attempt)
+                uow.execution_leases.release_lease(lease.lease_id, lease.lease_token)
+                uow.events.append(
+                    make_execution_attempt_completed_event(
+                        user_id=user_id,
+                        case_id=case.case_id,
+                        plan_id=plan.plan_id,
+                        action_id=action.action_id,
+                        attempt_id=attempt.attempt_id,
+                        status=attempt.status.value,
+                        irreversible_action_taken=False,
+                        error_category=ExecutionErrorCategory.INTEGRITY_VIOLATION.value,
+                        error_message=attempt.error_message,
+                    )
+                )
+                uow.commit()
+                raise ApprovalValidationError(
+                    f"Barrier B live revalidation failed at Last Reversible Point: Action status changed to '{fresh_action.status.value}'.",
+                    details={"failure_kind": "action_not_approved"},
+                )
+
+            if fresh_approval.status != ApprovalStatus.APPROVED:
+                attempt.mark_failed(
+                    category=ExecutionErrorCategory.INTEGRITY_VIOLATION,
+                    message=f"Barrier B live revalidation failed: Approval status is '{fresh_approval.status.value}', expected APPROVED.",
+                )
+                uow.execution_attempts.save(attempt)
+                uow.execution_leases.release_lease(lease.lease_id, lease.lease_token)
+                uow.events.append(
+                    make_execution_attempt_completed_event(
+                        user_id=user_id,
+                        case_id=case.case_id,
+                        plan_id=plan.plan_id,
+                        action_id=action.action_id,
+                        attempt_id=attempt.attempt_id,
+                        status=attempt.status.value,
+                        irreversible_action_taken=False,
+                        error_category=ExecutionErrorCategory.INTEGRITY_VIOLATION.value,
+                        error_message=attempt.error_message,
+                    )
+                )
+                uow.commit()
+                raise ApprovalValidationError(
+                    f"Barrier B live revalidation failed at Last Reversible Point: Approval status changed to '{fresh_approval.status.value}'.",
+                    details={"failure_kind": "approval_not_approved"},
+                )
+
+            if fresh_case.status != CaseStatus.ACTION_REQUIRED:
+                attempt.mark_failed(
+                    category=ExecutionErrorCategory.INTEGRITY_VIOLATION,
+                    message=f"Barrier B live revalidation failed: Case status is '{fresh_case.status.value}', expected ACTION_REQUIRED.",
+                )
+                uow.execution_attempts.save(attempt)
+                uow.execution_leases.release_lease(lease.lease_id, lease.lease_token)
+                uow.events.append(
+                    make_execution_attempt_completed_event(
+                        user_id=user_id,
+                        case_id=case.case_id,
+                        plan_id=plan.plan_id,
+                        action_id=action.action_id,
+                        attempt_id=attempt.attempt_id,
+                        status=attempt.status.value,
+                        irreversible_action_taken=False,
+                        error_category=ExecutionErrorCategory.INTEGRITY_VIOLATION.value,
+                        error_message=attempt.error_message,
+                    )
+                )
+                uow.commit()
+                raise ApprovalValidationError(
+                    f"Barrier B live revalidation failed at Last Reversible Point: Case status changed to '{fresh_case.status.value}'.",
+                    details={"failure_kind": "invalid_case_status"},
+                )
+
+            # 4. Fingerprint binding check
+            computed_act_fp = fresh_action.compute_fingerprint()
+            if fresh_approval.action_fingerprint != computed_act_fp:
+                attempt.mark_failed(
+                    category=ExecutionErrorCategory.INTEGRITY_VIOLATION,
+                    message="Barrier B live revalidation failed: Action fingerprint mismatch with approval.",
+                )
+                uow.execution_attempts.save(attempt)
+                uow.execution_leases.release_lease(lease.lease_id, lease.lease_token)
+                uow.events.append(
+                    make_execution_attempt_completed_event(
+                        user_id=user_id,
+                        case_id=case.case_id,
+                        plan_id=plan.plan_id,
+                        action_id=action.action_id,
+                        attempt_id=attempt.attempt_id,
+                        status=attempt.status.value,
+                        irreversible_action_taken=False,
+                        error_category=ExecutionErrorCategory.INTEGRITY_VIOLATION.value,
+                        error_message=attempt.error_message,
+                    )
+                )
+                uow.commit()
+                raise ApprovalValidationError(
+                    "Barrier B live revalidation failed at Last Reversible Point: Action fingerprint mismatch.",
+                    details={"failure_kind": "authorization_binding_invalid"},
+                )
+
+            # 5. Full plan integrity validator
             val_result_b = ExecutionPlanIntegrityValidator.validate(
                 uow=uow,
                 case=fresh_case,
@@ -376,6 +735,20 @@ class GovernedExecutionService:
                 )
                 uow.execution_attempts.save(attempt)
                 uow.execution_leases.release_lease(lease.lease_id, lease.lease_token)
+                uow.events.append(
+                    make_execution_attempt_completed_event(
+                        user_id=user_id,
+                        case_id=case.case_id,
+                        plan_id=plan.plan_id,
+                        action_id=action.action_id,
+                        attempt_id=attempt.attempt_id,
+                        status=attempt.status.value,
+                        irreversible_action_taken=False,
+                        error_category=ExecutionErrorCategory.INTEGRITY_VIOLATION.value,
+                        error_message=attempt.error_message,
+                    )
+                )
+                uow.commit()
                 raise ApprovalValidationError(
                     f"Barrier B live revalidation failed at Last Reversible Point: {val_result_b.reason}",
                     details={"failure_kind": val_result_b.failure_kind.value},
@@ -419,17 +792,36 @@ class GovernedExecutionService:
                 )
             )
 
-        # Dispatch irreversible submit through provider
-        submit_result = active_provider.execute_irreversible_submit(
-            plan=plan,
-            attempt_id=attempt.attempt_id,
-        )
+        # Dispatch irreversible submit through provider with conservative error handling
+        try:
+            submit_result = active_provider.execute_irreversible_submit(
+                plan=plan,
+                attempt_id=attempt.attempt_id,
+            )
+        except Exception as exc:
+            # Conservative handling of unexpected exception after irreversible boundary crossing (Amendment 3)
+            sanitized_exc = _sanitize_diagnostic_message(str(exc))
+            submit_result = ProviderSubmissionResult(
+                status=ExecutionReceiptStatus.AMBIGUOUS_SUBMISSION,
+                external_confirmation_id=None,
+                error_category=ExecutionErrorCategory.UNKNOWN,
+                error_message=f"Unexpected exception during irreversible submit dispatch: {sanitized_exc}",
+                raw_response_snippet=_sanitize_diagnostic_message(repr(exc)),
+                provider_metadata={
+                    "exception_type": type(exc).__name__,
+                    "sanitized_error": sanitized_exc,
+                    "is_simulated": active_provider.provider_kind == ExecutionProviderKind.SIMULATED_TEST,
+                    "provider_kind": active_provider.provider_kind.value,
+                },
+            )
 
         # Step 8: Outcome & Receipt Processing
         with self.storage.unit_of_work() as uow:
             persisted_action = uow.actions.get_by_id(action_id)
             persisted_case = uow.cases.get_by_id(case.case_id)
             persisted_plan = uow.execution_plans.get_by_id(plan.plan_id)
+
+            sanitized_provider_metadata = _sanitize_provider_metadata(submit_result.provider_metadata)
 
             if submit_result.status == ExecutionReceiptStatus.VERIFIED_SUCCESS:
                 attempt.mark_succeeded()
@@ -454,15 +846,28 @@ class GovernedExecutionService:
                     upload_asset_ids=[a.asset_id for a in upload_assets],
                     upload_asset_shas=[a.content_sha256 for a in upload_assets],
                     screening_response_count=len(plan.screening_responses),
-                    safe_provider_metadata=submit_result.provider_metadata,
+                    safe_provider_metadata=sanitized_provider_metadata,
                 )
                 uow.execution_receipts.save(receipt)
+
+                is_sim = (
+                    attempt.provider_kind == ExecutionProviderKind.SIMULATED_TEST
+                    or sanitized_provider_metadata.get("is_simulated") is True
+                )
+                if is_sim:
+                    act_reason = f"Simulated transmission completed (Simulation Mode). Reference: {receipt.external_reference_id or receipt.receipt_id}"
+                    case_reason = f"Simulated external transmission executed via {attempt.provider_kind.value} to {receipt.destination_hostname}. (Simulation only)."
+                    case_outcome = f"Simulated transmission completed (Simulation Mode — No genuine external transmission). Reference: {receipt.external_reference_id or receipt.receipt_id}"
+                else:
+                    act_reason = f"Transmission verified successfully. Confirmation: {receipt.external_reference_id or receipt.receipt_id}"
+                    case_reason = f"Transmission successfully executed to {receipt.destination_hostname}. Waiting for external response."
+                    case_outcome = f"Application transmitted. Confirmation: {receipt.external_reference_id or receipt.receipt_id}"
 
                 # Action APPROVED -> EXECUTING -> SUCCEEDED
                 old_act_status = persisted_action.status.value
                 persisted_action.transition_to(
                     ActionStatus.SUCCEEDED,
-                    reason=f"Transmission verified successfully. Confirmation: {receipt.external_reference_id or receipt.receipt_id}",
+                    reason=act_reason,
                 )
                 persisted_action.result = {
                     "receipt_id": receipt.receipt_id,
@@ -478,7 +883,7 @@ class GovernedExecutionService:
                         aggregate_version=persisted_action.version,
                         old_status=old_act_status,
                         new_status=persisted_action.status.value,
-                        reason=f"Transmission verified successfully. Confirmation: {receipt.external_reference_id or receipt.receipt_id}",
+                        reason=act_reason,
                     )
                 )
 
@@ -501,9 +906,9 @@ class GovernedExecutionService:
                 old_case_status = persisted_case.status.value
                 persisted_case.transition_to(
                     CaseStatus.WAITING_EXTERNAL,
-                    reason=f"Transmission successfully executed to {receipt.destination_hostname}. Waiting for external response.",
+                    reason=case_reason,
                 )
-                persisted_case.outcome = f"Application transmitted. Confirmation: {receipt.external_reference_id or receipt.receipt_id}"
+                persisted_case.outcome = case_outcome
                 uow.cases.save(persisted_case)
                 uow.events.append(
                     make_case_status_changed_event(
@@ -512,7 +917,7 @@ class GovernedExecutionService:
                         aggregate_version=persisted_case.version,
                         old_status=old_case_status,
                         new_status=persisted_case.status.value,
-                        reason=f"Transmission successfully executed to {receipt.destination_hostname}. Waiting for external response.",
+                        reason=case_reason,
                     )
                 )
 
@@ -547,9 +952,11 @@ class GovernedExecutionService:
                 return attempt, receipt
 
             elif submit_result.status == ExecutionReceiptStatus.AMBIGUOUS_SUBMISSION:
+                sanitized_err = _sanitize_diagnostic_message(submit_result.error_message or "Ambiguous submission dispatch outcome.")
+                sanitized_snippet = _sanitize_diagnostic_message(submit_result.raw_response_snippet)
                 attempt.mark_ambiguous(
-                    message=submit_result.error_message or "Ambiguous submission dispatch outcome.",
-                    snippet=submit_result.raw_response_snippet,
+                    message=sanitized_err,
+                    snippet=sanitized_snippet,
                 )
                 uow.execution_attempts.save(attempt)
 
@@ -572,20 +979,20 @@ class GovernedExecutionService:
                     upload_asset_ids=[a.asset_id for a in upload_assets],
                     upload_asset_shas=[a.content_sha256 for a in upload_assets],
                     screening_response_count=len(plan.screening_responses),
-                    safe_provider_metadata=submit_result.provider_metadata,
+                    safe_provider_metadata=sanitized_provider_metadata,
                 )
                 uow.execution_receipts.save(receipt)
 
                 old_act_status = persisted_action.status.value
                 persisted_action.transition_to(
                     ActionStatus.FAILED,
-                    reason=f"Transmission ambiguous: {submit_result.error_message}",
+                    reason=f"Transmission ambiguous: {sanitized_err}",
                 )
                 persisted_action.result = {
                     "receipt_id": receipt.receipt_id,
                     "receipt_hash": receipt.receipt_hash,
                     "status": receipt.status.value,
-                    "error_message": submit_result.error_message,
+                    "error_message": sanitized_err,
                 }
                 uow.actions.save(persisted_action)
 
@@ -628,15 +1035,17 @@ class GovernedExecutionService:
                 )
                 uow.commit()
                 raise ApprovalValidationError(
-                    f"AMBIGUOUS submission: External transmission dispatched past irreversible boundary with unverified outcome ({submit_result.error_message}). Manual operator resolution required.",
+                    f"AMBIGUOUS submission: External transmission dispatched past irreversible boundary with unverified outcome ({sanitized_err}). Manual operator resolution required.",
                     details={"failure_kind": "ambiguous_submission", "receipt_id": receipt.receipt_id, "attempt_id": attempt.attempt_id},
                 )
 
             else:  # CONFIRMED_FAILED
+                sanitized_err = _sanitize_diagnostic_message(submit_result.error_message or "Transmission rejected by destination.")
+                sanitized_snippet = _sanitize_diagnostic_message(submit_result.raw_response_snippet)
                 attempt.mark_failed(
                     category=submit_result.error_category or ExecutionErrorCategory.SUBMIT_REJECTED,
-                    message=submit_result.error_message or "Transmission rejected by destination.",
-                    snippet=submit_result.raw_response_snippet,
+                    message=sanitized_err,
+                    snippet=sanitized_snippet,
                 )
                 uow.execution_attempts.save(attempt)
 
@@ -659,27 +1068,27 @@ class GovernedExecutionService:
                     upload_asset_ids=[a.asset_id for a in upload_assets],
                     upload_asset_shas=[a.content_sha256 for a in upload_assets],
                     screening_response_count=len(plan.screening_responses),
-                    safe_provider_metadata=submit_result.provider_metadata,
+                    safe_provider_metadata=sanitized_provider_metadata,
                 )
                 uow.execution_receipts.save(receipt)
 
                 old_act_status = persisted_action.status.value
                 persisted_action.transition_to(
                     ActionStatus.FAILED,
-                    reason=f"Transmission rejected: {submit_result.error_message}",
+                    reason=f"Transmission rejected: {sanitized_err}",
                 )
                 persisted_action.result = {
                     "receipt_id": receipt.receipt_id,
                     "receipt_hash": receipt.receipt_hash,
                     "status": receipt.status.value,
-                    "error_message": submit_result.error_message,
+                    "error_message": sanitized_err,
                 }
                 uow.actions.save(persisted_action)
 
                 old_case_status = persisted_case.status.value
                 persisted_case.transition_to(
                     CaseStatus.ACTION_REQUIRED,
-                    reason=f"Transmission rejected by destination: {submit_result.error_message}",
+                    reason=f"Transmission rejected by destination: {sanitized_err}",
                 )
                 uow.cases.save(persisted_case)
 
@@ -715,7 +1124,7 @@ class GovernedExecutionService:
                 )
                 uow.commit()
                 raise ApprovalValidationError(
-                    f"External transmission rejected by destination: {submit_result.error_message}",
+                    f"External transmission rejected by destination: {sanitized_err}",
                     details={"failure_kind": "submit_rejected", "receipt_id": receipt.receipt_id, "attempt_id": attempt.attempt_id},
                 )
 

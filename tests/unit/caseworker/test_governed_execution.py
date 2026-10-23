@@ -71,7 +71,11 @@ from caseworker.domain.execution_plan import (
 from caseworker.domain.execution_receipt import ExecutionReceipt
 from caseworker.domain.opportunity import Opportunity
 from caseworker.domain.preparation_analyzer import PreparationAnalyzer
-from caseworker.domain.provider_adapter import SimulatedExecutionProvider
+from caseworker.domain.provider_adapter import (
+    ProviderSubmissionResult,
+    SimulatedExecutionProvider,
+    StagingOutcome,
+)
 from caseworker.persistence.sqlite import SQLiteCaseworkerStorage
 from caseworker.services.action_service import ActionService
 from caseworker.services.approval_service import ApprovalService
@@ -557,8 +561,343 @@ class TestGovernedExecution(unittest.TestCase):
             self.assertEqual(case.status, CaseStatus.ACTION_REQUIRED)
             attempt = uow.execution_attempts.get_latest_for_action(self.action.action_id)
             self.assertFalse(attempt.irreversible_action_taken)
+            self.assertEqual(attempt.status, ExecutionAttemptStatus.FAILED)
+            self.assertEqual(attempt.error_category, ExecutionErrorCategory.INTEGRITY_VIOLATION)
             receipt = uow.execution_receipts.get_by_action_id(self.action.action_id)
             self.assertIsNone(receipt)
+
+    def test_barrier_b_durability_and_lease_release(self) -> None:
+        """Barrier B revalidation failure durably persists FAILED attempt and releases lease in SQLite."""
+        self._approve_transmission()
+
+        # Mutate approval right before Barrier B by hooking into provider stage_submission
+        class ApprovalTamperingProvider(SimulatedExecutionProvider):
+            def __init__(outer_self, storage: SQLiteCaseworkerStorage, approval_id: str):
+                super().__init__(simulation_mode="success")
+                outer_self.storage = storage
+                outer_self.approval_id = approval_id
+
+            def stage_submission(outer_self, plan, package, upload_assets):
+                with outer_self.storage.unit_of_work() as uow:
+                    app = uow.approvals.get_by_id(outer_self.approval_id)
+                    app.status = ApprovalStatus.REJECTED
+                    app.version += 1
+                    uow.approvals.save(app)
+                    uow.commit()
+                return super().stage_submission(plan, package, upload_assets)
+
+        tampering_provider = ApprovalTamperingProvider(self.storage, self.approval.approval_id)
+
+        with self.assertRaises(ApprovalValidationError) as ctx:
+            self.exec_service.execute_action(
+                user_id=self.user_id,
+                action_id=self.action.action_id,
+                provider=tampering_provider,
+            )
+        self.assertIn("Barrier B", str(ctx.exception))
+
+        # Check durable SQLite state
+        with self.storage.unit_of_work() as uow:
+            # 1. Attempt was durably saved as FAILED with INTEGRITY_VIOLATION
+            attempt = uow.execution_attempts.get_latest_for_action(self.action.action_id)
+            self.assertIsNotNone(attempt)
+            self.assertEqual(attempt.status, ExecutionAttemptStatus.FAILED)
+            self.assertEqual(attempt.error_category, ExecutionErrorCategory.INTEGRITY_VIOLATION)
+            self.assertFalse(attempt.irreversible_action_taken)
+
+            # 2. Lease was durably released (not left hanging or rolled back)
+            active_lease = uow.execution_leases.get_active_lease(self.case_id, self.plan.plan_id, self.action.action_id)
+            self.assertIsNone(active_lease)
+
+    def test_complete_staging_validation_missing_field_and_submit_control(self) -> None:
+        """Staging missing required field keys or missing submit control fails with STAGING_VALIDATION_FAILED."""
+        self._approve_transmission()
+
+        # 1. Staging provider returning missing field keys
+        class IncompleteFieldProvider(SimulatedExecutionProvider):
+            def stage_submission(self, plan, package, upload_assets):
+                return StagingOutcome(
+                    success=True,
+                    staged_field_count=0,
+                    staged_upload_count=0,
+                    submit_control_ready=True,
+                    staged_field_keys=[],  # Missing required fields!
+                    staged_upload_slot_ids=[],
+                    staged_screening_question_ids=[],
+                )
+
+        with self.assertRaises(ApprovalValidationError) as ctx:
+            self.exec_service.execute_action(
+                user_id=self.user_id,
+                action_id=self.action.action_id,
+                provider=IncompleteFieldProvider(),
+            )
+        self.assertIn("Missing required staged field keys", str(ctx.exception))
+
+        # Verify safe state: Action remains APPROVED, lease released, attempt marked FAILED
+        with self.storage.unit_of_work() as uow:
+            act = uow.actions.get_by_id(self.action.action_id)
+            self.assertEqual(act.status, ActionStatus.APPROVED)
+            attempt = uow.execution_attempts.get_latest_for_action(self.action.action_id)
+            self.assertEqual(attempt.status, ExecutionAttemptStatus.FAILED)
+            self.assertEqual(attempt.error_category, ExecutionErrorCategory.STAGING_VALIDATION_FAILED)
+            self.assertFalse(attempt.irreversible_action_taken)
+            lease = uow.execution_leases.get_active_lease(self.case_id, self.plan.plan_id, self.action.action_id)
+            self.assertIsNone(lease)
+
+        # 2. Staging provider returning submit_control_ready = False
+        class NotReadyControlProvider(SimulatedExecutionProvider):
+            def stage_submission(self, plan, package, upload_assets):
+                return StagingOutcome(
+                    success=True,
+                    staged_field_count=1,
+                    staged_upload_count=0,
+                    submit_control_ready=False,  # Not ready!
+                    staged_field_keys=[m.target_field_id for m in plan.field_mappings],
+                    staged_upload_slot_ids=[],
+                    staged_screening_question_ids=[],
+                )
+
+        with self.assertRaises(ApprovalValidationError) as ctx2:
+            self.exec_service.execute_action(
+                user_id=self.user_id,
+                action_id=self.action.action_id,
+                provider=NotReadyControlProvider(),
+            )
+        self.assertIn("Final submit control is not ready", str(ctx2.exception))
+
+    def test_unexpected_provider_exception_before_irreversible_dispatch(self) -> None:
+        """Unexpected exception before irreversible dispatch safely preserves Action and allows retry."""
+        self._approve_transmission()
+
+        class CrashingStagingProvider(SimulatedExecutionProvider):
+            def stage_submission(self, plan, package, upload_assets):
+                raise RuntimeError("Unexpected driver crash during form staging")
+
+        with self.assertRaises(ApprovalValidationError) as ctx:
+            self.exec_service.execute_action(
+                user_id=self.user_id,
+                action_id=self.action.action_id,
+                provider=CrashingStagingProvider(),
+            )
+        self.assertIn("Provider staging failed unexpectedly", str(ctx.exception))
+
+        with self.storage.unit_of_work() as uow:
+            act = uow.actions.get_by_id(self.action.action_id)
+            self.assertEqual(act.status, ActionStatus.APPROVED)
+            case = uow.cases.get_by_id(self.case_id)
+            self.assertEqual(case.status, CaseStatus.ACTION_REQUIRED)
+            attempt = uow.execution_attempts.get_latest_for_action(self.action.action_id)
+            self.assertEqual(attempt.status, ExecutionAttemptStatus.FAILED)
+            self.assertFalse(attempt.irreversible_action_taken)
+            self.assertIsNone(uow.execution_leases.get_active_lease(self.case_id, self.plan.plan_id, self.action.action_id))
+
+        # Safe retry succeeds
+        attempt2, receipt2 = self.exec_service.execute_action(
+            user_id=self.user_id,
+            action_id=self.action.action_id,
+            provider=SimulatedExecutionProvider(simulation_mode="success"),
+        )
+        self.assertEqual(attempt2.status, ExecutionAttemptStatus.SUCCEEDED)
+
+    def test_unexpected_provider_exception_during_irreversible_dispatch(self) -> None:
+        """Unexpected exception during irreversible submit dispatch is conservatively treated as AMBIGUOUS."""
+        self._approve_transmission()
+
+        class CrashingSubmitProvider(SimulatedExecutionProvider):
+            def execute_irreversible_submit(self, plan, attempt_id):
+                raise ConnectionResetError("Connection severed immediately after submitting form payload")
+
+        with self.assertRaises(ApprovalValidationError) as ctx:
+            self.exec_service.execute_action(
+                user_id=self.user_id,
+                action_id=self.action.action_id,
+                provider=CrashingSubmitProvider(),
+            )
+        self.assertIn("AMBIGUOUS submission", str(ctx.exception))
+
+        with self.storage.unit_of_work() as uow:
+            act = uow.actions.get_by_id(self.action.action_id)
+            self.assertEqual(act.status, ActionStatus.FAILED)
+            case = uow.cases.get_by_id(self.case_id)
+            self.assertEqual(case.status, CaseStatus.ACTION_REQUIRED)
+            attempt = uow.execution_attempts.get_latest_for_action(self.action.action_id)
+            self.assertEqual(attempt.status, ExecutionAttemptStatus.AMBIGUOUS)
+            self.assertTrue(attempt.irreversible_action_taken)
+            receipt = uow.execution_receipts.get_by_action_id(self.action.action_id)
+            self.assertIsNotNone(receipt)
+            self.assertEqual(receipt.status, ExecutionReceiptStatus.AMBIGUOUS_SUBMISSION)
+
+        # Retry blocked
+        with self.assertRaises(ApprovalValidationError):
+            self.exec_service.execute_action(
+                user_id=self.user_id,
+                action_id=self.action.action_id,
+            )
+
+    def test_crash_recovery_for_unresolved_submitting_attempt(self) -> None:
+        """Step 1 crash recovery reconciles an unresolved SUBMITTING attempt as AMBIGUOUS and blocks retry."""
+        self._approve_transmission()
+
+        # Simulate a crash right after crossing irreversible boundary
+        with self.storage.unit_of_work() as uow:
+            lease = uow.execution_leases.acquire_lease(
+                case_id=self.case_id,
+                plan_id=self.plan.plan_id,
+                action_id=self.action.action_id,
+                user_id=self.user_id,
+                attempt_id="crashed_submitting_att_001",
+                ttl_seconds=0,  # Expired
+            )
+            crashed_attempt = ExecutionAttempt(
+                attempt_id="crashed_submitting_att_001",
+                action_id=self.action.action_id,
+                approval_id=self.approval.approval_id,
+                plan_id=self.plan.plan_id,
+                case_id=self.case_id,
+                user_id=self.user_id,
+                lease_token=lease.lease_token,
+                fencing_token=lease.fencing_token,
+                status=ExecutionAttemptStatus.SUBMITTING,
+                provider_kind=ExecutionProviderKind.SIMULATED_TEST,
+                irreversible_action_taken=True,
+            )
+            uow.execution_attempts.save(crashed_attempt)
+            uow.commit()
+
+        # Invoking execute_action must discover the crashed attempt and reconcile as AMBIGUOUS
+        with self.assertRaises(ApprovalValidationError) as ctx:
+            self.exec_service.execute_action(
+                user_id=self.user_id,
+                action_id=self.action.action_id,
+            )
+        self.assertIn("crossed the irreversible boundary", str(ctx.exception))
+        self.assertIn("manual operator resolution is required", str(ctx.exception))
+
+        with self.storage.unit_of_work() as uow:
+            attempt = uow.execution_attempts.get_by_id("crashed_submitting_att_001")
+            self.assertEqual(attempt.status, ExecutionAttemptStatus.AMBIGUOUS)
+            receipt = uow.execution_receipts.get_by_action_id(self.action.action_id)
+            self.assertIsNotNone(receipt)
+            self.assertEqual(receipt.status, ExecutionReceiptStatus.AMBIGUOUS_SUBMISSION)
+            act = uow.actions.get_by_id(self.action.action_id)
+            self.assertEqual(act.status, ActionStatus.FAILED)
+            case = uow.cases.get_by_id(self.case_id)
+            self.assertEqual(case.status, CaseStatus.ACTION_REQUIRED)
+
+    def test_crash_recovery_for_abandoned_pre_boundary_attempt(self) -> None:
+        """Step 1 crash recovery cleans up an abandoned pre-boundary attempt with LEASE_EXPIRED and allows clean execution."""
+        self._approve_transmission()
+
+        # Simulate a crash during STAGING with expired lease
+        with self.storage.unit_of_work() as uow:
+            lease = uow.execution_leases.acquire_lease(
+                case_id=self.case_id,
+                plan_id=self.plan.plan_id,
+                action_id=self.action.action_id,
+                user_id=self.user_id,
+                attempt_id="abandoned_staging_att_002",
+                ttl_seconds=0,  # Expired
+            )
+            abandoned_attempt = ExecutionAttempt(
+                attempt_id="abandoned_staging_att_002",
+                action_id=self.action.action_id,
+                approval_id=self.approval.approval_id,
+                plan_id=self.plan.plan_id,
+                case_id=self.case_id,
+                user_id=self.user_id,
+                lease_token=lease.lease_token,
+                fencing_token=lease.fencing_token,
+                status=ExecutionAttemptStatus.STAGING,
+                provider_kind=ExecutionProviderKind.SIMULATED_TEST,
+                irreversible_action_taken=False,
+            )
+            uow.execution_attempts.save(abandoned_attempt)
+            uow.commit()
+
+        # Next execution recovers the abandoned attempt as LEASE_EXPIRED and proceeds to success
+        attempt, receipt = self.exec_service.execute_action(
+            user_id=self.user_id,
+            action_id=self.action.action_id,
+            provider=SimulatedExecutionProvider(simulation_mode="success"),
+        )
+        self.assertEqual(attempt.status, ExecutionAttemptStatus.SUCCEEDED)
+        self.assertEqual(receipt.status, ExecutionReceiptStatus.VERIFIED_SUCCESS)
+
+        # Verify abandoned attempt was reconciled as LEASE_EXPIRED
+        with self.storage.unit_of_work() as uow:
+            old_att = uow.execution_attempts.get_by_id("abandoned_staging_att_002")
+            self.assertEqual(old_att.status, ExecutionAttemptStatus.FAILED)
+            self.assertEqual(old_att.error_category, ExecutionErrorCategory.LEASE_EXPIRED)
+
+    def test_sensitive_diagnostic_redaction(self) -> None:
+        """Diagnostics with Bearer tokens, secrets, or keys are redacted before persistence."""
+        self._approve_transmission()
+
+        class LeakingProvider(SimulatedExecutionProvider):
+            def execute_irreversible_submit(self, plan, attempt_id):
+                return ProviderSubmissionResult(
+                    status=ExecutionReceiptStatus.CONFIRMED_FAILED,
+                    external_confirmation_id=None,
+                    error_category=ExecutionErrorCategory.SUBMIT_REJECTED,
+                    error_message="Authentication failed for Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.secret_part_12345",
+                    raw_response_snippet="HTTP 401 Unauthorized: Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.secret_part_12345, password=supersecretpass",
+                    provider_metadata={
+                        "authorization": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.secret_part_12345",
+                        "password": "supersecretpass",
+                        "safe_flag": True,
+                    },
+                )
+
+        with self.assertRaises(ApprovalValidationError):
+            self.exec_service.execute_action(
+                user_id=self.user_id,
+                action_id=self.action.action_id,
+                provider=LeakingProvider(),
+            )
+
+        with self.storage.unit_of_work() as uow:
+            attempt = uow.execution_attempts.get_latest_for_action(self.action.action_id)
+            receipt = uow.execution_receipts.get_by_action_id(self.action.action_id)
+            act = uow.actions.get_by_id(self.action.action_id)
+
+            # Error message must NOT contain secret
+            self.assertNotIn("secret_part_12345", attempt.error_message)
+            self.assertIn("[REDACTED]", attempt.error_message)
+
+            # Snippet must NOT contain password
+            self.assertNotIn("supersecretpass", attempt.raw_response_snippet)
+            self.assertIn("[REDACTED]", attempt.raw_response_snippet)
+
+            # Metadata must drop/redact sensitive keys
+            self.assertNotIn("authorization", receipt.safe_provider_metadata)
+            self.assertNotIn("password", receipt.safe_provider_metadata)
+            self.assertNotIn("secret_part_12345", str(receipt.safe_provider_metadata))
+            self.assertNotIn("supersecretpass", str(receipt.safe_provider_metadata))
+
+            # Action result must be redacted
+            self.assertNotIn("secret_part_12345", act.result.get("error_message", ""))
+
+    def test_truthful_simulation_outcome_semantics(self) -> None:
+        """Simulated execution outcome explicitly declares simulation mode without genuine external effects."""
+        self._approve_transmission()
+
+        provider = SimulatedExecutionProvider(simulation_mode="success")
+        attempt, receipt = self.exec_service.execute_action(
+            user_id=self.user_id,
+            action_id=self.action.action_id,
+            provider=provider,
+        )
+
+        with self.storage.unit_of_work() as uow:
+            case = uow.cases.get_by_id(self.case_id)
+            act = uow.actions.get_by_id(self.action.action_id)
+
+            # Verify truthful outcome text
+            self.assertIn("Simulated transmission completed (Simulation Mode — No genuine external transmission)", case.outcome)
+            # Verify safe_provider_metadata marks simulation
+            self.assertTrue(receipt.safe_provider_metadata.get("is_simulated"))
+            self.assertEqual(attempt.provider_kind, ExecutionProviderKind.SIMULATED_TEST)
 
 
 class TestGovernedExecutionAPI(unittest.TestCase):

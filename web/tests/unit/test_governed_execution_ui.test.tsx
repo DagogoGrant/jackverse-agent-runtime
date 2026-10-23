@@ -379,4 +379,47 @@ describe("Phase 5.3.3 Governed External Execution UI", () => {
       expect(screen.getByText(/MANUAL OPERATOR RESOLUTION REQUIRED/i)).toBeInTheDocument();
     });
   });
+
+  it("renders Truthful Simulated Execution banner, badge, and reference when execution is simulated", async () => {
+    const simulatedReceipt = {
+      ...mockReceipt,
+      safe_provider_metadata: {
+        ...mockReceipt.safe_provider_metadata,
+        is_simulated: true,
+      },
+    };
+    setupFetchMock({ receipt: simulatedReceipt });
+    renderView();
+
+    await waitFor(() => {
+      expect(screen.getByText("SIMULATED EXECUTION (SIMULATION ONLY)")).toBeInTheDocument();
+      expect(screen.getByText(/Notice: This execution was performed in simulation mode/i)).toBeInTheDocument();
+      expect(screen.getByText("SIMULATED TEST")).toBeInTheDocument();
+      expect(screen.getByText("Simulated Confirmation Reference:")).toBeInTheDocument();
+      expect(screen.getByText("Simulated Execution Receipt")).toBeInTheDocument();
+    });
+  });
+
+  it("blocks execution and displays binding mismatch warning when action plan fingerprint does not match target plan", async () => {
+    const mismatchedAction = {
+      ...mockApprovedAction,
+      parameters: {
+        ...mockApprovedAction.parameters,
+        execution_plan_fingerprint: "tampered_plan_fingerprint_xyz",
+      },
+    };
+    setupFetchMock({ receipt: null, action: mismatchedAction });
+    renderView();
+
+    const executeBtn = await screen.findByText("Execute Authorized Transmission →");
+    fireEvent.click(executeBtn);
+
+    await waitFor(() => {
+      expect(screen.getByText("ACTION PLAN BINDING MISMATCH")).toBeInTheDocument();
+      expect(screen.getByText(/Execution is blocked/i)).toBeInTheDocument();
+    });
+
+    const confirmBtn = screen.getByRole("button", { name: /Confirm & Execute/i });
+    expect(confirmBtn).toBeDisabled();
+  });
 });

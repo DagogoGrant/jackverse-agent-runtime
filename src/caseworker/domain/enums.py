@@ -433,6 +433,7 @@ class ExecutionErrorCategory(StrEnum):
     SUBMIT_REJECTED = "submit_rejected"
     INTEGRITY_VIOLATION = "integrity_violation"
     FENCING_VIOLATION = "fencing_violation"
+    LEASE_EXPIRED = "lease_expired"
     UNKNOWN = "unknown"
 
 

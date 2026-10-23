@@ -30,6 +30,9 @@ SAFE_PROVIDER_METADATA_ALLOWLIST = {
     "engine",
     "status_code",
     "mode",
+    "is_simulated",
+    "provider_kind",
+    "reconciled_after_interruption",
 }
 
 FORBIDDEN_METADATA_PATTERN = re.compile(

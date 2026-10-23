@@ -18,6 +18,7 @@ import {
   useLatestPreparationPackage,
   useVerifyPreparationPackage,
   useLatestExecutionPlan,
+  useExecutionPlan,
   useCreateExecutionPlan,
   useRequestExecutionPlanAuthorization,
   useContextFacts,
@@ -101,6 +102,11 @@ export const CaseDetailView: React.FC = () => {
   const { data: attempts = [], refetch: refetchAttempts } = useExecutionAttempts(caseId);
   const executeActionMutation = useExecuteAction();
 
+  const isReceiptSimulated = Boolean(
+    (receipt?.safe_provider_metadata as Record<string, unknown> | undefined)?.is_simulated === true ||
+    (attempts.length > 0 && attempts[attempts.length - 1].provider_kind === 'simulated_test')
+  );
+
   const [executionError, setExecutionError] = useState<string | null>(null);
   const [showExecutionModal, setShowExecutionModal] = useState(false);
   const [simulationMode, setSimulationMode] = useState<string>('success');
@@ -109,7 +115,18 @@ export const CaseDetailView: React.FC = () => {
   const approvedTransmissionAction = actions?.find(
     (a) =>
       a.action_type === 'submit_form' &&
-      a.status === 'approved'
+      a.status === 'approved' &&
+      a.parameters?.scope === 'external_transmission' &&
+      a.parameters?.authorization_schema === 'tx_auth_v1'
+  );
+
+  const approvedPlanId = (approvedTransmissionAction?.parameters?.plan_id as string) || undefined;
+  const { data: approvedPlan } = useExecutionPlan(caseId, approvedPlanId);
+  const targetPlan = (latestPlan?.plan_id === approvedPlanId ? latestPlan : approvedPlan) || null;
+  const isPlanFingerprintMatching = Boolean(
+    approvedTransmissionAction &&
+      targetPlan &&
+      approvedTransmissionAction.parameters?.execution_plan_fingerprint === targetPlan.execution_plan_fingerprint
   );
 
   const handleExecuteTransmission = async () => {
@@ -1520,12 +1537,31 @@ export const CaseDetailView: React.FC = () => {
                         {/* Verified Execution Receipt Card */}
                         {receipt && receipt.status === 'verified_success' && (
                           <div className="p-4 border border-emerald-600/40 bg-emerald-500/5 space-y-3 font-interface">
+                            {isReceiptSimulated && (
+                              <div className="p-3 border border-amber-500/40 bg-amber-500/10 text-amber-800 dark:text-amber-200 text-xs font-interface space-y-1">
+                                <div className="font-bold font-machine flex items-center gap-1.5 tracking-wider">
+                                  <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
+                                  <span>SIMULATED EXECUTION (SIMULATION ONLY)</span>
+                                </div>
+                                <p className="text-[11px] text-amber-900/90 dark:text-amber-300/90">
+                                  Notice: This execution was performed in simulation mode. No real-world external transmission or application was dispatched.
+                                </p>
+                              </div>
+                            )}
+
                             <div className="flex flex-wrap items-center justify-between gap-2 border-b border-emerald-600/20 pb-2">
                               <div className="flex items-center gap-2">
                                 <CheckCircle className="w-5 h-5 text-emerald-600" />
-                                <span className="font-display text-lg text-jv-ink font-semibold">Verified Execution Receipt</span>
+                                <span className="font-display text-lg text-jv-ink font-semibold">
+                                  {isReceiptSimulated ? 'Simulated Execution Receipt' : 'Verified Execution Receipt'}
+                                </span>
                               </div>
                               <div className="flex items-center gap-2">
+                                {isReceiptSimulated && (
+                                  <span className="px-2 py-0.5 border border-amber-600/40 bg-amber-500/10 text-amber-800 dark:text-amber-300 font-machine text-xs font-semibold">
+                                    SIMULATED TEST
+                                  </span>
+                                )}
                                 <span className="px-2 py-0.5 border border-emerald-600/40 bg-emerald-600/10 text-emerald-700 dark:text-emerald-300 font-machine text-xs font-semibold">
                                   VERIFIED SUCCESS
                                 </span>
@@ -1537,7 +1573,9 @@ export const CaseDetailView: React.FC = () => {
 
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
                               <div>
-                                <span className="text-jv-muted">External Confirmation Ref:</span>{' '}
+                                <span className="text-jv-muted">
+                                  {isReceiptSimulated ? 'Simulated Confirmation Reference:' : 'External Confirmation Ref:'}
+                                </span>{' '}
                                 <span className="font-mono font-semibold text-emerald-700 dark:text-emerald-400">
                                   {receipt.external_reference_id || 'N/A'}
                                 </span>
@@ -2921,11 +2959,23 @@ export const CaseDetailView: React.FC = () => {
               <div className="space-y-1">
                 <div>
                   <span className="text-jv-muted">Destination:</span>{' '}
-                  <span className="font-mono text-jv-accent">{latestPlan?.destination?.canonical_url}</span>
+                  <span className="font-mono text-jv-accent">{targetPlan?.destination?.canonical_url || latestPlan?.destination?.canonical_url}</span>
                 </div>
                 <div>
                   <span className="text-jv-muted">Action ID:</span>{' '}
                   <span className="font-mono text-jv-ink">{approvedTransmissionAction.action_id}</span>
+                </div>
+                <div>
+                  <span className="text-jv-muted">Bound Plan ID:</span>{' '}
+                  <span className="font-mono text-jv-ink">{approvedPlanId || 'Unknown'}</span>
+                </div>
+                <div>
+                  <span className="text-jv-muted">Plan Binding:</span>{' '}
+                  {isPlanFingerprintMatching ? (
+                    <span className="font-machine text-emerald-600">VERIFIED FINGERPRINT MATCH</span>
+                  ) : (
+                    <span className="font-machine text-amber-600">CHECKING PLAN BINDING…</span>
+                  )}
                 </div>
                 <div>
                   <span className="text-jv-muted">Integrity Verification:</span>{' '}
@@ -2937,6 +2987,18 @@ export const CaseDetailView: React.FC = () => {
                 </div>
               </div>
             </div>
+
+            {targetPlan && !isPlanFingerprintMatching && (
+              <div className="p-3 border border-red-500/40 bg-red-500/10 text-red-600 text-xs font-interface space-y-1">
+                <div className="font-semibold flex items-center gap-1.5">
+                  <AlertTriangle className="w-4 h-4 shrink-0" />
+                  <span>ACTION PLAN BINDING MISMATCH</span>
+                </div>
+                <p className="text-[11px]">
+                  The approved Action is bound to plan fingerprint {String(approvedTransmissionAction.parameters?.execution_plan_fingerprint || '').slice(0, 16)}..., but the target plan fingerprint is {targetPlan.execution_plan_fingerprint?.slice(0, 16)}... Execution is blocked.
+                </p>
+              </div>
+            )}
 
             {/* Simulation Mode selector (for demo / dev testing) */}
             <div className="space-y-1.5 text-xs">
@@ -2972,6 +3034,7 @@ export const CaseDetailView: React.FC = () => {
                 size="sm"
                 className="bg-emerald-700 hover:bg-emerald-800 text-white border-emerald-600"
                 loading={executeActionMutation.isPending}
+                disabled={Boolean(targetPlan && !isPlanFingerprintMatching)}
                 onClick={handleExecuteTransmission}
               >
                 <Zap className="w-3.5 h-3.5 mr-1.5 inline" />

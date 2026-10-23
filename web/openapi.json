@@ -1830,6 +1830,7 @@
           "submit_rejected",
           "integrity_violation",
           "fencing_violation",
+          "lease_expired",
           "unknown"
         ],
         "title": "ExecutionErrorCategory",

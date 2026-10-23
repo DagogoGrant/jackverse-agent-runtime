@@ -2026,7 +2026,7 @@ export interface components {
          * @description Classification of execution errors.
          * @enum {string}
          */
-        ExecutionErrorCategory: "pre_submit_network" | "selector_not_found" | "staging_validation_failed" | "submit_timeout" | "submit_rejected" | "integrity_violation" | "fencing_violation" | "unknown";
+        ExecutionErrorCategory: "pre_submit_network" | "selector_not_found" | "staging_validation_failed" | "submit_timeout" | "submit_rejected" | "integrity_violation" | "fencing_violation" | "lease_expired" | "unknown";
         /** ExecutionFieldMappingResponse */
         ExecutionFieldMappingResponse: {
             /** Allowed Purposes */
