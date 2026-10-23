@@ -114,6 +114,7 @@ async def approval_validation_handler(request: Request, exc: ApprovalValidationE
         status=409,
         detail=str(exc),
         instance=_get_request_instance(request),
+        extensions=getattr(exc, "details", {}),
     )
     return problem.to_response()
 

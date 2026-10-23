@@ -16,6 +16,9 @@ class APIConfig:
     dev_auth: bool = field(
         default_factory=lambda: os.getenv("CASEWORKER_DEV_AUTH", "false").lower() in ("true", "1", "yes")
     )
+    simulation_enabled: bool = field(
+        default_factory=lambda: os.getenv("CASEWORKER_SIMULATION_ENABLED", "false").lower() in ("true", "1", "yes")
+    )
     allowed_origins: list[str] = field(
         default_factory=lambda: [
             origin.strip()

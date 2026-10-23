@@ -93,7 +93,7 @@ class TestGovernedExecution(unittest.TestCase):
         self.approval_service = ApprovalService(self.storage)
         self.plan_service = ExecutionPlanService(self.storage)
         self.action_service = ActionService(self.storage)
-        self.exec_service = GovernedExecutionService(self.storage)
+        self.exec_service = GovernedExecutionService(self.storage, allow_simulation=True)
 
         self.user_id = "user_grant_exec"
         self.case_id = "case_exec_001"
@@ -763,6 +763,10 @@ class TestGovernedExecution(unittest.TestCase):
                 irreversible_action_taken=True,
             )
             uow.execution_attempts.save(crashed_attempt)
+            act = uow.actions.get_by_id(self.action.action_id)
+            act.status = ActionStatus.EXECUTING
+            act.version += 1
+            uow.actions.save(act)
             uow.commit()
 
         # Invoking execute_action must discover the crashed attempt and reconcile as AMBIGUOUS
@@ -899,13 +903,225 @@ class TestGovernedExecution(unittest.TestCase):
             self.assertTrue(receipt.safe_provider_metadata.get("is_simulated"))
             self.assertEqual(attempt.provider_kind, ExecutionProviderKind.SIMULATED_TEST)
 
+    def test_active_worker_lease_protected_from_interference(self) -> None:
+        """Active SUBMITTING worker with unexpired lease is protected; execution_in_progress raised without modifying state."""
+        self._approve_transmission()
+
+        with self.storage.unit_of_work() as uow:
+            lease = uow.execution_leases.acquire_lease(
+                case_id=self.case_id,
+                plan_id=self.plan.plan_id,
+                action_id=self.action.action_id,
+                user_id=self.user_id,
+                attempt_id="active_worker_att_001",
+                ttl_seconds=300,  # Active, unexpired
+            )
+            attempt = ExecutionAttempt(
+                attempt_id="active_worker_att_001",
+                action_id=self.action.action_id,
+                approval_id=self.approval.approval_id,
+                plan_id=self.plan.plan_id,
+                case_id=self.case_id,
+                user_id=self.user_id,
+                lease_token=lease.lease_token,
+                fencing_token=lease.fencing_token,
+                status=ExecutionAttemptStatus.SUBMITTING,
+                provider_kind=ExecutionProviderKind.SIMULATED_TEST,
+                irreversible_action_taken=True,
+            )
+            uow.execution_attempts.save(attempt)
+            uow.commit()
+
+        # Invoking execute_action must NOT reconcile or cancel the active worker
+        with self.assertRaises(ApprovalValidationError) as ctx:
+            self.exec_service.execute_action(
+                user_id=self.user_id,
+                action_id=self.action.action_id,
+            )
+        self.assertEqual(ctx.exception.details.get("failure_kind"), "execution_in_progress")
+
+        # Verify worker attempt and lease were NOT touched or released
+        with self.storage.unit_of_work() as uow:
+            persisted_att = uow.execution_attempts.get_by_id("active_worker_att_001")
+            self.assertEqual(persisted_att.status, ExecutionAttemptStatus.SUBMITTING)
+            active_lease = uow.execution_leases.get_active_lease(self.case_id, self.plan.plan_id, self.action.action_id)
+            self.assertIsNotNone(active_lease)
+            self.assertEqual(active_lease.lease_token, lease.lease_token)
+            # No receipt created
+            rcpt = uow.execution_receipts.get_by_action_id(self.action.action_id)
+            self.assertIsNone(rcpt)
+
+    def test_expired_worker_reconciled_with_audit_events_and_action_recovery(self) -> None:
+        """Expired SUBMITTING worker is reconciled as AMBIGUOUS, Action transitioned to FAILED via recovery method, and events emitted."""
+        self._approve_transmission()
+
+        with self.storage.unit_of_work() as uow:
+            lease = uow.execution_leases.acquire_lease(
+                case_id=self.case_id,
+                plan_id=self.plan.plan_id,
+                action_id=self.action.action_id,
+                user_id=self.user_id,
+                attempt_id="expired_worker_att_001",
+                ttl_seconds=0,  # Expired
+            )
+            attempt = ExecutionAttempt(
+                attempt_id="expired_worker_att_001",
+                action_id=self.action.action_id,
+                approval_id=self.approval.approval_id,
+                plan_id=self.plan.plan_id,
+                case_id=self.case_id,
+                user_id=self.user_id,
+                lease_token=lease.lease_token,
+                fencing_token=lease.fencing_token,
+                status=ExecutionAttemptStatus.SUBMITTING,
+                provider_kind=ExecutionProviderKind.SIMULATED_TEST,
+                irreversible_action_taken=True,
+            )
+            uow.execution_attempts.save(attempt)
+            # Normal SUBMITTING attempt corresponds to EXECUTING action
+            act = uow.actions.get_by_id(self.action.action_id)
+            act.status = ActionStatus.EXECUTING
+            act.version += 1
+            uow.actions.save(act)
+            uow.commit()
+
+        # Invoking execute_action must discover expired attempt and reconcile durably
+        with self.assertRaises(ApprovalValidationError) as ctx:
+            self.exec_service.execute_action(
+                user_id=self.user_id,
+                action_id=self.action.action_id,
+            )
+        self.assertEqual(ctx.exception.details.get("failure_kind"), "manual_resolution_required")
+
+        # Verify durable reconciliation and audit trail
+        with self.storage.unit_of_work() as uow:
+            reconciled_att = uow.execution_attempts.get_by_id("expired_worker_att_001")
+            self.assertEqual(reconciled_att.status, ExecutionAttemptStatus.AMBIGUOUS)
+
+            rcpt = uow.execution_receipts.get_by_action_id(self.action.action_id)
+            self.assertIsNotNone(rcpt)
+            self.assertEqual(rcpt.status, ExecutionReceiptStatus.AMBIGUOUS_SUBMISSION)
+            self.assertTrue(rcpt.safe_provider_metadata.get("reconciled_after_interruption"))
+
+            act = uow.actions.get_by_id(self.action.action_id)
+            self.assertEqual(act.status, ActionStatus.FAILED)
+
+            case = uow.cases.get_by_id(self.case_id)
+            self.assertEqual(case.status, CaseStatus.ACTION_REQUIRED)
+
+            # Check audit events
+            events = uow.events.get_events_for_aggregate("action", self.action.action_id)
+            action_status_events = [e for e in events if e.event_type == "action.status_changed"]
+            self.assertTrue(any(e.payload.get("new_status") == "failed" for e in action_status_events))
+
+            case_events = uow.events.get_events_for_aggregate("case", self.case_id)
+            case_status_events = [e for e in case_events if e.event_type == "case.status_changed"]
+            self.assertTrue(any(e.payload.get("new_status") == "action_required" for e in case_status_events))
+
+    def test_late_worker_superseded_after_reconciliation(self) -> None:
+        """Worker returning after lease expiration and reconciliation is discarded and cannot overwrite ambiguous outcome."""
+        self._approve_transmission()
+
+        class SlowWorkerProvider(SimulatedExecutionProvider):
+            def __init__(self, on_submit):
+                super().__init__(simulation_mode="success")
+                self.on_submit = on_submit
+
+            def execute_irreversible_submit(self, plan, attempt_id):
+                # Simulate intermediate crash recovery happening while this slow worker was processing
+                self.on_submit()
+                return super().execute_irreversible_submit(plan, attempt_id)
+
+        def intermediate_reconciliation():
+            # Worker B intervenes while Worker A is submitting: lease expires and Worker B reconciles
+            with self.storage.unit_of_work() as uow:
+                att = uow.execution_attempts.get_latest_for_action(self.action.action_id)
+                att.mark_ambiguous("Worker B reconciled expired lease.")
+                uow.execution_attempts.save(att)
+
+                reconciled_rcpt = ExecutionReceipt(
+                    attempt_id=att.attempt_id,
+                    action_id=self.action.action_id,
+                    approval_id=self.approval.approval_id,
+                    plan_id=self.plan.plan_id,
+                    case_id=self.case_id,
+                    user_id=self.user_id,
+                    status=ExecutionReceiptStatus.AMBIGUOUS_SUBMISSION,
+                    destination_hostname="jobs.example.com",
+                    destination_url="https://jobs.example.com/apply",
+                    destination_type="ats_form",
+                    execution_plan_fingerprint=self.plan.execution_plan_fingerprint,
+                    authorized_action_fingerprint=self.approval.action_fingerprint,
+                    package_fingerprint=self.plan.package_fingerprint,
+                    external_reference_id=None,
+                    safe_provider_metadata={"reconciled_after_interruption": True, "provider_request_id": "worker_b"},
+                )
+                uow.execution_receipts.save(reconciled_rcpt)
+
+                act = uow.actions.get_by_id(self.action.action_id)
+                act.reconcile_interrupted_failure("Reconciled by Worker B")
+                uow.actions.save(act)
+
+                # Release lease
+                lease_rec = uow.execution_leases.get_active_lease(self.case_id, self.plan.plan_id, self.action.action_id)
+                if lease_rec:
+                    uow.execution_leases.release_lease(lease_rec.lease_id, lease_rec.lease_token)
+                uow.commit()
+
+        provider = SlowWorkerProvider(on_submit=intermediate_reconciliation)
+
+        # Worker A tries to finish and persist its late success outcome
+        with self.assertRaises(ApprovalValidationError) as ctx:
+            self.exec_service.execute_action(
+                user_id=self.user_id,
+                action_id=self.action.action_id,
+                provider=provider,
+            )
+        self.assertEqual(ctx.exception.details.get("failure_kind"), "late_worker_superseded")
+
+        # Verify that Worker A's success outcome DID NOT overwrite Worker B's ambiguous receipt or attempt
+        with self.storage.unit_of_work() as uow:
+            att = uow.execution_attempts.get_latest_for_action(self.action.action_id)
+            self.assertEqual(att.status, ExecutionAttemptStatus.AMBIGUOUS)
+
+            rcpt = uow.execution_receipts.get_by_action_id(self.action.action_id)
+            self.assertEqual(rcpt.status, ExecutionReceiptStatus.AMBIGUOUS_SUBMISSION)
+            self.assertEqual(rcpt.safe_provider_metadata.get("provider_request_id"), "worker_b")
+            self.assertTrue(rcpt.safe_provider_metadata.get("reconciled_after_interruption"))
+
+            act = uow.actions.get_by_id(self.action.action_id)
+            self.assertEqual(act.status, ActionStatus.FAILED)
+
+    def test_simulation_fails_closed_in_production_environment(self) -> None:
+        """Simulated execution provider strictly fails closed when allow_simulation is False."""
+        self._approve_transmission()
+
+        prod_service = GovernedExecutionService(self.storage, allow_simulation=False)
+
+        with self.assertRaises(ApprovalValidationError) as ctx:
+            prod_service.execute_action(
+                user_id=self.user_id,
+                action_id=self.action.action_id,
+                provider=SimulatedExecutionProvider(simulation_mode="success"),
+            )
+        self.assertEqual(ctx.exception.details.get("failure_kind"), "simulation_not_permitted")
+
+        # Verify domain state was not altered
+        with self.storage.unit_of_work() as uow:
+            act = uow.actions.get_by_id(self.action.action_id)
+            self.assertEqual(act.status, ActionStatus.APPROVED)
+            plan = uow.execution_plans.get_by_id(self.plan.plan_id)
+            self.assertEqual(plan.status, ExternalExecutionPlanStatus.READY_FOR_AUTHORIZATION)
+            rcpt = uow.execution_receipts.get_by_action_id(self.action.action_id)
+            self.assertIsNone(rcpt)
+
 
 class TestGovernedExecutionAPI(unittest.TestCase):
     """API endpoint test suite for Governed Execution routes."""
 
     def setUp(self) -> None:
         self.storage = SQLiteCaseworkerStorage(db_path=":memory:")
-        self.config = APIConfig(dev_auth=True)
+        self.config = APIConfig(dev_auth=True, simulation_enabled=True)
         self.app = create_app(config=self.config, storage=self.storage)
         self.client = TestClient(self.app)
         self.user_id = "user_api_exec"
@@ -1183,3 +1399,110 @@ class TestGovernedExecutionAPI(unittest.TestCase):
         attempts_data = attempts_res.json()
         self.assertGreaterEqual(attempts_data["total"], 1)
         self.assertEqual(attempts_data["attempts"][0]["status"], "succeeded")
+
+    def test_api_active_worker_and_expired_worker_recovery_bypasses_if_match(self) -> None:
+        """API protects active worker leases (409 execution_in_progress) and allows recovery of expired worker bypassing If-Match."""
+        # 1. Setup an active unexpired worker
+        with self.storage.unit_of_work() as uow:
+            lease = uow.execution_leases.acquire_lease(
+                case_id=self.case.case_id,
+                plan_id=self.plan.plan_id,
+                action_id=self.action.action_id,
+                user_id=self.user_id,
+                attempt_id="api_active_att_001",
+                ttl_seconds=300,
+            )
+            attempt = ExecutionAttempt(
+                attempt_id="api_active_att_001",
+                action_id=self.action.action_id,
+                approval_id=self.approval.approval_id,
+                plan_id=self.plan.plan_id,
+                case_id=self.case.case_id,
+                user_id=self.user_id,
+                lease_token=lease.lease_token,
+                fencing_token=lease.fencing_token,
+                status=ExecutionAttemptStatus.SUBMITTING,
+                provider_kind=ExecutionProviderKind.SIMULATED_TEST,
+                irreversible_action_taken=True,
+            )
+            uow.execution_attempts.save(attempt)
+            uow.commit()
+
+        # Try to execute while active lease exists -> 409 conflict with execution_in_progress
+        res = self.client.post(
+            f"/api/v1/actions/{self.action.action_id}/execute",
+            headers={"X-JackVerse-User": self.user_id},
+            json={"simulation_mode": "success"},
+        )
+        self.assertEqual(res.status_code, 409)
+        self.assertEqual(res.json().get("failure_kind"), "execution_in_progress")
+
+        # 2. Transition lease to expired, and action to EXECUTING (simulating crash during submit)
+        with self.storage.unit_of_work() as uow:
+            uow.execution_leases.release_lease(lease.lease_id, lease.lease_token)
+            # Re-acquire with ttl=0 (expired)
+            expired_lease = uow.execution_leases.acquire_lease(
+                case_id=self.case.case_id,
+                plan_id=self.plan.plan_id,
+                action_id=self.action.action_id,
+                user_id=self.user_id,
+                attempt_id="api_expired_att_002",
+                ttl_seconds=0,
+            )
+            expired_attempt = ExecutionAttempt(
+                attempt_id="api_expired_att_002",
+                action_id=self.action.action_id,
+                approval_id=self.approval.approval_id,
+                plan_id=self.plan.plan_id,
+                case_id=self.case.case_id,
+                user_id=self.user_id,
+                lease_token=expired_lease.lease_token,
+                fencing_token=expired_lease.fencing_token,
+                status=ExecutionAttemptStatus.SUBMITTING,
+                provider_kind=ExecutionProviderKind.SIMULATED_TEST,
+                irreversible_action_taken=True,
+            )
+            uow.execution_attempts.save(expired_attempt)
+            act = uow.actions.get_by_id(self.action.action_id)
+            act.status = ActionStatus.EXECUTING
+            act.version += 1
+            uow.actions.save(act)
+            uow.commit()
+
+        # Recovery request: even WITHOUT If-Match (or with stale If-Match), recovery is permitted
+        # and triggers reconciliation, returning 409 manual_resolution_required
+        recovery_res = self.client.post(
+            f"/api/v1/actions/{self.action.action_id}/execute",
+            headers={"X-JackVerse-User": self.user_id, "If-Match": '"action:stale:1"'},
+            json={"simulation_mode": "success"},
+        )
+        self.assertEqual(recovery_res.status_code, 409)
+        self.assertEqual(recovery_res.json().get("failure_kind"), "manual_resolution_required")
+
+        # Verify durable recovery happened in database
+        with self.storage.unit_of_work() as uow:
+            reconciled_att = uow.execution_attempts.get_by_id("api_expired_att_002")
+            self.assertEqual(reconciled_att.status, ExecutionAttemptStatus.AMBIGUOUS)
+            receipt = uow.execution_receipts.get_by_action_id(self.action.action_id)
+            self.assertIsNotNone(receipt)
+            self.assertEqual(receipt.status, ExecutionReceiptStatus.AMBIGUOUS_SUBMISSION)
+
+    def test_api_simulation_fails_closed_when_disabled(self) -> None:
+        """API configured with simulation_enabled=False strictly rejects simulation with 409 simulation_not_permitted."""
+        prod_config = APIConfig(dev_auth=True, simulation_enabled=False)
+        prod_app = create_app(config=prod_config, storage=self.storage)
+        prod_client = TestClient(prod_app)
+
+        act_res = prod_client.get(
+            f"/api/v1/actions/{self.action.action_id}",
+            headers={"X-JackVerse-User": self.user_id},
+        )
+        etag = act_res.headers.get("ETag")
+
+        res = prod_client.post(
+            f"/api/v1/actions/{self.action.action_id}/execute",
+            headers={"X-JackVerse-User": self.user_id, "If-Match": etag},
+            json={"simulation_mode": "success"},
+        )
+        self.assertEqual(res.status_code, 409)
+        self.assertEqual(res.json().get("failure_kind"), "simulation_not_permitted")

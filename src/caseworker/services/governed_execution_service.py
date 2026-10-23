@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
+import os
 import re
 import uuid
 
@@ -103,8 +104,13 @@ class GovernedExecutionService:
         self,
         storage: SQLiteCaseworkerStorage,
         default_provider: ExecutionProviderAdapter | None = None,
+        allow_simulation: bool | None = None,
     ) -> None:
         self.storage = storage
+        if allow_simulation is None:
+            self.allow_simulation = os.getenv("CASEWORKER_SIMULATION_ENABLED", "false").lower() in ("true", "1", "yes")
+        else:
+            self.allow_simulation = bool(allow_simulation)
         self.default_provider = default_provider or SimulatedExecutionProvider(SimulationMode.SUCCESS)
 
     def execute_action(
@@ -115,6 +121,14 @@ class GovernedExecutionService:
     ) -> tuple[ExecutionAttempt, ExecutionReceipt | None]:
         """Execute an approved transmission action through the two-barrier governed pipeline."""
         active_provider = provider or self.default_provider
+
+        # Trusted Simulation Environment Boundary (Refinement 1)
+        if active_provider.provider_kind == ExecutionProviderKind.SIMULATED_TEST and not self.allow_simulation:
+            raise ApprovalValidationError(
+                "Simulated execution provider is restricted to trusted, isolated demonstration or test environments. "
+                "In live production environments, real-world execution requires an authorized genuine provider adapter.",
+                details={"failure_kind": "simulation_not_permitted"},
+            )
 
         # Step 1: Pre-Execution Resolution and Idempotency / Concurrency Pre-checks
         with self.storage.unit_of_work() as uow:
@@ -154,7 +168,16 @@ class GovernedExecutionService:
                         },
                     )
 
-            # Check for existing unverified ambiguous attempts or interrupted dispatch (Amendment 1 & 3)
+            # Active Lease Check FIRST (Refinement 1 & 2): Protect active unexpired workers
+            plan_id_param = action.parameters.get("plan_id", "")
+            active_lease = uow.execution_leases.get_active_lease(action.case_id, plan_id_param, action_id) if plan_id_param else None
+            if active_lease is not None and not active_lease.is_expired():
+                raise ApprovalValidationError(
+                    f"An execution attempt is currently active under lease token '{active_lease.lease_token}'.",
+                    details={"failure_kind": "execution_in_progress", "lease_token": active_lease.lease_token},
+                )
+
+            # Check for existing unverified ambiguous attempts or interrupted dispatch (Refinements 1, 2, 3)
             latest_attempt = uow.execution_attempts.get_latest_for_action(action_id)
             if latest_attempt is not None:
                 if (
@@ -168,7 +191,6 @@ class GovernedExecutionService:
                         )
                         uow.execution_attempts.save(latest_attempt)
 
-                        plan_id_param = action.parameters.get("plan_id", "")
                         plan_rec = uow.execution_plans.get_by_id(plan_id_param) if plan_id_param else None
                         approval_rec = uow.approvals.get_by_action_id(action_id)
 
@@ -195,19 +217,50 @@ class GovernedExecutionService:
                         )
                         uow.execution_receipts.save(reconciled_receipt)
 
-                        if action.status != ActionStatus.FAILED:
-                            action.status = ActionStatus.FAILED
-                            action.version += 1
-                            action.updated_at = now_utc()
+                        old_act_status = action.status.value
+                        if action.status == ActionStatus.EXECUTING:
+                            action.reconcile_interrupted_failure(
+                                reason="Interrupted transmission reconciled as ambiguous. Operator intervention required."
+                            )
                             uow.actions.save(action)
+                            uow.events.append(
+                                make_action_status_changed_event(
+                                    action_id=action.action_id,
+                                    user_id=user_id,
+                                    aggregate_version=action.version,
+                                    old_status=old_act_status,
+                                    new_status=action.status.value,
+                                    reason="Interrupted transmission reconciled as ambiguous. Operator intervention required.",
+                                )
+                            )
+                        else:
+                            # An unexpected status (e.g. APPROVED paired with SUBMITTING) is inconsistent
+                            raise ApprovalValidationError(
+                                f"Action '{action.action_id}' is in inconsistent state '{action.status.value}' while attempt is SUBMITTING.",
+                                details={"failure_kind": "inconsistent_recovery_state", "action_id": action.action_id},
+                            )
 
+                        old_case_status = case.status.value
                         if case.status != CaseStatus.ACTION_REQUIRED:
-                            case.transition_to(CaseStatus.ACTION_REQUIRED, reason="Interrupted transmission reconciled as ambiguous. Operator intervention required.")
+                            case.transition_to(
+                                CaseStatus.ACTION_REQUIRED,
+                                reason="Interrupted transmission reconciled as ambiguous. Operator intervention required.",
+                            )
                             uow.cases.save(case)
+                            uow.events.append(
+                                make_case_status_changed_event(
+                                    case_id=case.case_id,
+                                    user_id=user_id,
+                                    aggregate_version=case.version,
+                                    old_status=old_case_status,
+                                    new_status=case.status.value,
+                                    reason="Interrupted transmission reconciled as ambiguous. Operator intervention required.",
+                                )
+                            )
 
-                        stale_lease = uow.execution_leases.get_active_lease(action.case_id, plan_id_param, action_id) if plan_id_param else None
-                        if stale_lease:
-                            uow.execution_leases.release_lease(stale_lease.lease_id, stale_lease.lease_token)
+                        # Release expired lease if present
+                        if active_lease:
+                            uow.execution_leases.release_lease(active_lease.lease_id, active_lease.lease_token)
 
                         uow.events.append(
                             make_execution_receipt_created_event(
@@ -817,6 +870,41 @@ class GovernedExecutionService:
 
         # Step 8: Outcome & Receipt Processing
         with self.storage.unit_of_work() as uow:
+            current_attempt = uow.execution_attempts.get_by_id(attempt.attempt_id)
+            existing_rcpt = uow.execution_receipts.get_by_action_id(action_id)
+            persisted_lease = uow.execution_leases.get_by_id(lease.lease_id)
+
+            # Late-Worker Protection (Refinement 2)
+            # An expired lease does not prove that the original worker has terminated.
+            # If another recovery transaction already marked the attempt AMBIGUOUS or created a receipt,
+            # or if the lease was released/expired, the original worker must not overwrite that decision.
+            is_superseded = (
+                current_attempt is None
+                or current_attempt.status != ExecutionAttemptStatus.SUBMITTING
+                or existing_rcpt is not None
+                or persisted_lease is None
+                or persisted_lease.lease_token != lease.lease_token
+                or persisted_lease.status != ExecutionLeaseStatus.ACTIVE
+                or persisted_lease.is_expired()
+            )
+            if is_superseded:
+                if (
+                    persisted_lease
+                    and persisted_lease.lease_token == lease.lease_token
+                    and persisted_lease.status == ExecutionLeaseStatus.ACTIVE
+                ):
+                    uow.execution_leases.release_lease(persisted_lease.lease_id, persisted_lease.lease_token)
+                    uow.commit()
+
+                raise ApprovalValidationError(
+                    "Late execution outcome discarded: Worker lease expired or attempt was reconciled by another process. Manual operator resolution is required.",
+                    details={
+                        "failure_kind": "late_worker_superseded",
+                        "attempt_id": attempt.attempt_id,
+                        "existing_receipt_id": existing_rcpt.receipt_id if existing_rcpt else None,
+                    },
+                )
+
             persisted_action = uow.actions.get_by_id(action_id)
             persisted_case = uow.cases.get_by_id(case.case_id)
             persisted_plan = uow.execution_plans.get_by_id(plan.plan_id)
@@ -995,6 +1083,16 @@ class GovernedExecutionService:
                     "error_message": sanitized_err,
                 }
                 uow.actions.save(persisted_action)
+                uow.events.append(
+                    make_action_status_changed_event(
+                        action_id=persisted_action.action_id,
+                        user_id=user_id,
+                        aggregate_version=persisted_action.version,
+                        old_status=old_act_status,
+                        new_status=persisted_action.status.value,
+                        reason=f"Transmission ambiguous: {sanitized_err}",
+                    )
+                )
 
                 old_case_status = persisted_case.status.value
                 persisted_case.transition_to(
@@ -1002,6 +1100,16 @@ class GovernedExecutionService:
                     reason="Ambiguous external transmission dispatched. Automated retry blocked; operator intervention required.",
                 )
                 uow.cases.save(persisted_case)
+                uow.events.append(
+                    make_case_status_changed_event(
+                        case_id=persisted_case.case_id,
+                        user_id=user_id,
+                        aggregate_version=persisted_case.version,
+                        old_status=old_case_status,
+                        new_status=persisted_case.status.value,
+                        reason="Ambiguous external transmission dispatched. Automated retry blocked; operator intervention required.",
+                    )
+                )
 
                 uow.execution_leases.release_lease(lease.lease_id, lease.lease_token)
                 uow.events.append(
@@ -1084,6 +1192,16 @@ class GovernedExecutionService:
                     "error_message": sanitized_err,
                 }
                 uow.actions.save(persisted_action)
+                uow.events.append(
+                    make_action_status_changed_event(
+                        action_id=persisted_action.action_id,
+                        user_id=user_id,
+                        aggregate_version=persisted_action.version,
+                        old_status=old_act_status,
+                        new_status=persisted_action.status.value,
+                        reason=f"Transmission rejected: {sanitized_err}",
+                    )
+                )
 
                 old_case_status = persisted_case.status.value
                 persisted_case.transition_to(
@@ -1091,6 +1209,16 @@ class GovernedExecutionService:
                     reason=f"Transmission rejected by destination: {sanitized_err}",
                 )
                 uow.cases.save(persisted_case)
+                uow.events.append(
+                    make_case_status_changed_event(
+                        case_id=persisted_case.case_id,
+                        user_id=user_id,
+                        aggregate_version=persisted_case.version,
+                        old_status=old_case_status,
+                        new_status=persisted_case.status.value,
+                        reason=f"Transmission rejected by destination: {sanitized_err}",
+                    )
+                )
 
                 uow.execution_leases.release_lease(lease.lease_id, lease.lease_token)
                 uow.events.append(

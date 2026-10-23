@@ -7,7 +7,7 @@ export default defineConfig({
   webServer: [
     {
       command:
-        'rm -f /tmp/caseworker_e2e_integration.db /tmp/caseworker_e2e_integration.db-wal /tmp/caseworker_e2e_integration.db-shm && CASEWORKER_DEV_AUTH=true CASEWORKER_DB_PATH=/tmp/caseworker_e2e_integration.db PYTHONPATH=../src python3 -m uvicorn caseworker.api:create_app --factory --host 127.0.0.1 --port 8089',
+        'rm -f /tmp/caseworker_e2e_integration.db /tmp/caseworker_e2e_integration.db-wal /tmp/caseworker_e2e_integration.db-shm && CASEWORKER_DEV_AUTH=true CASEWORKER_SIMULATION_ENABLED=true CASEWORKER_DB_PATH=/tmp/caseworker_e2e_integration.db PYTHONPATH=../src python3 -m uvicorn caseworker.api:create_app --factory --host 127.0.0.1 --port 8089',
       port: 8089,
       timeout: 30000,
       reuseExistingServer: !process.env.CI,

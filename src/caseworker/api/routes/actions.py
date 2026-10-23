@@ -215,7 +215,8 @@ async def execute_action(
     if action is None:
         raise EntityNotFoundError("Action", action_id)
 
-    # 2. Idempotency & In-Progress Resolution BEFORE If-Match check (Amendment 1 & 5)
+    # 2. Idempotency, Active Lease & Crash Recovery Resolution BEFORE If-Match check (Refinements 1, 2, 3)
+    is_recovery_request = False
     with storage.unit_of_work() as uow:
         existing_receipt = uow.execution_receipts.get_by_action_id(action_id)
         if existing_receipt is not None:
@@ -235,32 +236,38 @@ async def execute_action(
                     details={"failure_kind": "manual_resolution_required", "receipt_id": existing_receipt.receipt_id},
                 )
 
-        # Check for unverified ambiguous attempt
-        latest_attempt = uow.execution_attempts.get_latest_for_action(action_id)
-        if latest_attempt is not None and (
-            latest_attempt.status == ExecutionAttemptStatus.AMBIGUOUS
-            or (latest_attempt.irreversible_action_taken and latest_attempt.status != ExecutionAttemptStatus.SUCCEEDED)
-        ):
-            raise ApprovalValidationError(
-                "Previous transmission attempt crossed the irreversible boundary with unverified outcome. Automatic retry is strictly forbidden; manual operator resolution is required.",
-                details={"failure_kind": "manual_resolution_required", "attempt_id": latest_attempt.attempt_id},
-            )
-
-        # Check active lease
+        # Check active lease FIRST: protect actively executing worker
         plan_id = action.parameters.get("plan_id", "")
-        active_lease = uow.execution_leases.get_active_lease(action.case_id, plan_id, action_id)
+        active_lease = uow.execution_leases.get_active_lease(action.case_id, plan_id, action_id) if plan_id else None
         if active_lease is not None and not active_lease.is_expired():
             raise ApprovalValidationError(
                 f"An execution attempt is currently active under lease token '{active_lease.lease_token}'.",
                 details={"failure_kind": "execution_in_progress", "lease_token": active_lease.lease_token},
             )
 
+        # Check if an unresolved attempt crossed irreversible boundary without a receipt
+        latest_attempt = uow.execution_attempts.get_latest_for_action(action_id)
+        if latest_attempt is not None and (
+            latest_attempt.status == ExecutionAttemptStatus.SUBMITTING
+            or (latest_attempt.irreversible_action_taken and latest_attempt.status != ExecutionAttemptStatus.SUCCEEDED)
+        ):
+            # Authorized recovery of an interrupted attempt whose lease is expired or absent.
+            # Recovery must NOT be blocked by a stale Action ETag for new execution requests.
+            is_recovery_request = True
+
     # 3. Genuinely new execution request: strictly enforce Action If-Match
-    check_if_match(request, "action", action.action_id, action.version)
+    if not is_recovery_request:
+        check_if_match(request, "action", action.action_id, action.version)
 
     # 4. Resolve provider adapter (support test simulation mode if requested)
     provider = None
     if req and req.simulation_mode:
+        if not exec_service.allow_simulation:
+            raise ApprovalValidationError(
+                "Simulated execution provider is restricted to trusted, isolated demonstration or test environments. "
+                "In live production environments, real-world execution requires an authorized genuine provider adapter.",
+                details={"failure_kind": "simulation_not_permitted"},
+            )
         provider = SimulatedExecutionProvider(req.simulation_mode)
 
     # 5. Execute through governed pipeline

@@ -114,8 +114,12 @@ def get_execution_plan_service(
 
 def get_governed_execution_service(
     storage: Annotated[SQLiteCaseworkerStorage, Depends(get_storage)],
+    config: Annotated[APIConfig, Depends(get_config)],
 ) -> GovernedExecutionService:
-    return GovernedExecutionService(storage)
+    return GovernedExecutionService(
+        storage=storage,
+        allow_simulation=config.simulation_enabled,
+    )
 
 
 

@@ -121,16 +121,25 @@ export const CaseDetailView: React.FC = () => {
   );
 
   const approvedPlanId = (approvedTransmissionAction?.parameters?.plan_id as string) || undefined;
-  const { data: approvedPlan } = useExecutionPlan(caseId, approvedPlanId);
+  const { data: approvedPlan, isLoading: isPlanLoading } = useExecutionPlan(caseId, approvedPlanId);
   const targetPlan = (latestPlan?.plan_id === approvedPlanId ? latestPlan : approvedPlan) || null;
   const isPlanFingerprintMatching = Boolean(
     approvedTransmissionAction &&
       targetPlan &&
       approvedTransmissionAction.parameters?.execution_plan_fingerprint === targetPlan.execution_plan_fingerprint
   );
+  const isPlanValidForExecution = Boolean(
+    approvedTransmissionAction &&
+      approvedPlanId &&
+      targetPlan &&
+      !isPlanLoading &&
+      targetPlan.plan_id === approvedPlanId &&
+      isPlanFingerprintMatching &&
+      targetPlan.status === 'ready_for_authorization'
+  );
 
   const handleExecuteTransmission = async () => {
-    if (!caseId || !approvedTransmissionAction) return;
+    if (!caseId || !approvedTransmissionAction || !isPlanValidForExecution) return;
     setExecutionError(null);
     setConcurrencyNotice(null);
     try {
@@ -2959,7 +2968,9 @@ export const CaseDetailView: React.FC = () => {
               <div className="space-y-1">
                 <div>
                   <span className="text-jv-muted">Destination:</span>{' '}
-                  <span className="font-mono text-jv-accent">{targetPlan?.destination?.canonical_url || latestPlan?.destination?.canonical_url}</span>
+                  <span className="font-mono text-jv-accent">
+                    {targetPlan?.destination?.canonical_url || (isPlanLoading ? 'Loading authorized destination…' : 'Authorized destination unavailable')}
+                  </span>
                 </div>
                 <div>
                   <span className="text-jv-muted">Action ID:</span>{' '}
@@ -2971,10 +2982,16 @@ export const CaseDetailView: React.FC = () => {
                 </div>
                 <div>
                   <span className="text-jv-muted">Plan Binding:</span>{' '}
-                  {isPlanFingerprintMatching ? (
+                  {isPlanLoading ? (
+                    <span className="font-machine text-jv-muted">LOADING AUTHORIZED PLAN…</span>
+                  ) : !targetPlan ? (
+                    <span className="font-machine text-red-600">PLAN UNAVAILABLE / MISSING</span>
+                  ) : targetPlan.status !== 'ready_for_authorization' ? (
+                    <span className="font-machine text-amber-600">STATUS: {targetPlan.status.toUpperCase()}</span>
+                  ) : isPlanFingerprintMatching ? (
                     <span className="font-machine text-emerald-600">VERIFIED FINGERPRINT MATCH</span>
                   ) : (
-                    <span className="font-machine text-amber-600">CHECKING PLAN BINDING…</span>
+                    <span className="font-machine text-red-600">FINGERPRINT MISMATCH</span>
                   )}
                 </div>
                 <div>
@@ -2987,6 +3004,30 @@ export const CaseDetailView: React.FC = () => {
                 </div>
               </div>
             </div>
+
+            {!isPlanLoading && !targetPlan && (
+              <div className="p-3 border border-red-500/40 bg-red-500/10 text-red-600 text-xs font-interface space-y-1">
+                <div className="font-semibold flex items-center gap-1.5">
+                  <AlertTriangle className="w-4 h-4 shrink-0" />
+                  <span>AUTHORIZED PLAN MISSING</span>
+                </div>
+                <p className="text-[11px]">
+                  The authorized execution plan '{approvedPlanId || 'unknown'}' could not be loaded or was not found. Execution is blocked.
+                </p>
+              </div>
+            )}
+
+            {targetPlan && targetPlan.status !== 'ready_for_authorization' && (
+              <div className="p-3 border border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-300 text-xs font-interface space-y-1">
+                <div className="font-semibold flex items-center gap-1.5">
+                  <AlertTriangle className="w-4 h-4 shrink-0" />
+                  <span>PLAN STATUS NOT READY</span>
+                </div>
+                <p className="text-[11px]">
+                  The authorized plan is in status '{targetPlan.status}', but must be 'ready_for_authorization'. Execution is blocked.
+                </p>
+              </div>
+            )}
 
             {targetPlan && !isPlanFingerprintMatching && (
               <div className="p-3 border border-red-500/40 bg-red-500/10 text-red-600 text-xs font-interface space-y-1">
@@ -3032,9 +3073,9 @@ export const CaseDetailView: React.FC = () => {
               <TactileButton
                 variant="primary"
                 size="sm"
-                className="bg-emerald-700 hover:bg-emerald-800 text-white border-emerald-600"
+                className="bg-emerald-700 hover:bg-emerald-800 text-white border-emerald-600 disabled:opacity-50 disabled:cursor-not-allowed"
                 loading={executeActionMutation.isPending}
-                disabled={Boolean(targetPlan && !isPlanFingerprintMatching)}
+                disabled={!isPlanValidForExecution || executeActionMutation.isPending}
                 onClick={handleExecuteTransmission}
               >
                 <Zap className="w-3.5 h-3.5 mr-1.5 inline" />

@@ -151,6 +151,34 @@ class Action:
         if new_status in (ActionStatus.SUCCEEDED, ActionStatus.FAILED) and self.executed_at is None:
             self.executed_at = now_utc()
 
+    def reconcile_interrupted_failure(self, reason: str | None = None) -> None:
+        """Explicit recovery transition for actions interrupted during execution.
+
+        Permitted strictly when recovering an interrupted execution from EXECUTING state.
+        Enforces state machine discipline, increments aggregate version, and sets executed_at.
+        An action in APPROVED status paired with an interrupted attempt indicates an inconsistent
+        state and must not be granted an arbitrary APPROVED -> FAILED transition.
+        """
+        if self.status.is_terminal:
+            raise InvalidStateTransitionError(
+                "Action",
+                self.status.value,
+                ActionStatus.FAILED.value,
+                "Cannot reconcile terminal action as failed.",
+            )
+        if self.status != ActionStatus.EXECUTING:
+            raise InvalidStateTransitionError(
+                "Action",
+                self.status.value,
+                ActionStatus.FAILED.value,
+                f"Cannot reconcile action in state '{self.status.value}'. Interrupted execution recovery requires 'executing' status.",
+            )
+
+        self.status = ActionStatus.FAILED
+        self.version += 1
+        if self.executed_at is None:
+            self.executed_at = now_utc()
+
     def to_dict(self) -> dict[str, Any]:
         """Serialize Action to a JSON-compatible dictionary."""
         return {

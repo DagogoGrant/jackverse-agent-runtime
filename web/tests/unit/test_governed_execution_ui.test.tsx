@@ -209,16 +209,21 @@ describe("Phase 5.3.3 Governed External Execution UI", () => {
   function setupFetchMock(options: {
     receipt?: any | null;
     action?: any;
+    plan?: any | null;
     onExecute?: (body: any, headers: any) => void;
   }) {
     const currentAction = options.action ?? mockApprovedAction;
     const currentReceipt = options.receipt !== undefined ? options.receipt : null;
+    const currentPlan = options.plan !== undefined ? options.plan : mockPlan;
 
     vi.spyOn(globalThis, "fetch").mockImplementation((input: any, init?: any) => {
       const url = String(input);
 
-      if (url.includes("/cases/case-exec-001/execution/plan/latest")) {
-        return Promise.resolve(new Response(JSON.stringify(mockPlan), { status: 200, headers: { etag: '"plan:plan-exec-101:1"' } }));
+      if (url.includes("/cases/case-exec-001/execution/plan")) {
+        if (!currentPlan) {
+          return Promise.resolve(new Response(JSON.stringify({ detail: "Not found" }), { status: 404 }));
+        }
+        return Promise.resolve(new Response(JSON.stringify(currentPlan), { status: 200, headers: { etag: '"plan:plan-exec-101:1"' } }));
       }
       if (url.includes("/cases/case-exec-001/preparation/packages/latest")) {
         return Promise.resolve(new Response(JSON.stringify({
@@ -416,6 +421,42 @@ describe("Phase 5.3.3 Governed External Execution UI", () => {
 
     await waitFor(() => {
       expect(screen.getByText("ACTION PLAN BINDING MISMATCH")).toBeInTheDocument();
+      expect(screen.getByText(/Execution is blocked/i)).toBeInTheDocument();
+    });
+
+    const confirmBtn = screen.getByRole("button", { name: /Confirm & Execute/i });
+    expect(confirmBtn).toBeDisabled();
+  });
+
+  it("blocks execution and disables confirm button when authorized plan is missing/404", async () => {
+    setupFetchMock({ receipt: null, plan: null });
+    renderView();
+
+    const executeBtn = await screen.findByText("Execute Authorized Transmission →");
+    fireEvent.click(executeBtn);
+
+    await waitFor(() => {
+      expect(screen.getByText("AUTHORIZED PLAN MISSING")).toBeInTheDocument();
+      expect(screen.getByText(/Execution is blocked/i)).toBeInTheDocument();
+    });
+
+    const confirmBtn = screen.getByRole("button", { name: /Confirm & Execute/i });
+    expect(confirmBtn).toBeDisabled();
+  });
+
+  it("blocks execution and disables confirm button when authorized plan is not ready_for_authorization", async () => {
+    const draftPlan = {
+      ...mockPlan,
+      status: "draft",
+    };
+    setupFetchMock({ receipt: null, plan: draftPlan });
+    renderView();
+
+    const executeBtn = await screen.findByText("Execute Authorized Transmission →");
+    fireEvent.click(executeBtn);
+
+    await waitFor(() => {
+      expect(screen.getByText("PLAN STATUS NOT READY")).toBeInTheDocument();
       expect(screen.getByText(/Execution is blocked/i)).toBeInTheDocument();
     });
 
