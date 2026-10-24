@@ -47,6 +47,7 @@ from caseworker.domain.enums import (
     ExecutionAttemptStatus,
     ExecutionDestinationType,
     ExecutionErrorCategory,
+    ExecutionLeaseStatus,
     ExecutionProviderKind,
     ExecutionReceiptStatus,
     ExternalExecutionPlanStatus,
@@ -789,6 +790,14 @@ class TestGovernedExecution(unittest.TestCase):
             case = uow.cases.get_by_id(self.case_id)
             self.assertEqual(case.status, CaseStatus.ACTION_REQUIRED)
 
+            # Durably verify the stored lease row was transitioned out of ACTIVE
+            stored_lease = uow.execution_leases.get_by_token(lease.lease_token)
+            self.assertIsNotNone(stored_lease)
+            self.assertEqual(stored_lease.status, ExecutionLeaseStatus.RELEASED)
+            self.assertIsNotNone(stored_lease.released_at)
+            self.assertNotEqual(stored_lease.status, ExecutionLeaseStatus.ACTIVE)
+            self.assertIsNone(uow.execution_leases.get_active_lease(self.case_id, self.plan.plan_id, self.action.action_id))
+
     def test_crash_recovery_for_abandoned_pre_boundary_attempt(self) -> None:
         """Step 1 crash recovery cleans up an abandoned pre-boundary attempt with LEASE_EXPIRED and allows clean execution."""
         self._approve_transmission()
@@ -833,6 +842,13 @@ class TestGovernedExecution(unittest.TestCase):
             old_att = uow.execution_attempts.get_by_id("abandoned_staging_att_002")
             self.assertEqual(old_att.status, ExecutionAttemptStatus.FAILED)
             self.assertEqual(old_att.error_category, ExecutionErrorCategory.LEASE_EXPIRED)
+
+            # Durably verify the abandoned attempt's original lease was transitioned out of ACTIVE
+            stored_abandoned_lease = uow.execution_leases.get_by_token(lease.lease_token)
+            self.assertIsNotNone(stored_abandoned_lease)
+            self.assertEqual(stored_abandoned_lease.status, ExecutionLeaseStatus.RELEASED)
+            self.assertIsNotNone(stored_abandoned_lease.released_at)
+            self.assertNotEqual(stored_abandoned_lease.status, ExecutionLeaseStatus.ACTIVE)
 
     def test_sensitive_diagnostic_redaction(self) -> None:
         """Diagnostics with Bearer tokens, secrets, or keys are redacted before persistence."""
@@ -1017,6 +1033,14 @@ class TestGovernedExecution(unittest.TestCase):
             case_events = uow.events.get_events_for_aggregate("case", self.case_id)
             case_status_events = [e for e in case_events if e.event_type == "case.status_changed"]
             self.assertTrue(any(e.payload.get("new_status") == "action_required" for e in case_status_events))
+
+            # Durably verify the stored lease row was transitioned out of ACTIVE
+            stored_lease = uow.execution_leases.get_by_token(lease.lease_token)
+            self.assertIsNotNone(stored_lease)
+            self.assertEqual(stored_lease.status, ExecutionLeaseStatus.RELEASED)
+            self.assertIsNotNone(stored_lease.released_at)
+            self.assertNotEqual(stored_lease.status, ExecutionLeaseStatus.ACTIVE)
+            self.assertIsNone(uow.execution_leases.get_active_lease(self.case_id, self.plan.plan_id, self.action.action_id))
 
     def test_late_worker_superseded_after_reconciliation(self) -> None:
         """Worker returning after lease expiration and reconciliation is discarded and cannot overwrite ambiguous outcome."""
@@ -1486,6 +1510,14 @@ class TestGovernedExecutionAPI(unittest.TestCase):
             receipt = uow.execution_receipts.get_by_action_id(self.action.action_id)
             self.assertIsNotNone(receipt)
             self.assertEqual(receipt.status, ExecutionReceiptStatus.AMBIGUOUS_SUBMISSION)
+
+            # Durably verify the stored lease row was transitioned out of ACTIVE
+            stored_lease = uow.execution_leases.get_by_token(expired_lease.lease_token)
+            self.assertIsNotNone(stored_lease)
+            self.assertEqual(stored_lease.status, ExecutionLeaseStatus.RELEASED)
+            self.assertIsNotNone(stored_lease.released_at)
+            self.assertNotEqual(stored_lease.status, ExecutionLeaseStatus.ACTIVE)
+            self.assertIsNone(uow.execution_leases.get_active_lease(self.case.case_id, self.plan.plan_id, self.action.action_id))
 
     def test_api_simulation_fails_closed_when_disabled(self) -> None:
         """API configured with simulation_enabled=False strictly rejects simulation with 409 simulation_not_permitted."""

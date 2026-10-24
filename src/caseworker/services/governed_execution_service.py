@@ -258,9 +258,28 @@ class GovernedExecutionService:
                                 )
                             )
 
-                        # Release expired lease if present
-                        if active_lease:
-                            uow.execution_leases.release_lease(active_lease.lease_id, active_lease.lease_token)
+                        # Durably close the expired lease for this interrupted attempt
+                        lease_to_close = (
+                            uow.execution_leases.get_by_token(latest_attempt.lease_token)
+                            if latest_attempt.lease_token
+                            else None
+                        )
+                        if lease_to_close is None and latest_attempt.lease_token:
+                            lease_to_close = uow.execution_leases.get_by_id(latest_attempt.lease_token)
+                        if lease_to_close is None and active_lease:
+                            lease_to_close = active_lease
+
+                        if lease_to_close is not None:
+                            # Verify Action, plan, attempt, and token binding
+                            if (
+                                lease_to_close.action_id == action.action_id
+                                and lease_to_close.case_id == case.case_id
+                                and (not plan_id_param or lease_to_close.plan_id == plan_id_param)
+                                and lease_to_close.attempt_id == latest_attempt.attempt_id
+                                and (not latest_attempt.lease_token or lease_to_close.lease_token == latest_attempt.lease_token)
+                            ):
+                                if lease_to_close.status == ExecutionLeaseStatus.ACTIVE:
+                                    uow.execution_leases.release_lease(lease_to_close.lease_id, lease_to_close.lease_token)
 
                         uow.events.append(
                             make_execution_receipt_created_event(
@@ -314,8 +333,28 @@ class GovernedExecutionService:
                             message="Previous execution attempt abandoned before crossing irreversible boundary: lease expired.",
                         )
                         uow.execution_attempts.save(latest_attempt)
-                        if active_lease_check:
-                            uow.execution_leases.release_lease(active_lease_check.lease_id, active_lease_check.lease_token)
+                        # Durably close the expired lease for this abandoned attempt
+                        lease_to_close = (
+                            uow.execution_leases.get_by_token(latest_attempt.lease_token)
+                            if latest_attempt.lease_token
+                            else None
+                        )
+                        if lease_to_close is None and latest_attempt.lease_token:
+                            lease_to_close = uow.execution_leases.get_by_id(latest_attempt.lease_token)
+                        if lease_to_close is None and active_lease_check:
+                            lease_to_close = active_lease_check
+
+                        if lease_to_close is not None:
+                            # Verify Action, plan, attempt, and token binding
+                            if (
+                                lease_to_close.action_id == action.action_id
+                                and lease_to_close.case_id == case.case_id
+                                and (not plan_id_param or lease_to_close.plan_id == plan_id_param)
+                                and lease_to_close.attempt_id == latest_attempt.attempt_id
+                                and (not latest_attempt.lease_token or lease_to_close.lease_token == latest_attempt.lease_token)
+                            ):
+                                if lease_to_close.status == ExecutionLeaseStatus.ACTIVE:
+                                    uow.execution_leases.release_lease(lease_to_close.lease_id, lease_to_close.lease_token)
                         uow.events.append(
                             make_execution_attempt_completed_event(
                                 user_id=user_id,
