@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
+import inspect
 import os
 import re
 import uuid
@@ -15,6 +16,7 @@ from caseworker.domain.enums import (
     ApprovalStatus,
     CaseStatus,
     ExecutionAttemptStatus,
+    ExecutionDestinationType,
     ExecutionErrorCategory,
     ExecutionLeaseStatus,
     ExecutionProviderKind,
@@ -39,12 +41,17 @@ from caseworker.domain.execution_attempt import ExecutionAttempt, ExecutionLease
 from caseworker.domain.execution_plan_integrity import ExecutionPlanIntegrityValidator
 from caseworker.domain.execution_receipt import ExecutionReceipt
 from caseworker.domain.provider_adapter import (
+    ExecutionAttemptContext,
     ExecutionProviderAdapter,
     ProviderSubmissionResult,
     SimulatedExecutionProvider,
     SimulationMode,
 )
-from caseworker.domain.types import now_utc
+from caseworker.adapters.gmail_provider import (
+    GmailApplicationExecutionProvider,
+    OAuthCredentialProvider,
+)
+from caseworker.domain.types import compute_sha256_bytes, now_utc
 
 if TYPE_CHECKING:
     from caseworker.persistence.sqlite import SQLiteCaseworkerStorage
@@ -97,6 +104,49 @@ def _sanitize_provider_metadata(meta: dict[str, Any] | None) -> dict[str, Any]:
     return clean
 
 
+def _dispatch_stage_submission(
+    provider: ExecutionProviderAdapter,
+    plan: Any,
+    package: Any,
+    upload_assets: Any,
+    context: ExecutionAttemptContext,
+) -> Any:
+    """Invoke stage_submission with backward-compatibility for providers without context parameter."""
+    sig = inspect.signature(provider.stage_submission)
+    if "context" in sig.parameters or any(p.kind == inspect.Parameter.VAR_KEYWORD for p in sig.parameters.values()):
+        return provider.stage_submission(
+            plan=plan,
+            package=package,
+            upload_assets=upload_assets,
+            context=context,
+        )
+    return provider.stage_submission(
+        plan=plan,
+        package=package,
+        upload_assets=upload_assets,
+    )
+
+
+def _dispatch_execute_irreversible_submit(
+    provider: ExecutionProviderAdapter,
+    plan: Any,
+    attempt_id: str,
+    context: ExecutionAttemptContext,
+) -> Any:
+    """Invoke execute_irreversible_submit with backward-compatibility for providers without context parameter."""
+    sig = inspect.signature(provider.execute_irreversible_submit)
+    if "context" in sig.parameters or any(p.kind == inspect.Parameter.VAR_KEYWORD for p in sig.parameters.values()):
+        return provider.execute_irreversible_submit(
+            plan=plan,
+            attempt_id=attempt_id,
+            context=context,
+        )
+    return provider.execute_irreversible_submit(
+        plan=plan,
+        attempt_id=attempt_id,
+    )
+
+
 class GovernedExecutionService:
     """Service orchestrating governed external transmission execution under strict runtime safety boundaries."""
 
@@ -104,14 +154,31 @@ class GovernedExecutionService:
         self,
         storage: SQLiteCaseworkerStorage,
         default_provider: ExecutionProviderAdapter | None = None,
+        email_provider: ExecutionProviderAdapter | None = None,
         allow_simulation: bool | None = None,
+        real_execution_enabled: bool | None = None,
+        gmail_execution_enabled: bool | None = None,
+        credential_provider: OAuthCredentialProvider | None = None,
     ) -> None:
         self.storage = storage
         if allow_simulation is None:
             self.allow_simulation = os.getenv("CASEWORKER_SIMULATION_ENABLED", "false").lower() in ("true", "1", "yes")
         else:
             self.allow_simulation = bool(allow_simulation)
+
+        if real_execution_enabled is None:
+            self.real_execution_enabled = os.getenv("CASEWORKER_REAL_EXECUTION_ENABLED", "false").lower() in ("true", "1", "yes")
+        else:
+            self.real_execution_enabled = bool(real_execution_enabled)
+
+        if gmail_execution_enabled is None:
+            self.gmail_execution_enabled = os.getenv("CASEWORKER_GMAIL_EXECUTION_ENABLED", "false").lower() in ("true", "1", "yes")
+        else:
+            self.gmail_execution_enabled = bool(gmail_execution_enabled)
+
+        self.credential_provider = credential_provider
         self.default_provider = default_provider or SimulatedExecutionProvider(SimulationMode.SUCCESS)
+        self.email_provider = email_provider
 
     def execute_action(
         self,
@@ -120,15 +187,15 @@ class GovernedExecutionService:
         provider: ExecutionProviderAdapter | None = None,
     ) -> tuple[ExecutionAttempt, ExecutionReceipt | None]:
         """Execute an approved transmission action through the two-barrier governed pipeline."""
-        active_provider = provider or self.default_provider
-
-        # Trusted Simulation Environment Boundary (Refinement 1)
-        if active_provider.provider_kind == ExecutionProviderKind.SIMULATED_TEST and not self.allow_simulation:
-            raise ApprovalValidationError(
-                "Simulated execution provider is restricted to trusted, isolated demonstration or test environments. "
-                "In live production environments, real-world execution requires an authorized genuine provider adapter.",
-                details={"failure_kind": "simulation_not_permitted"},
-            )
+        active_provider = provider
+        if active_provider is not None:
+            # Trusted Simulation Environment Boundary (Refinement 1)
+            if active_provider.provider_kind == ExecutionProviderKind.SIMULATED_TEST and not self.allow_simulation:
+                raise ApprovalValidationError(
+                    "Simulated execution provider is restricted to trusted, isolated demonstration or test environments. "
+                    "In live production environments, real-world execution requires an authorized genuine provider adapter.",
+                    details={"failure_kind": "simulation_not_permitted"},
+                )
 
         # Step 1: Pre-Execution Resolution and Idempotency / Concurrency Pre-checks
         with self.storage.unit_of_work() as uow:
@@ -456,6 +523,29 @@ class GovernedExecutionService:
             # Load Upload Assets
             upload_assets = uow.upload_assets.list_by_plan(plan.plan_id)
 
+            # Resolve provider adapter if not explicitly supplied
+            if active_provider is None:
+                dest_val = (
+                    plan.destination.destination_type.value
+                    if hasattr(plan.destination.destination_type, "value")
+                    else str(plan.destination.destination_type)
+                )
+                if dest_val == ExecutionDestinationType.EMAIL.value:
+                    active_provider = self.email_provider or GmailApplicationExecutionProvider(
+                        credential_provider=self.credential_provider,
+                        real_execution_enabled=self.real_execution_enabled,
+                        gmail_execution_enabled=self.gmail_execution_enabled,
+                    )
+                else:
+                    active_provider = self.default_provider
+
+                if active_provider.provider_kind == ExecutionProviderKind.SIMULATED_TEST and not self.allow_simulation:
+                    raise ApprovalValidationError(
+                        "Simulated execution provider is restricted to trusted, isolated demonstration or test environments. "
+                        "In live production environments, real-world execution requires an authorized genuine provider adapter.",
+                        details={"failure_kind": "simulation_not_permitted"},
+                    )
+
             # Step 2: Barrier A — Live Pre-Staging Revalidation
             val_result = ExecutionPlanIntegrityValidator.validate(
                 uow=uow,
@@ -514,16 +604,28 @@ class GovernedExecutionService:
                 )
             )
 
+            attempt_context = ExecutionAttemptContext(
+                attempt_id=attempt.attempt_id,
+                lease_token=lease.lease_token,
+                fencing_token=lease.fencing_token,
+                user_id=user_id,
+                case_id=case.case_id,
+                plan_id=plan.plan_id,
+                action_id=action.action_id,
+            )
+
         # Step 4: Provider Staging (Reversible Phase)
         attempt.transition_to(ExecutionAttemptStatus.STAGING)
         with self.storage.unit_of_work() as uow:
             uow.execution_attempts.save(attempt)
 
         try:
-            staging_outcome = active_provider.stage_submission(
+            staging_outcome = _dispatch_stage_submission(
+                provider=active_provider,
                 plan=plan,
                 package=package,
                 upload_assets=upload_assets,
+                context=attempt_context,
             )
         except Exception as exc:
             sanitized_err = _sanitize_diagnostic_message(str(exc))
@@ -613,6 +715,11 @@ class GovernedExecutionService:
                 f"Pre-submit staging validation failed: {err_msg}",
                 details={"failure_kind": "staging_failed", "attempt_id": attempt.attempt_id},
             )
+
+        if staging_outcome.sealed_payload_hash:
+            attempt_context.sealed_payload_hash = staging_outcome.sealed_payload_hash
+        if staging_outcome.sealed_payload_bytes is not None:
+            attempt_context.sealed_payload_bytes = staging_outcome.sealed_payload_bytes
 
         # Step 5: Last Reversible Point Reached
         attempt.record_last_reversible_point(
@@ -846,6 +953,43 @@ class GovernedExecutionService:
                     details={"failure_kind": val_result_b.failure_kind.value},
                 )
 
+            # 6. Sealed payload integrity verification for email plans (Amendment A)
+            if fresh_plan.email_manifest is not None:
+                actual_bytes_hash = (
+                    compute_sha256_bytes(attempt_context.sealed_payload_bytes)
+                    if attempt_context.sealed_payload_bytes is not None
+                    else ""
+                )
+                if (
+                    not attempt_context.sealed_payload_bytes
+                    or attempt_context.sealed_payload_hash != fresh_plan.email_manifest.sealed_payload_hash
+                    or actual_bytes_hash != fresh_plan.email_manifest.sealed_payload_hash
+                ):
+                    attempt.mark_failed(
+                        category=ExecutionErrorCategory.PAYLOAD_INTEGRITY_MISMATCH,
+                        message="Barrier B live revalidation failed: Staged sealed payload hash does not match authorized plan manifest hash.",
+                    )
+                    uow.execution_attempts.save(attempt)
+                    uow.execution_leases.release_lease(lease.lease_id, lease.lease_token)
+                    uow.events.append(
+                        make_execution_attempt_completed_event(
+                            user_id=user_id,
+                            case_id=case.case_id,
+                            plan_id=plan.plan_id,
+                            action_id=action.action_id,
+                            attempt_id=attempt.attempt_id,
+                            status=attempt.status.value,
+                            irreversible_action_taken=False,
+                            error_category=ExecutionErrorCategory.PAYLOAD_INTEGRITY_MISMATCH.value,
+                            error_message=attempt.error_message,
+                        )
+                    )
+                    uow.commit()
+                    raise ApprovalValidationError(
+                        "Barrier B live revalidation failed at Last Reversible Point: Sealed payload hash mismatch.",
+                        details={"failure_kind": "payload_integrity_mismatch"},
+                    )
+
             # Step 7: Crossing the Irreversible Boundary
             attempt.mark_submitting()  # irreversible_action_taken = True
             uow.execution_attempts.save(attempt)
@@ -886,9 +1030,11 @@ class GovernedExecutionService:
 
         # Dispatch irreversible submit through provider with conservative error handling
         try:
-            submit_result = active_provider.execute_irreversible_submit(
+            submit_result = _dispatch_execute_irreversible_submit(
+                provider=active_provider,
                 plan=plan,
                 attempt_id=attempt.attempt_id,
+                context=attempt_context,
             )
         except Exception as exc:
             # Conservative handling of unexpected exception after irreversible boundary crossing (Amendment 3)

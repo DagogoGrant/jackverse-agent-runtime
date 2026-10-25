@@ -33,6 +33,21 @@ class SimulationMode(StrEnum):
     SUBMIT_AMBIGUOUS = "submit_ambiguous"
 
 
+@dataclass
+class ExecutionAttemptContext:
+    """Attempt-scoped execution context carrying verified attempt identity and sealed payload references."""
+
+    attempt_id: str
+    lease_token: str
+    fencing_token: int
+    user_id: str
+    case_id: str
+    plan_id: str
+    action_id: str
+    sealed_payload_hash: str | None = None
+    sealed_payload_bytes: bytes | None = None
+
+
 @dataclass(frozen=True)
 class StagingOutcome:
     """Outcome of provider pre-submit staging."""
@@ -46,6 +61,8 @@ class StagingOutcome:
     staged_field_keys: list[str] = field(default_factory=list)
     staged_upload_slot_ids: list[str] = field(default_factory=list)
     staged_screening_question_ids: list[str] = field(default_factory=list)
+    sealed_payload_hash: str | None = None
+    sealed_payload_bytes: bytes | None = None
 
 
 @dataclass(frozen=True)
@@ -75,6 +92,7 @@ class ExecutionProviderAdapter(ABC):
         plan: ExternalExecutionPlan,
         package: PreparationPackage,
         upload_assets: list[ExecutionUploadAsset],
+        context: ExecutionAttemptContext | None = None,
     ) -> StagingOutcome:
         """Stage materials at target destination up to the Last Reversible Point.
 
@@ -87,6 +105,7 @@ class ExecutionProviderAdapter(ABC):
         self,
         plan: ExternalExecutionPlan,
         attempt_id: str,
+        context: ExecutionAttemptContext | None = None,
     ) -> ProviderSubmissionResult:
         """Cross the irreversible boundary by triggering the final submission control."""
         ...
@@ -117,6 +136,7 @@ class SimulatedExecutionProvider(ExecutionProviderAdapter):
         plan: ExternalExecutionPlan,
         package: PreparationPackage,
         upload_assets: list[ExecutionUploadAsset],
+        context: ExecutionAttemptContext | None = None,
     ) -> StagingOutcome:
         if self.mode == SimulationMode.PRE_STAGE_FAILURE:
             return StagingOutcome(
@@ -159,6 +179,7 @@ class SimulatedExecutionProvider(ExecutionProviderAdapter):
         self,
         plan: ExternalExecutionPlan,
         attempt_id: str,
+        context: ExecutionAttemptContext | None = None,
     ) -> ProviderSubmissionResult:
         if self.mode in (SimulationMode.SUBMIT_TIMEOUT, SimulationMode.SUBMIT_AMBIGUOUS):
             return ProviderSubmissionResult(

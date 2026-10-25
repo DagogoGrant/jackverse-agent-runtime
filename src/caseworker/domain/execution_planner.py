@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 import decimal
+import email.utils
 import re
 from typing import Any
 import uuid
@@ -27,10 +28,16 @@ from caseworker.domain.errors import (
     EntityNotFoundError,
     PackageVerificationError,
 )
+from caseworker.domain.email_mime import (
+    serialize_mime_message,
+    validate_email_header_field,
+)
 from caseworker.domain.execution_plan import (
     EXEC_ACTION_PLANNER_VERSION,
     EXEC_PLAN_SCHEMA_VERSION,
     FORBIDDEN_FIELD_PATTERN,
+    EmailAttachmentManifest,
+    EmailPayloadManifest,
     ExecutionDestination,
     ExecutionFieldMapping,
     ExecutionPlanFinding,
@@ -40,6 +47,7 @@ from caseworker.domain.execution_plan import (
     TargetFieldBinding,
     TargetInteractionSchema,
     TargetSchemaField,
+    TargetSchemaUploadSlot,
     TargetSubmitControlSpec,
     assert_safe_channel_metadata,
     assert_safe_destination,
@@ -109,6 +117,10 @@ class ExecutionPlanCompiler:
             else:
                 canonical_url = str(destination_override).strip()
                 is_exact_dest = bool(canonical_url)
+                if canonical_url.lower().startswith("mailto:") or ("@" in canonical_url and "://" not in canonical_url):
+                    dest_type = ExecutionDestinationType.EMAIL.value
+                    if not canonical_url.lower().startswith("mailto:"):
+                        canonical_url = f"mailto:{canonical_url}"
             findings.append(
                 ExecutionPlanFinding(
                     check_name="destination_resolution",
@@ -116,6 +128,22 @@ class ExecutionPlanCompiler:
                     severity="info",
                     code="EXACT_DESTINATION_SPECIFIED",
                     message=f"Application endpoint specified via provenance '{resolved_provenance}'.",
+                    details={"url": canonical_url},
+                )
+            )
+        elif opportunity.metadata.get("application_email") or opportunity.metadata.get("apply_email"):
+            email_addr = str(opportunity.metadata.get("application_email") or opportunity.metadata.get("apply_email")).strip()
+            canonical_url = f"mailto:{email_addr}" if not email_addr.lower().startswith("mailto:") else email_addr
+            dest_type = ExecutionDestinationType.EMAIL.value
+            resolved_provenance = DestinationProvenance.OPPORTUNITY_APPLICATION_URL.value
+            is_exact_dest = True
+            findings.append(
+                ExecutionPlanFinding(
+                    check_name="destination_resolution",
+                    passed=True,
+                    severity="info",
+                    code="OPPORTUNITY_EMAIL_RESOLVED",
+                    message="Application email endpoint resolved from opportunity application metadata.",
                     details={"url": canonical_url},
                 )
             )
@@ -173,7 +201,7 @@ class ExecutionPlanCompiler:
 
         # Destination channel boundary restrictions (Hardening Point 4)
         dest_type_val = destination.destination_type.value if hasattr(destination.destination_type, "value") else str(destination.destination_type)
-        if dest_type_val not in (ExecutionDestinationType.ATS_FORM.value, ExecutionDestinationType.DIRECT_PORTAL.value):
+        if dest_type_val not in (ExecutionDestinationType.ATS_FORM.value, ExecutionDestinationType.DIRECT_PORTAL.value, ExecutionDestinationType.EMAIL.value):
             findings.append(
                 ExecutionPlanFinding(
                     check_name="destination_boundary_validation",
@@ -185,17 +213,65 @@ class ExecutionPlanCompiler:
                 )
             )
 
+        # Affirmative employer acceptance verification for email applications (Amendment C)
+        if dest_type_val == ExecutionDestinationType.EMAIL.value:
+            is_email_accepted = (
+                opportunity.metadata.get("application_channel") == "email"
+                or opportunity.metadata.get("accepts_email_applications") is True
+                or bool(opportunity.metadata.get("application_email_evidence"))
+            )
+            if not is_email_accepted:
+                findings.append(
+                    ExecutionPlanFinding(
+                        check_name="email_application_acceptance_verification",
+                        passed=False,
+                        severity="error",
+                        code="EMAIL_APPLICATION_NOT_ACCEPTED",
+                        message=(
+                            "The opportunity does not provide affirmative evidence that applications by email are accepted. "
+                            "An email address alone is not sufficient without verified employer acceptance."
+                        ),
+                        details={
+                            "opportunity_id": opportunity.opportunity_id,
+                            "destination_url": canonical_url,
+                        },
+                    )
+                )
+
         # 2. Check Target Interaction Schema & Destination Type Alignment
         if target_schema is None:
-            findings.append(
-                ExecutionPlanFinding(
-                    check_name="target_schema_verification",
-                    passed=False,
-                    severity="error",
-                    code="TARGET_SCHEMA_REQUIRED",
-                    message="Target interaction schema is absent. Without a declared interaction schema, exact form fields and controls cannot be resolved.",
+            if dest_type_val == ExecutionDestinationType.EMAIL.value:
+                # For EMAIL destinations, construct authoritative interaction schema if none provided
+                target_schema = TargetInteractionSchema(
+                    schema_id=f"schema_email_{opportunity.opportunity_id[:8]}",
+                    destination_type=ExecutionDestinationType.EMAIL.value,
+                    target_schema_provenance=TargetSchemaProvenance.USER_PROVIDED.value,
+                    fields=[
+                        TargetSchemaField(target_field_id="applicant_email", label="Applicant Email", field_type=TargetFieldType.EMAIL.value, required=True),
+                        TargetSchemaField(target_field_id="full_name", label="Full Name", field_type=TargetFieldType.TEXT.value, required=True),
+                    ],
+                    upload_slots=[
+                        TargetSchemaUploadSlot(slot_id="cv_slot", role="cv", label="Curriculum Vitae / Resume", required=True, accepted_mime_types=["application/pdf", "text/plain"]),
+                    ],
+                    final_submit_control=TargetSubmitControlSpec(
+                        control_type="email_send",
+                        semantic_target="Send Governed Application Email",
+                        method="GMAIL_API_SEND",
+                        selector="gmail:users.messages.send",
+                        control_provenance=TargetSchemaProvenance.USER_PROVIDED.value,
+                        requires_double_confirmation=True,
+                    ),
                 )
-            )
+            else:
+                findings.append(
+                    ExecutionPlanFinding(
+                        check_name="target_schema_verification",
+                        passed=False,
+                        severity="error",
+                        code="TARGET_SCHEMA_REQUIRED",
+                        message="Target interaction schema is absent. Without a declared interaction schema, exact form fields and controls cannot be resolved.",
+                    )
+                )
         else:
             schema_dest_type = target_schema.destination_type.value if hasattr(target_schema.destination_type, "value") else str(target_schema.destination_type)
             if schema_dest_type != dest_type_val:
@@ -236,6 +312,18 @@ class ExecutionPlanCompiler:
 
                 # Explicit binding resolution (Correction 2)
                 bound_fact_id = bindings_by_id.get(tf.target_field_id)
+                if bound_fact_id is None and dest_type_val == ExecutionDestinationType.EMAIL.value:
+                    for f in active_facts_list:
+                        if getattr(f, "superseded_by_fact_id", None) is not None:
+                            continue
+                        f_type = (getattr(f, "key", "") or getattr(f, "fact_type", "")).lower()
+                        if tf.target_field_id in ("applicant_email", "email") and ("email" in f_type or "@" in str(f.value)):
+                            bound_fact_id = f.fact_id
+                            break
+                        elif tf.target_field_id in ("full_name", "name") and ("name" in f_type or f_type in ("full_name", "name")):
+                            bound_fact_id = f.fact_id
+                            break
+
                 if bound_fact_id is None:
                     if tf.required:
                         findings.append(
@@ -675,7 +763,103 @@ class ExecutionPlanCompiler:
                         )
                     )
 
-        # 8. Evaluate Overall Plan Status
+        # 8. Assemble EmailPayloadManifest if destination is EMAIL (Amendment A)
+        email_manifest: EmailPayloadManifest | None = None
+        if dest_type_val == ExecutionDestinationType.EMAIL.value:
+            from_email = ""
+            applicant_name = ""
+            for fm in field_mappings:
+                if fm.target_field_id in ("applicant_email", "email"):
+                    from_email = str(fm.field_value).strip()
+                elif fm.target_field_id in ("full_name", "name"):
+                    applicant_name = str(fm.field_value).strip()
+
+            to_email = destination.canonical_url
+            if to_email.lower().startswith("mailto:"):
+                to_email = to_email[7:].strip()
+
+            subject = str(destination.channel_metadata.get("email_subject") or "").strip()
+            if not subject:
+                role = getattr(opportunity, "role", None) or getattr(case, "title", None) or "Role"
+                org = getattr(opportunity, "organization", None) or destination.organization or "Employer"
+                if applicant_name:
+                    subject = f"Application: {role} at {org} - {applicant_name}"
+                else:
+                    subject = f"Application: {role} at {org}"
+
+            cover_letter_art = artifacts_by_type.get(PreparationMaterialType.COVER_LETTER.value)
+            if cover_letter_art is not None:
+                body_text = cover_letter_art.compute_rendered_payload()
+            else:
+                body_text = (
+                    f"Dear Hiring Team,\n\n"
+                    f"Please accept my application for {opportunity.role or 'the open position'}.\n\n"
+                    f"Best regards,\n{applicant_name or 'Applicant'}"
+                )
+
+            dt = case.created_at
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=timezone.utc)
+            date_rfc2822 = email.utils.format_datetime(dt, usegmt=True)
+
+            host = destination.normalized_hostname or "jackverse.local"
+            message_id = f"<plan-{plan_id}@{host}>"
+            mime_boundary = f"==_JackVerse_MIME_Part_{plan_id}_=="
+
+            att_manifests = [
+                EmailAttachmentManifest(
+                    filename=u.filename,
+                    mime_type=u.mime_type,
+                    content_sha256=u.content_sha256,
+                    byte_size=u.byte_size,
+                    asset_id=u.asset_id,
+                )
+                for u in upload_mappings
+            ]
+
+            temp_manifest = EmailPayloadManifest(
+                to_email=to_email,
+                from_email=from_email,
+                subject=subject,
+                message_id=message_id,
+                date_rfc2822=date_rfc2822,
+                body_text=body_text,
+                mime_boundary=mime_boundary,
+                attachments=att_manifests,
+                sealed_payload_hash="",
+            )
+
+            # Check if any errors exist prior to sealing
+            initial_has_errors = any(f.severity == "error" for f in findings)
+            if not initial_has_errors:
+                try:
+                    sealed_bytes = serialize_mime_message(temp_manifest, upload_mappings)
+                    sealed_hash = compute_sha256_bytes(sealed_bytes)
+                    email_manifest = EmailPayloadManifest(
+                        to_email=to_email,
+                        from_email=from_email,
+                        subject=subject,
+                        message_id=message_id,
+                        date_rfc2822=date_rfc2822,
+                        body_text=body_text,
+                        mime_boundary=mime_boundary,
+                        attachments=att_manifests,
+                        sealed_payload_hash=sealed_hash,
+                    )
+                except Exception as exc:
+                    findings.append(
+                        ExecutionPlanFinding(
+                            check_name="email_manifest_sealing",
+                            passed=False,
+                            severity="error",
+                            code="MIME_SEALING_ERROR",
+                            message=f"Failed to seal RFC 2822 MIME payload: {exc}",
+                        )
+                    )
+            else:
+                email_manifest = temp_manifest
+
+        # 9. Evaluate Overall Plan Status
         has_errors = any(f.severity == "error" for f in findings)
         plan_status = (
             ExternalExecutionPlanStatus.READY_FOR_AUTHORIZATION
@@ -705,4 +889,5 @@ class ExecutionPlanCompiler:
             plan_id=plan_id,
             schema_version=cls.SCHEMA_VERSION,
             planner_version=cls.PLANNER_VERSION,
+            email_manifest=email_manifest,
         )

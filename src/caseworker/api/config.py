@@ -19,6 +19,21 @@ class APIConfig:
     simulation_enabled: bool = field(
         default_factory=lambda: os.getenv("CASEWORKER_SIMULATION_ENABLED", "false").lower() in ("true", "1", "yes")
     )
+    real_execution_enabled: bool = field(
+        default_factory=lambda: os.getenv("CASEWORKER_REAL_EXECUTION_ENABLED", "false").lower() in ("true", "1", "yes")
+    )
+    gmail_execution_enabled: bool = field(
+        default_factory=lambda: os.getenv("CASEWORKER_GMAIL_EXECUTION_ENABLED", "false").lower() in ("true", "1", "yes")
+    )
+    gmail_client_id: str = field(
+        default_factory=lambda: os.getenv("CASEWORKER_GMAIL_CLIENT_ID", "")
+    )
+    gmail_client_secret: str = field(
+        default_factory=lambda: os.getenv("CASEWORKER_GMAIL_CLIENT_SECRET", "")
+    )
+    gmail_refresh_token: str = field(
+        default_factory=lambda: os.getenv("CASEWORKER_GMAIL_REFRESH_TOKEN", "")
+    )
     allowed_origins: list[str] = field(
         default_factory=lambda: [
             origin.strip()

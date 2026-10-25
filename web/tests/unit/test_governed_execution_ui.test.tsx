@@ -405,6 +405,51 @@ describe("Phase 5.3.3 Governed External Execution UI", () => {
     });
   });
 
+  it("renders Gmail API Accepted badge, advisory banner, and email metadata for governed email receipt", async () => {
+    const gmailReceipt = {
+      receipt_id: "rcpt-gmail-12345",
+      attempt_id: "att-email-001",
+      plan_id: "plan-exec-101",
+      action_id: "act-approved-001",
+      case_id: "case-exec-001",
+      user_id: "grant",
+      status: "verified_success",
+      destination_type: "email",
+      destination_url: "mailto:jobs@cloudscale.io",
+      destination_hostname: "cloudscale.io",
+      execution_plan_fingerprint: "plan_fp_mock_1234567890abcdef1234567890abcdef1234567890abcdef12345678",
+      external_reference_id: "msg-gmail-cloudscale-1234",
+      executed_at: "2026-10-18T12:05:00Z",
+      safe_provider_metadata: {
+        provider_kind: "gmail_api",
+        provider_status: "GMAIL_API_ACCEPTED",
+        gmail_message_id: "msg-gmail-cloudscale-1234",
+        gmail_thread_id: "th-cloudscale-5678",
+        recipient_email: "jobs@cloudscale.io",
+        sender_email: "grant@example.com",
+        subject: "Application: Lead Infrastructure Engineer at CloudScale Corp",
+        rfc822_message_id: "<plan-101@cloudscale.io>",
+        sealed_payload_hash: "hash-sealed-mime-bytes-1234567890abcdef",
+        is_simulated: false,
+      },
+      receipt_hash: "receipt_hash_gmail_99999",
+      created_at: "2026-10-18T12:05:00Z",
+    };
+    setupFetchMock({ receipt: gmailReceipt });
+    renderView();
+
+    await waitFor(() => {
+      expect(screen.getByText("GMAIL DISPATCH CONFIRMED (API ACCEPTED)")).toBeInTheDocument();
+      expect(screen.getByText(/Google Gmail API accepted the message for dispatch/i)).toBeInTheDocument();
+      expect(screen.getByText("GMAIL API ACCEPTED")).toBeInTheDocument();
+      expect(screen.getByText("jobs@cloudscale.io")).toBeInTheDocument();
+      expect(screen.getByText("grant@example.com")).toBeInTheDocument();
+      expect(screen.getByText("Application: Lead Infrastructure Engineer at CloudScale Corp")).toBeInTheDocument();
+      expect(screen.getByText("<plan-101@cloudscale.io>")).toBeInTheDocument();
+      expect(screen.getByText("hash-sealed-mime-bytes-1234567890abcdef")).toBeInTheDocument();
+    });
+  });
+
   it("blocks execution and displays binding mismatch warning when action plan fingerprint does not match target plan", async () => {
     const mismatchedAction = {
       ...mockApprovedAction,

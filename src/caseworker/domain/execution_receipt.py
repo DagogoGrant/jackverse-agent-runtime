@@ -33,6 +33,14 @@ SAFE_PROVIDER_METADATA_ALLOWLIST = {
     "is_simulated",
     "provider_kind",
     "reconciled_after_interruption",
+    "gmail_message_id",
+    "gmail_thread_id",
+    "provider_status",
+    "sealed_payload_hash",
+    "rfc822_message_id",
+    "recipient_email",
+    "sender_email",
+    "subject",
 }
 
 FORBIDDEN_METADATA_PATTERN = re.compile(

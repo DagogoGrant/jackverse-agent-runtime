@@ -413,6 +413,7 @@ class ExecutionProviderKind(StrEnum):
     """Execution adapter provider types."""
 
     SIMULATED_TEST = "simulated_test"
+    GMAIL_API = "gmail_api"
 
 
 class ExecutionReceiptStatus(StrEnum):
@@ -434,6 +435,9 @@ class ExecutionErrorCategory(StrEnum):
     INTEGRITY_VIOLATION = "integrity_violation"
     FENCING_VIOLATION = "fencing_violation"
     LEASE_EXPIRED = "lease_expired"
+    PROVIDER_AUTH_ERROR = "provider_auth_error"
+    PAYLOAD_INTEGRITY_MISMATCH = "payload_integrity_mismatch"
+    UNSUPPORTED_DESTINATION = "unsupported_destination"
     UNKNOWN = "unknown"
 
 

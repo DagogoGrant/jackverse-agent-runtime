@@ -14,7 +14,7 @@ class TestSQLiteMigration(unittest.TestCase):
         cur = conn.cursor()
         cur.execute("PRAGMA user_version;")
         version = cur.fetchone()[0]
-        self.assertEqual(version, 10)
+        self.assertEqual(version, 11)
 
         # Verify all tables exist
         cur.execute("SELECT name FROM sqlite_master WHERE type='table';")
@@ -635,9 +635,9 @@ class TestSQLiteMigration(unittest.TestCase):
         conn.executescript(MIGRATION_V8_TABLES_DDL)
         conn.execute("PRAGMA user_version = 8;")
 
-        # Migrate to latest (v10)
+        # Migrate to latest (v11)
         new_version = SQLiteMigrator.migrate(conn)
-        self.assertEqual(new_version, 10)
+        self.assertEqual(new_version, 11)
 
         cur = conn.cursor()
         cur.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='external_execution_plans';")
@@ -678,9 +678,9 @@ class TestSQLiteMigration(unittest.TestCase):
         conn.executescript(MIGRATION_V9_TABLES_DDL)
         conn.execute("PRAGMA user_version = 9;")
 
-        # Run migration 9 -> 10
+        # Run migration 9 -> 11
         new_version = SQLiteMigrator.migrate(conn)
-        self.assertEqual(new_version, 10)
+        self.assertEqual(new_version, 11)
 
         cur = conn.cursor()
         for tbl in ("execution_leases", "execution_attempts", "execution_receipts"):
@@ -694,6 +694,37 @@ class TestSQLiteMigration(unittest.TestCase):
         # Verify receipt hash unique index
         cur.execute("SELECT name FROM sqlite_master WHERE type='index' AND name='idx_exec_receipts_hash';")
         self.assertIsNotNone(cur.fetchone())
+        conn.close()
+
+    def test_migration_from_v10_to_v11_adds_email_manifest_column(self) -> None:
+        """Verify explicit migration from v10 to v11 adds email_manifest_json column."""
+        conn = sqlite3.connect(":memory:")
+        from caseworker.persistence.migration import (
+            MIGRATION_V1_DDL,
+            MIGRATION_V2_TABLES_DDL,
+            MIGRATION_V6_TABLES_DDL,
+            MIGRATION_V7_TABLES_DDL,
+            MIGRATION_V8_TABLES_DDL,
+            MIGRATION_V9_TABLES_DDL,
+            MIGRATION_V10_TABLES_DDL,
+        )
+        conn.executescript(MIGRATION_V1_DDL)
+        conn.executescript(MIGRATION_V2_TABLES_DDL)
+        conn.executescript(MIGRATION_V6_TABLES_DDL)
+        conn.executescript(MIGRATION_V7_TABLES_DDL)
+        conn.executescript(MIGRATION_V8_TABLES_DDL)
+        conn.executescript(MIGRATION_V9_TABLES_DDL)
+        conn.executescript(MIGRATION_V10_TABLES_DDL)
+        conn.execute("PRAGMA user_version = 10;")
+
+        # Run migration 10 -> 11
+        new_version = SQLiteMigrator.migrate(conn)
+        self.assertEqual(new_version, 11)
+
+        cur = conn.cursor()
+        cur.execute("PRAGMA table_info(external_execution_plans);")
+        columns = {row[1] for row in cur.fetchall()}
+        self.assertIn("email_manifest_json", columns)
         conn.close()
 
 

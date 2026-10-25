@@ -119,6 +119,8 @@ def get_governed_execution_service(
     return GovernedExecutionService(
         storage=storage,
         allow_simulation=config.simulation_enabled,
+        real_execution_enabled=config.real_execution_enabled,
+        gmail_execution_enabled=config.gmail_execution_enabled,
     )
 
 

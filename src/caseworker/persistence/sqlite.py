@@ -61,6 +61,7 @@ from caseworker.domain.errors import (
 )
 from caseworker.domain.events import DomainEvent
 from caseworker.domain.execution_plan import (
+    EmailPayloadManifest,
     ExecutionDestination,
     ExecutionFieldMapping,
     ExecutionPlanFinding,
@@ -2261,7 +2262,8 @@ class SQLiteExternalExecutionPlanRepository(ExternalExecutionPlanRepository):
                    target_schema_json, target_schema_hash, field_mappings_json,
                    upload_mappings_json, screening_responses_json,
                    final_submit_control_json, execution_input_hash,
-                   execution_plan_fingerprint, schema_version, planner_version
+                   execution_plan_fingerprint, schema_version, planner_version,
+                   email_manifest_json
             FROM external_execution_plans
             WHERE plan_id = ?
             """,
@@ -2280,6 +2282,7 @@ class SQLiteExternalExecutionPlanRepository(ExternalExecutionPlanRepository):
             canonical_json_dumps(plan.final_submit_control.to_dict()) if plan.final_submit_control else None
         )
         planning_findings_json = canonical_json_dumps([f.to_dict() for f in plan.findings])
+        email_manifest_json = canonical_json_dumps(plan.email_manifest.to_dict()) if plan.email_manifest else None
 
         if row is None:
             try:
@@ -2293,8 +2296,8 @@ class SQLiteExternalExecutionPlanRepository(ExternalExecutionPlanRepository):
                         screening_responses_json, final_submit_control_json,
                         planning_findings_json, execution_input_hash, execution_plan_fingerprint,
                         schema_version, planner_version, created_at, updated_at,
-                        version
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        version, email_manifest_json
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         plan.plan_id,
@@ -2320,6 +2323,7 @@ class SQLiteExternalExecutionPlanRepository(ExternalExecutionPlanRepository):
                         to_iso_utc(plan.created_at),
                         to_iso_utc(plan.updated_at),
                         plan.version,
+                        email_manifest_json,
                     ),
                 )
             except sqlite3.IntegrityError as e:
@@ -2343,6 +2347,7 @@ class SQLiteExternalExecutionPlanRepository(ExternalExecutionPlanRepository):
             existing_plan_fp = row[15]
             existing_schema_ver = row[16]
             existing_planner_ver = row[17]
+            existing_email_manifest = row[18]
 
             expected_version = plan.version - 1
             if expected_version != existing_version:
@@ -2366,6 +2371,7 @@ class SQLiteExternalExecutionPlanRepository(ExternalExecutionPlanRepository):
                 or plan.execution_plan_fingerprint != existing_plan_fp
                 or plan.schema_version != existing_schema_ver
                 or plan.planner_version != existing_planner_ver
+                or email_manifest_json != existing_email_manifest
             ):
                 raise DomainValidationError(
                     f"Cannot mutate content-addressed fields of ExternalExecutionPlan '{plan.plan_id}'."
@@ -2423,6 +2429,8 @@ class SQLiteExternalExecutionPlanRepository(ExternalExecutionPlanRepository):
         screening_list = json.loads(row[13])
         control_dict = json.loads(row[14]) if row[14] else None
         findings_list = json.loads(row[15])
+        email_manifest_dict = json.loads(row[23]) if len(row) > 23 and row[23] else None
+        email_manifest = EmailPayloadManifest.from_dict(email_manifest_dict) if email_manifest_dict else None
 
         return ExternalExecutionPlan(
             plan_id=row[0],
@@ -2448,6 +2456,7 @@ class SQLiteExternalExecutionPlanRepository(ExternalExecutionPlanRepository):
             created_at=from_iso_utc(row[20]) or now_utc(),
             updated_at=from_iso_utc(row[21]) or now_utc(),
             version=row[22],
+            email_manifest=email_manifest,
         )
 
     def get_by_id(self, plan_id: str) -> ExternalExecutionPlan | None:
@@ -2461,7 +2470,7 @@ class SQLiteExternalExecutionPlanRepository(ExternalExecutionPlanRepository):
                    screening_responses_json, final_submit_control_json,
                    planning_findings_json, execution_input_hash, execution_plan_fingerprint,
                    schema_version, planner_version, created_at, updated_at,
-                   version
+                   version, email_manifest_json
             FROM external_execution_plans
             WHERE plan_id = ?
             """,
@@ -2481,7 +2490,7 @@ class SQLiteExternalExecutionPlanRepository(ExternalExecutionPlanRepository):
                    screening_responses_json, final_submit_control_json,
                    planning_findings_json, execution_input_hash, execution_plan_fingerprint,
                    schema_version, planner_version, created_at, updated_at,
-                   version
+                   version, email_manifest_json
             FROM external_execution_plans
             WHERE case_id = ? AND execution_plan_fingerprint = ?
             """,
@@ -2501,7 +2510,7 @@ class SQLiteExternalExecutionPlanRepository(ExternalExecutionPlanRepository):
                    screening_responses_json, final_submit_control_json,
                    planning_findings_json, execution_input_hash, execution_plan_fingerprint,
                    schema_version, planner_version, created_at, updated_at,
-                   version
+                   version, email_manifest_json
             FROM external_execution_plans
             WHERE case_id = ?
             ORDER BY created_at DESC, version DESC
@@ -2523,7 +2532,7 @@ class SQLiteExternalExecutionPlanRepository(ExternalExecutionPlanRepository):
                    screening_responses_json, final_submit_control_json,
                    planning_findings_json, execution_input_hash, execution_plan_fingerprint,
                    schema_version, planner_version, created_at, updated_at,
-                   version
+                   version, email_manifest_json
             FROM external_execution_plans
             WHERE case_id = ?
             ORDER BY created_at DESC, version DESC
@@ -2543,7 +2552,7 @@ class SQLiteExternalExecutionPlanRepository(ExternalExecutionPlanRepository):
                    screening_responses_json, final_submit_control_json,
                    planning_findings_json, execution_input_hash, execution_plan_fingerprint,
                    schema_version, planner_version, created_at, updated_at,
-                   version
+                   version, email_manifest_json
             FROM external_execution_plans
             WHERE case_id = ? AND status != ?
             ORDER BY created_at DESC, version DESC

@@ -44,6 +44,9 @@ ALLOWED_CHANNEL_METADATA_KEYS = {
     "wait_selector",
     "page_title",
     "notes",
+    "email_subject",
+    "reply_to",
+    "application_channel",
 }
 
 FORBIDDEN_METADATA_PATTERN = re.compile(
@@ -131,6 +134,38 @@ def assert_safe_destination(
         raise DomainValidationError(f"Forbidden or dangerous destination URL scheme '{scheme}'.")
 
     dest_val = destination_type.value if hasattr(destination_type, "value") else str(destination_type)
+    if dest_val == ExecutionDestinationType.EMAIL.value:
+        # Check for control characters or CRLF injection
+        if any(c in clean_url for c in ("\r", "\n", "\t", "\x00")):
+            raise DomainValidationError("Destination email contains forbidden control or CRLF characters.")
+        # Reject dangerous schemes
+        if scheme and scheme not in ("mailto", ""):
+            raise DomainValidationError(f"Invalid scheme '{scheme}' for email destination. Must be 'mailto:' or omit scheme.")
+
+        # Check if URL contains query parameters or fragments
+        if parsed.query or parsed.fragment:
+            raise DomainValidationError("Email destination must not contain URL query parameters or fragments.")
+
+        raw_addr = clean_url
+        if raw_addr.lower().startswith("mailto:"):
+            raw_addr = raw_addr[7:].strip()
+
+        # Reject multiple addresses, brackets, or delimiters
+        if any(sep in raw_addr for sep in (",", ";", " ", "<", ">", '"')):
+            raise DomainValidationError("Email destination must specify exactly one valid email address.")
+
+        email_re = re.compile(r"^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$")
+        if not email_re.match(raw_addr):
+            raise DomainValidationError(f"Invalid email address '{raw_addr}' for email destination.")
+
+        domain = raw_addr.split("@", 1)[1].lower()
+        if not domain:
+            raise DomainValidationError("Email destination must include a valid domain.")
+
+        origin = f"mailto:{raw_addr.lower()}"
+        hostname = domain
+        return origin, hostname
+
     if dest_val in (ExecutionDestinationType.ATS_FORM.value, ExecutionDestinationType.DIRECT_PORTAL.value):
         if scheme != "https":
             raise DomainValidationError(
@@ -760,6 +795,96 @@ class ExecutionPlanFinding:
         )
 
 
+@dataclass(frozen=True)
+class EmailAttachmentManifest:
+    """Exact specification of an email attachment bound to a package artifact."""
+
+    filename: str
+    mime_type: str
+    content_sha256: str
+    byte_size: int
+    asset_id: str = ""
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "filename": self.filename,
+            "mime_type": self.mime_type,
+            "content_sha256": self.content_sha256,
+            "byte_size": self.byte_size,
+            "asset_id": self.asset_id,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> EmailAttachmentManifest:
+        return cls(
+            filename=data["filename"],
+            mime_type=data["mime_type"],
+            content_sha256=data["content_sha256"],
+            byte_size=int(data["byte_size"]),
+            asset_id=data.get("asset_id", ""),
+        )
+
+
+@dataclass(frozen=True)
+class EmailPayloadManifest:
+    """Immutable, content-addressed email serialization manifest frozen before authorization."""
+
+    to_email: str
+    from_email: str
+    subject: str
+    message_id: str
+    date_rfc2822: str
+    body_text: str
+    mime_boundary: str
+    attachments: list[EmailAttachmentManifest] = field(default_factory=list)
+    sealed_payload_hash: str = ""
+
+    def compute_manifest_hash(self) -> str:
+        """Deterministic canonical hash of the manifest inputs."""
+        canonical_attachments = [
+            [a.filename, a.mime_type, a.content_sha256, a.byte_size, a.asset_id]
+            for a in sorted(self.attachments, key=lambda a: (a.filename, a.content_sha256))
+        ]
+        payload = [
+            self.to_email.strip().lower(),
+            self.from_email.strip().lower(),
+            self.subject.strip(),
+            self.message_id.strip(),
+            self.date_rfc2822.strip(),
+            self.body_text.strip(),
+            self.mime_boundary.strip(),
+            canonical_attachments,
+        ]
+        return compute_sha256(canonical_json_dumps(payload))
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "to_email": self.to_email,
+            "from_email": self.from_email,
+            "subject": self.subject,
+            "message_id": self.message_id,
+            "date_rfc2822": self.date_rfc2822,
+            "body_text": self.body_text,
+            "mime_boundary": self.mime_boundary,
+            "attachments": [a.to_dict() for a in self.attachments],
+            "sealed_payload_hash": self.sealed_payload_hash,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> EmailPayloadManifest:
+        return cls(
+            to_email=data["to_email"],
+            from_email=data["from_email"],
+            subject=data["subject"],
+            message_id=data["message_id"],
+            date_rfc2822=data["date_rfc2822"],
+            body_text=data["body_text"],
+            mime_boundary=data["mime_boundary"],
+            attachments=[EmailAttachmentManifest.from_dict(a) for a in data.get("attachments", [])],
+            sealed_payload_hash=data.get("sealed_payload_hash", ""),
+        )
+
+
 def compute_execution_input_hash(field_mappings: list[ExecutionFieldMapping]) -> str:
     """Compute deterministic dependency hash across all backing ContextFacts including purpose authorization state."""
     canonical_deps = [
@@ -783,12 +908,14 @@ def compute_execution_plan_fingerprint(
     execution_input_hash: str,
     schema_version: str = EXEC_PLAN_SCHEMA_VERSION,
     planner_version: str = EXEC_ACTION_PLANNER_VERSION,
+    email_manifest: EmailPayloadManifest | None = None,
 ) -> str:
     """Compute content-addressed SHA-256 fingerprint for an ExternalExecutionPlan.
 
     Invariant Rules:
     - Binds destination, target schema hash, fact versions, upload byte hashes, questions, and submit control.
     - Excludes plan_id, status, version, timestamps, and findings.
+    - When email_manifest is provided, cryptographically binds exact email headers, body, and sealed_payload_hash.
     """
     canonical_destination = [
         destination.destination_type,
@@ -851,6 +978,11 @@ def compute_execution_plan_fingerprint(
         canonical_control,
         execution_input_hash,
     ]
+    if email_manifest is not None:
+        payload.append([
+            email_manifest.compute_manifest_hash(),
+            email_manifest.sealed_payload_hash,
+        ])
     return compute_sha256(canonical_json_dumps(payload))
 
 
@@ -902,6 +1034,7 @@ class ExternalExecutionPlan:
     version: int = 1
     is_stale: bool = False
     staleness_reasons: list[str] = field(default_factory=list)
+    email_manifest: EmailPayloadManifest | None = None
 
     @property
     def planning_findings(self) -> list[ExecutionPlanFinding]:
@@ -961,6 +1094,7 @@ class ExternalExecutionPlan:
             execution_input_hash=self.execution_input_hash,
             schema_version=self.schema_version,
             planner_version=self.planner_version,
+            email_manifest=self.email_manifest,
         )
 
     def transition_to(self, new_status: ExternalExecutionPlanStatus, reason: str | None = None) -> None:
@@ -1012,6 +1146,7 @@ class ExternalExecutionPlan:
             "version": self.version,
             "is_stale": self.is_stale,
             "staleness_reasons": list(self.staleness_reasons),
+            "email_manifest": self.email_manifest.to_dict() if self.email_manifest else None,
         }
 
     @classmethod
@@ -1020,6 +1155,11 @@ class ExternalExecutionPlan:
         schema = TargetInteractionSchema.from_dict(data["target_schema"]) if data.get("target_schema") else None
         control = TargetSubmitControlSpec.from_dict(data["final_submit_control"]) if data.get("final_submit_control") else None
         raw_findings = data.get("findings") or data.get("planning_findings") or []
+        email_manifest = (
+            EmailPayloadManifest.from_dict(data["email_manifest"])
+            if data.get("email_manifest")
+            else None
+        )
         return cls(
             plan_id=data["plan_id"],
             case_id=data["case_id"],
@@ -1046,6 +1186,7 @@ class ExternalExecutionPlan:
             version=int(data.get("version", 1)),
             is_stale=bool(data.get("is_stale", False)),
             staleness_reasons=list(data.get("staleness_reasons", [])),
+            email_manifest=email_manifest,
         )
 
 
@@ -1095,6 +1236,11 @@ def compute_execution_plan_staleness(
     if dest_type_val in (ExecutionDestinationType.ATS_FORM.value, ExecutionDestinationType.DIRECT_PORTAL.value):
         if not plan.destination.canonical_url.startswith("https://"):
             reasons.append("Destination URL does not use HTTPS.")
+    elif dest_type_val == ExecutionDestinationType.EMAIL.value:
+        if "@" not in plan.destination.canonical_url:
+            reasons.append("Email destination does not contain a valid email address.")
+        if plan.email_manifest is not None and not plan.email_manifest.sealed_payload_hash:
+            reasons.append("Email payload manifest lacks sealed payload hash.")
 
     # 4. ContextFact ID / version / verification / purpose / value state (Correction 3 & 5)
     facts_by_id = {f.fact_id: f for f in current_facts}

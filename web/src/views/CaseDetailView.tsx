@@ -1544,102 +1544,161 @@ export const CaseDetailView: React.FC = () => {
                         )}
 
                         {/* Verified Execution Receipt Card */}
-                        {receipt && receipt.status === 'verified_success' && (
-                          <div className="p-4 border border-emerald-600/40 bg-emerald-500/5 space-y-3 font-interface">
-                            {isReceiptSimulated && (
-                              <div className="p-3 border border-amber-500/40 bg-amber-500/10 text-amber-800 dark:text-amber-200 text-xs font-interface space-y-1">
-                                <div className="font-bold font-machine flex items-center gap-1.5 tracking-wider">
-                                  <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
-                                  <span>SIMULATED EXECUTION (SIMULATION ONLY)</span>
+                        {receipt && receipt.status === 'verified_success' && (() => {
+                          const meta = (receipt.safe_provider_metadata || {}) as Record<string, unknown>;
+                          const isGmailExecution = receipt.destination_type === 'email' || meta.provider_kind === 'gmail_api';
+                          const isGmailAccepted = meta.provider_status === 'GMAIL_API_ACCEPTED';
+                          const recipientEmail = (meta.recipient_email as string) || (receipt.destination_type === 'email' ? receipt.destination_url?.replace(/^mailto:/i, '') : null);
+                          const senderEmail = meta.sender_email as string | undefined;
+                          const emailSubject = meta.subject as string | undefined;
+                          const rfc822MsgId = (meta.rfc822_message_id as string) || (meta.gmail_message_id as string);
+                          const sealedHash = meta.sealed_payload_hash as string | undefined;
+
+                          return (
+                            <div className="p-4 border border-emerald-600/40 bg-emerald-500/5 space-y-3 font-interface">
+                              {isReceiptSimulated && (
+                                <div className="p-3 border border-amber-500/40 bg-amber-500/10 text-amber-800 dark:text-amber-200 text-xs font-interface space-y-1">
+                                  <div className="font-bold font-machine flex items-center gap-1.5 tracking-wider">
+                                    <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
+                                    <span>SIMULATED EXECUTION (SIMULATION ONLY)</span>
+                                  </div>
+                                  <p className="text-[11px] text-amber-900/90 dark:text-amber-300/90">
+                                    Notice: This execution was performed in simulation mode. No real-world external transmission or application was dispatched.
+                                  </p>
                                 </div>
-                                <p className="text-[11px] text-amber-900/90 dark:text-amber-300/90">
-                                  Notice: This execution was performed in simulation mode. No real-world external transmission or application was dispatched.
-                                </p>
-                              </div>
-                            )}
+                              )}
 
-                            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-emerald-600/20 pb-2">
-                              <div className="flex items-center gap-2">
-                                <CheckCircle className="w-5 h-5 text-emerald-600" />
-                                <span className="font-display text-lg text-jv-ink font-semibold">
-                                  {isReceiptSimulated ? 'Simulated Execution Receipt' : 'Verified Execution Receipt'}
-                                </span>
-                              </div>
-                              <div className="flex items-center gap-2">
-                                {isReceiptSimulated && (
-                                  <span className="px-2 py-0.5 border border-amber-600/40 bg-amber-500/10 text-amber-800 dark:text-amber-300 font-machine text-xs font-semibold">
-                                    SIMULATED TEST
+                              {isGmailExecution && (
+                                <div className="p-3 border border-sky-500/40 bg-sky-500/10 text-sky-900 dark:text-sky-200 text-xs font-interface space-y-1">
+                                  <div className="font-bold font-machine flex items-center gap-1.5 tracking-wider">
+                                    <CheckCircle className="w-4 h-4 text-sky-600 shrink-0" />
+                                    <span>GMAIL DISPATCH CONFIRMED (API ACCEPTED)</span>
+                                  </div>
+                                  <p className="text-[11px] text-sky-950/90 dark:text-sky-300/90">
+                                    Advisory: Google Gmail API accepted the message for dispatch. This confirms outbound transmission, not recipient inbox delivery or reading by the employer.
+                                  </p>
+                                </div>
+                              )}
+
+                              <div className="flex flex-wrap items-center justify-between gap-2 border-b border-emerald-600/20 pb-2">
+                                <div className="flex items-center gap-2">
+                                  <CheckCircle className="w-5 h-5 text-emerald-600" />
+                                  <span className="font-display text-lg text-jv-ink font-semibold">
+                                    {isReceiptSimulated ? 'Simulated Execution Receipt' : 'Verified Execution Receipt'}
                                   </span>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                  {isReceiptSimulated && (
+                                    <span className="px-2 py-0.5 border border-amber-600/40 bg-amber-500/10 text-amber-800 dark:text-amber-300 font-machine text-xs font-semibold">
+                                      SIMULATED TEST
+                                    </span>
+                                  )}
+                                  {isGmailAccepted && (
+                                    <span className="px-2 py-0.5 border border-sky-600/40 bg-sky-500/10 text-sky-800 dark:text-sky-300 font-machine text-xs font-semibold">
+                                      GMAIL API ACCEPTED
+                                    </span>
+                                  )}
+                                  <span className="px-2 py-0.5 border border-emerald-600/40 bg-emerald-600/10 text-emerald-700 dark:text-emerald-300 font-machine text-xs font-semibold">
+                                    VERIFIED SUCCESS
+                                  </span>
+                                  <span className="px-2 py-0.5 border border-jv-rule bg-jv-surface text-jv-muted font-machine text-xs">
+                                    WAITING EXTERNAL
+                                  </span>
+                                </div>
+                              </div>
+
+                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                                <div>
+                                  <span className="text-jv-muted">
+                                    {isReceiptSimulated ? 'Simulated Confirmation Reference:' : 'External Confirmation Ref:'}
+                                  </span>{' '}
+                                  <span className="font-mono font-semibold text-emerald-700 dark:text-emerald-400">
+                                    {receipt.external_reference_id || 'N/A'}
+                                  </span>
+                                </div>
+                                <div>
+                                  <span className="text-jv-muted">Executed At:</span>{' '}
+                                  <span className="font-machine text-jv-ink">{new Date(receipt.executed_at).toLocaleString()}</span>
+                                </div>
+                                <div>
+                                  <span className="text-jv-muted">Destination Host:</span>{' '}
+                                  <span className="font-mono text-jv-ink">{receipt.destination_hostname}</span>
+                                </div>
+                                <div>
+                                  <span className="text-jv-muted">Channel / Type:</span>{' '}
+                                  <span className="font-mono text-jv-ink">{receipt.destination_type}</span>
+                                </div>
+                                {recipientEmail && (
+                                  <div>
+                                    <span className="text-jv-muted">Recipient Email:</span>{' '}
+                                    <span className="font-mono font-semibold text-jv-ink">{recipientEmail}</span>
+                                  </div>
                                 )}
-                                <span className="px-2 py-0.5 border border-emerald-600/40 bg-emerald-600/10 text-emerald-700 dark:text-emerald-300 font-machine text-xs font-semibold">
-                                  VERIFIED SUCCESS
-                                </span>
-                                <span className="px-2 py-0.5 border border-jv-rule bg-jv-surface text-jv-muted font-machine text-xs">
-                                  WAITING EXTERNAL
-                                </span>
+                                {senderEmail && (
+                                  <div>
+                                    <span className="text-jv-muted">Sender Account:</span>{' '}
+                                    <span className="font-mono text-jv-ink">{senderEmail}</span>
+                                  </div>
+                                )}
+                                {emailSubject && (
+                                  <div className="sm:col-span-2">
+                                    <span className="text-jv-muted">Subject:</span>{' '}
+                                    <span className="font-interface font-medium text-jv-ink">{emailSubject}</span>
+                                  </div>
+                                )}
+                                {rfc822MsgId && (
+                                  <div className="sm:col-span-2">
+                                    <span className="text-jv-muted">Message-ID:</span>{' '}
+                                    <span className="font-mono text-jv-ink text-[11px]">{rfc822MsgId}</span>
+                                  </div>
+                                )}
+                                {sealedHash && (
+                                  <div className="sm:col-span-2">
+                                    <span className="text-jv-muted">Sealed Payload Hash:</span>{' '}
+                                    <span className="font-mono text-jv-ink text-[11px] truncate block" title={sealedHash}>
+                                      {sealedHash}
+                                    </span>
+                                  </div>
+                                )}
+                                <div className="sm:col-span-2">
+                                  <span className="text-jv-muted">Target URL:</span>{' '}
+                                  <span className="font-mono text-jv-accent truncate inline-block max-w-full align-bottom" title={receipt.destination_url}>
+                                    {receipt.destination_url}
+                                  </span>
+                                </div>
+                              </div>
+
+                              <div className="flex flex-wrap gap-4 pt-2 border-t border-emerald-600/20 text-xs font-machine text-jv-muted">
+                                <div>FIELDS TRANSMITTED: <span className="font-bold text-jv-ink">{receipt.field_count}</span></div>
+                                <div>UPLOADS DISPATCHED: <span className="font-bold text-jv-ink">{receipt.upload_asset_ids?.length || 0}</span></div>
+                                <div>SCREENING RESPONSES: <span className="font-bold text-jv-ink">{receipt.screening_response_count}</span></div>
+                              </div>
+
+                              {/* Cryptographic Proof Hash */}
+                              <div className="p-2.5 border border-emerald-600/20 bg-emerald-500/10 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs font-machine">
+                                <div className="flex items-center gap-2 overflow-hidden">
+                                  <Lock className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                                  <span className="text-jv-muted shrink-0">RECEIPT HASH:</span>
+                                  <span className="text-jv-ink font-mono truncate" title={receipt.receipt_hash}>
+                                    {receipt.receipt_hash}
+                                  </span>
+                                </div>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    navigator.clipboard.writeText(receipt.receipt_hash);
+                                    setCopiedReceiptHash(true);
+                                    setTimeout(() => setCopiedReceiptHash(false), 2000);
+                                  }}
+                                  className="text-jv-muted hover:text-jv-ink px-2 py-1 border border-emerald-600/30 bg-jv-surface shrink-0 flex items-center gap-1 text-[11px]"
+                                >
+                                  {copiedReceiptHash ? <Check className="w-3 h-3 text-emerald-600" /> : <Copy className="w-3 h-3" />}
+                                  <span>{copiedReceiptHash ? 'COPIED' : 'COPY HASH'}</span>
+                                </button>
                               </div>
                             </div>
-
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
-                              <div>
-                                <span className="text-jv-muted">
-                                  {isReceiptSimulated ? 'Simulated Confirmation Reference:' : 'External Confirmation Ref:'}
-                                </span>{' '}
-                                <span className="font-mono font-semibold text-emerald-700 dark:text-emerald-400">
-                                  {receipt.external_reference_id || 'N/A'}
-                                </span>
-                              </div>
-                              <div>
-                                <span className="text-jv-muted">Executed At:</span>{' '}
-                                <span className="font-machine text-jv-ink">{new Date(receipt.executed_at).toLocaleString()}</span>
-                              </div>
-                              <div>
-                                <span className="text-jv-muted">Destination Host:</span>{' '}
-                                <span className="font-mono text-jv-ink">{receipt.destination_hostname}</span>
-                              </div>
-                              <div>
-                                <span className="text-jv-muted">Channel / Type:</span>{' '}
-                                <span className="font-mono text-jv-ink">{receipt.destination_type}</span>
-                              </div>
-                              <div className="sm:col-span-2">
-                                <span className="text-jv-muted">Target URL:</span>{' '}
-                                <span className="font-mono text-jv-accent truncate inline-block max-w-full align-bottom" title={receipt.destination_url}>
-                                  {receipt.destination_url}
-                                </span>
-                              </div>
-                            </div>
-
-                            <div className="flex flex-wrap gap-4 pt-2 border-t border-emerald-600/20 text-xs font-machine text-jv-muted">
-                              <div>FIELDS TRANSMITTED: <span className="font-bold text-jv-ink">{receipt.field_count}</span></div>
-                              <div>UPLOADS DISPATCHED: <span className="font-bold text-jv-ink">{receipt.upload_asset_ids?.length || 0}</span></div>
-                              <div>SCREENING RESPONSES: <span className="font-bold text-jv-ink">{receipt.screening_response_count}</span></div>
-                            </div>
-
-                            {/* Cryptographic Proof Hash */}
-                            <div className="p-2.5 border border-emerald-600/20 bg-emerald-500/10 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs font-machine">
-                              <div className="flex items-center gap-2 overflow-hidden">
-                                <Lock className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
-                                <span className="text-jv-muted shrink-0">RECEIPT HASH:</span>
-                                <span className="text-jv-ink font-mono truncate" title={receipt.receipt_hash}>
-                                  {receipt.receipt_hash}
-                                </span>
-                              </div>
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  navigator.clipboard.writeText(receipt.receipt_hash);
-                                  setCopiedReceiptHash(true);
-                                  setTimeout(() => setCopiedReceiptHash(false), 2000);
-                                }}
-                                className="text-jv-muted hover:text-jv-ink px-2 py-1 border border-emerald-600/30 bg-jv-surface shrink-0 flex items-center gap-1 text-[11px]"
-                              >
-                                {copiedReceiptHash ? <Check className="w-3 h-3 text-emerald-600" /> : <Copy className="w-3 h-3" />}
-                                <span>{copiedReceiptHash ? 'COPIED' : 'COPY HASH'}</span>
-                              </button>
-                            </div>
-                          </div>
-                        )}
-
+                          );
+                        })()}
                         {/* Ambiguous Submission Warning */}
                         {((receipt && receipt.status === 'ambiguous_submission') ||
                           (attempts.length > 0 && attempts[attempts.length - 1].status === 'ambiguous')) && (

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import sqlite3
 
-LATEST_SCHEMA_VERSION = 10
+LATEST_SCHEMA_VERSION = 11
 
 MIGRATION_V1_DDL = """
 CREATE TABLE IF NOT EXISTS missions (
@@ -271,6 +271,7 @@ CREATE TABLE IF NOT EXISTS external_execution_plans (
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL,
     version INTEGER NOT NULL DEFAULT 1,
+    email_manifest_json TEXT,
     FOREIGN KEY (case_id) REFERENCES cases(case_id) ON DELETE CASCADE,
     FOREIGN KEY (package_id) REFERENCES preparation_packages(package_id) ON DELETE RESTRICT,
     FOREIGN KEY (opportunity_id) REFERENCES opportunities(opportunity_id) ON DELETE RESTRICT
@@ -606,6 +607,18 @@ class SQLiteMigrator:
             conn.executescript(MIGRATION_V10_TABLES_DDL)
             conn.execute("PRAGMA user_version = 10;")
             current_version = 10
+
+        # Migrate 10 -> 11 (Phase 5.3.3.1: Governed Email Application Execution)
+        if current_version < 11:
+            cur = conn.cursor()
+            cur.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='external_execution_plans';")
+            if cur.fetchone():
+                cur.execute("PRAGMA table_info(external_execution_plans);")
+                columns = {row[1] for row in cur.fetchall()}
+                if "email_manifest_json" not in columns:
+                    conn.execute("ALTER TABLE external_execution_plans ADD COLUMN email_manifest_json TEXT;")
+            conn.execute("PRAGMA user_version = 11;")
+            current_version = 11
 
         return current_version
 
