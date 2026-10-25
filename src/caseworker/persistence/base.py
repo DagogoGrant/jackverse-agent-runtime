@@ -15,7 +15,11 @@ from caseworker.domain.context import ContextFact
 from caseworker.domain.enums import ArtifactStatus, CaseStatus, ClaimStatus, MissionStatus, OpportunityStatus
 from caseworker.domain.events import DomainEvent
 from caseworker.domain.execution_attempt import ExecutionAttempt, ExecutionLease
-from caseworker.domain.execution_plan import ExecutionUploadAsset, ExternalExecutionPlan
+from caseworker.domain.execution_plan import (
+    ExecutionUploadAsset,
+    ExternalExecutionPlan,
+    VerifiedEmailAcceptanceRecord,
+)
 from caseworker.domain.execution_receipt import ExecutionReceipt
 from caseworker.domain.mission import Mission
 from caseworker.domain.opportunity import Opportunity
@@ -484,6 +488,27 @@ class ExecutionReceiptRepository(Protocol):
 
 
 @runtime_checkable
+class VerifiedEmailAcceptanceRepository(Protocol):
+    """Repository interface for immutable verified employer email acceptance records."""
+
+    def save(self, record: VerifiedEmailAcceptanceRecord) -> None:
+        """Persist a verified email acceptance record."""
+        ...
+
+    def get_active_by_opportunity(self, opportunity_id: str) -> VerifiedEmailAcceptanceRecord | None:
+        """Retrieve the current active verified email acceptance record for an opportunity."""
+        ...
+
+    def list_by_opportunity(self, opportunity_id: str) -> list[VerifiedEmailAcceptanceRecord]:
+        """List all verified acceptance records (including superseded versions) for an opportunity."""
+        ...
+
+    def supersede_active(self, opportunity_id: str, superseded_at: str) -> int:
+        """Mark currently active acceptance record as superseded."""
+        ...
+
+
+@runtime_checkable
 class CaseworkerUnitOfWork(Protocol):
     """Transaction / Unit-of-Work boundary ensuring atomic domain state and event persistence."""
 
@@ -503,6 +528,7 @@ class CaseworkerUnitOfWork(Protocol):
     execution_leases: ExecutionLeaseRepository
     execution_attempts: ExecutionAttemptRepository
     execution_receipts: ExecutionReceiptRepository
+    verified_email_acceptance: VerifiedEmailAcceptanceRepository
     events: EventStore
 
     def commit(self) -> None:

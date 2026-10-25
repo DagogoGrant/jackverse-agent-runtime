@@ -115,6 +115,7 @@ class ExecutionPlanService:
                 return None
 
             facts = uow.context.list_active(user_id=user_id)
+            verified_acceptance = uow.verified_email_acceptance.get_active_by_opportunity(opportunity.opportunity_id)
             try:
                 compiled = ExecutionPlanCompiler.compile_plan(
                     case=case,
@@ -128,6 +129,7 @@ class ExecutionPlanService:
                     destination_override=destination_override,
                     channel_metadata=channel_metadata,
                     final_submit_control=final_submit_control,
+                    verified_email_acceptance=verified_acceptance,
                 )
             except Exception:
                 return None
@@ -296,6 +298,7 @@ class ExecutionPlanService:
                     vault_ver += 1
 
             # 6. Compile Plan
+            verified_acceptance = uow.verified_email_acceptance.get_active_by_opportunity(opportunity.opportunity_id)
             compiled_plan = ExecutionPlanCompiler.compile_plan(
                 case=case,
                 opportunity=opportunity,
@@ -308,6 +311,7 @@ class ExecutionPlanService:
                 destination_override=destination_override,
                 channel_metadata=channel_metadata,
                 final_submit_control=final_submit_control,
+                verified_email_acceptance=verified_acceptance,
             )
 
             # 7. Check Idempotency by Fingerprint

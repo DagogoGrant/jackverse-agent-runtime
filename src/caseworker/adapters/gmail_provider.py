@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 import base64
+from dataclasses import dataclass
 import time
 from typing import Any
 import httpx
@@ -34,7 +35,18 @@ from caseworker.persistence.sqlite import OAuthCredentialRecord, SQLiteCaseworke
 
 GMAIL_SEND_URL = "https://gmail.googleapis.com/gmail/v1/users/me/messages/send"
 GMAIL_USERINFO_URL = "https://www.googleapis.com/oauth2/v3/userinfo"
+GMAIL_TOKENINFO_URL = "https://www.googleapis.com/oauth2/v3/tokeninfo"
 GMAIL_REVOKE_URL = "https://oauth2.googleapis.com/revoke"
+GMAIL_SEND_SCOPE = "https://www.googleapis.com/auth/gmail.send"
+
+
+@dataclass(frozen=True)
+class ValidatedOAuthSession:
+    """Pre-dispatch verified OAuth session ready for governed submission."""
+
+    access_token: str
+    authenticated_email: str
+    scopes: list[str]
 
 
 class OAuthCredentialProvider(ABC):
@@ -53,6 +65,11 @@ class OAuthCredentialProvider(ABC):
     @abstractmethod
     def get_authenticated_email(self, user_id: str) -> str:
         """Return the primary email address bound to this OAuth account."""
+        ...
+
+    @abstractmethod
+    def verify_pre_dispatch_readiness(self, user_id: str, expected_sender: str) -> ValidatedOAuthSession:
+        """Verify outside SQLite transactions that an active token with gmail.send scope exists and matches sender."""
         ...
 
 
@@ -75,6 +92,21 @@ class StaticOAuthCredentialProvider(OAuthCredentialProvider):
         if not self._authenticated_email:
             raise ProviderAuthError("No static authenticated email configured.")
         return self._authenticated_email
+
+    def verify_pre_dispatch_readiness(self, user_id: str, expected_sender: str) -> ValidatedOAuthSession:
+        if not self._access_token:
+            raise ProviderAuthError("No static OAuth access token configured.")
+        if not self._authenticated_email:
+            raise ProviderAuthError("No static authenticated email configured.")
+        if self._authenticated_email.strip().lower() != expected_sender.strip().lower():
+            raise ProviderAuthError(
+                f"Authenticated Google account '{self._authenticated_email}' does not match expected sender '{expected_sender}'."
+            )
+        return ValidatedOAuthSession(
+            access_token=self._access_token,
+            authenticated_email=self._authenticated_email,
+            scopes=[GMAIL_SEND_SCOPE],
+        )
 
 
 class DatabaseOAuthCredentialProvider(OAuthCredentialProvider):
@@ -108,13 +140,35 @@ class DatabaseOAuthCredentialProvider(OAuthCredentialProvider):
                 raise ProviderAuthError(f"No Google OAuth connection found for user '{user_id}'.")
             return rec.authenticated_email
 
+    def _fetch_scopes_from_tokeninfo(self, access_token: str) -> list[str]:
+        """Query Google's tokeninfo endpoint to verify granted scopes without guessing."""
+        client = self.http_client or httpx.Client(timeout=10.0)
+        close_client = self.http_client is None
+        try:
+            resp = client.get(
+                GMAIL_TOKENINFO_URL,
+                params={"access_token": access_token},
+                headers={"Accept": "application/json"},
+            )
+            if resp.status_code == 200:
+                data = resp.json()
+                raw_scope = data.get("scope", "")
+                return [s for s in raw_scope.split(" ") if s]
+        except Exception:
+            pass
+        finally:
+            if close_client:
+                client.close()
+        return []
+
     def get_access_token(self, user_id: str) -> str:
+        """Return an active OAuth access token, refreshing outside SQLite write transactions if needed."""
+        # 1. Quick read-only query
         with self.storage.unit_of_work() as uow:
             rec = uow.oauth_credentials.get_by_user_and_provider(user_id, "gmail")
             if not rec:
                 raise ProviderAuthError(f"No Google OAuth connection found for user '{user_id}'.")
 
-            # Check if token is expired or within 60 seconds of expiry
             is_expired = False
             try:
                 exp_dt = datetime.fromisoformat(rec.token_expiry.replace("Z", "+00:00"))
@@ -128,31 +182,128 @@ class DatabaseOAuthCredentialProvider(OAuthCredentialProvider):
             if not is_expired:
                 return self.cipher.decrypt(rec.access_token_enc)
 
-            # Access token expired: refresh token required
             if not rec.refresh_token_enc:
                 raise ProviderAuthError("Google OAuth access token expired and no refresh token is stored. Please reconnect.")
 
             refresh_token = self.cipher.decrypt(rec.refresh_token_enc)
-            new_access_token, new_refresh_token, new_expiry, granted_scopes = self._refresh_token(refresh_token)
 
-            # Preserve existing refresh token if Google omitted replacement
-            saved_refresh_enc = (
-                self.cipher.encrypt(new_refresh_token)
-                if new_refresh_token
-                else rec.refresh_token_enc
+        # 2. Network call outside SQLite unit-of-work / lock
+        new_access_token, new_refresh_token, new_expiry, granted_scopes = self._refresh_token(refresh_token)
+
+        # 3. Quick write transaction to store updated tokens
+        with self.storage.unit_of_work() as uow:
+            rec = uow.oauth_credentials.get_by_user_and_provider(user_id, "gmail")
+            if rec:
+                saved_refresh_enc = (
+                    self.cipher.encrypt(new_refresh_token)
+                    if new_refresh_token
+                    else rec.refresh_token_enc
+                )
+                rec.access_token_enc = self.cipher.encrypt(new_access_token)
+                rec.refresh_token_enc = saved_refresh_enc
+                rec.token_expiry = new_expiry
+                if granted_scopes:
+                    rec.scopes = granted_scopes
+                rec.updated_at = now_utc().isoformat().replace("+00:00", "Z")
+                uow.oauth_credentials.save(rec)
+                uow.commit()
+
+        return new_access_token
+
+    def verify_pre_dispatch_readiness(self, user_id: str, expected_sender: str) -> ValidatedOAuthSession:
+        """Verify outside SQLite transactions that an active token with gmail.send scope exists and matches sender."""
+        # 1. Quick read UoW
+        with self.storage.unit_of_work() as uow:
+            rec = uow.oauth_credentials.get_by_user_and_provider(user_id, "gmail")
+            if not rec:
+                raise ProviderAuthError(f"No Google OAuth connection found for user '{user_id}'.")
+
+            auth_email = rec.authenticated_email.strip().lower()
+            expected_clean = expected_sender.strip().lower()
+            if auth_email != expected_clean:
+                raise ProviderAuthError(
+                    f"Authenticated Google account '{rec.authenticated_email}' does not match expected sender '{expected_sender}'."
+                )
+
+            is_expired = False
+            try:
+                exp_dt = datetime.fromisoformat(rec.token_expiry.replace("Z", "+00:00"))
+                if exp_dt.tzinfo is None:
+                    exp_dt = exp_dt.replace(tzinfo=timezone.utc)
+                if (exp_dt - datetime.now(timezone.utc)).total_seconds() < 60:
+                    is_expired = True
+            except Exception:
+                is_expired = True
+
+            refresh_token_enc = rec.refresh_token_enc
+            stored_scopes = list(rec.scopes)
+            authenticated_email = rec.authenticated_email
+
+        # 2. Token resolution / refresh outside SQLite lock
+        if is_expired:
+            if not refresh_token_enc:
+                raise ProviderAuthError(
+                    "Google OAuth access token expired and no refresh token is stored. Please reconnect."
+                )
+            refresh_token = self.cipher.decrypt(refresh_token_enc)
+            access_token, new_refresh, new_expiry, granted_scopes = self._refresh_token(refresh_token)
+
+            if not granted_scopes:
+                granted_scopes = self._fetch_scopes_from_tokeninfo(access_token)
+
+            if GMAIL_SEND_SCOPE not in granted_scopes:
+                raise ProviderAuthError(
+                    f"Google OAuth connection lacks required scope '{GMAIL_SEND_SCOPE}'. Please reconnect with send permissions."
+                )
+
+            # Quick write UoW to persist
+            with self.storage.unit_of_work() as uow:
+                updated_rec = uow.oauth_credentials.get_by_user_and_provider(user_id, "gmail")
+                if updated_rec:
+                    saved_refresh_enc = (
+                        self.cipher.encrypt(new_refresh)
+                        if new_refresh
+                        else updated_rec.refresh_token_enc
+                    )
+                    updated_rec.access_token_enc = self.cipher.encrypt(access_token)
+                    updated_rec.refresh_token_enc = saved_refresh_enc
+                    updated_rec.token_expiry = new_expiry
+                    if granted_scopes:
+                        updated_rec.scopes = granted_scopes
+                    updated_rec.updated_at = now_utc().isoformat().replace("+00:00", "Z")
+                    uow.oauth_credentials.save(updated_rec)
+                    uow.commit()
+
+            return ValidatedOAuthSession(
+                access_token=access_token,
+                authenticated_email=authenticated_email,
+                scopes=granted_scopes,
             )
 
-            rec.access_token_enc = self.cipher.encrypt(new_access_token)
-            rec.refresh_token_enc = saved_refresh_enc
-            rec.token_expiry = new_expiry
-            if granted_scopes:
-                rec.scopes = granted_scopes
-            rec.updated_at = now_utc().isoformat().replace("+00:00", "Z")
+        # 3. Not expired: decrypt and verify scopes
+        access_token = self.cipher.decrypt(rec.access_token_enc)
+        scopes = stored_scopes
+        if GMAIL_SEND_SCOPE not in scopes:
+            fetched_scopes = self._fetch_scopes_from_tokeninfo(access_token)
+            if GMAIL_SEND_SCOPE in fetched_scopes:
+                scopes = fetched_scopes
+                with self.storage.unit_of_work() as uow:
+                    updated_rec = uow.oauth_credentials.get_by_user_and_provider(user_id, "gmail")
+                    if updated_rec:
+                        updated_rec.scopes = fetched_scopes
+                        updated_rec.updated_at = now_utc().isoformat().replace("+00:00", "Z")
+                        uow.oauth_credentials.save(updated_rec)
+                        uow.commit()
+            else:
+                raise ProviderAuthError(
+                    f"Google OAuth connection lacks required scope '{GMAIL_SEND_SCOPE}'. Please reconnect with send permissions."
+                )
 
-            uow.oauth_credentials.save(rec)
-            uow.commit()
-
-            return new_access_token
+        return ValidatedOAuthSession(
+            access_token=access_token,
+            authenticated_email=authenticated_email,
+            scopes=scopes,
+        )
 
     def _refresh_token(self, refresh_token: str) -> tuple[str, str | None, str, list[str]]:
         client = self.http_client or httpx.Client(timeout=15.0)
@@ -191,6 +342,8 @@ class DatabaseOAuthCredentialProvider(OAuthCredentialProvider):
         new_expiry_dt = datetime.now(timezone.utc) + timedelta(seconds=expires_in)
         new_expiry_iso = new_expiry_dt.isoformat().replace("+00:00", "Z")
         scopes = [s for s in data.get("scope", "").split(" ") if s]
+        if not scopes and new_access:
+            scopes = self._fetch_scopes_from_tokeninfo(new_access)
 
         return new_access, new_refresh, new_expiry_iso, scopes
 
@@ -441,23 +594,26 @@ class GmailApplicationExecutionProvider(ExecutionProviderAdapter):
             )
 
         # 4. OAuth Credential Resolution
-        if self.credential_provider is None:
+        token: str
+        if context is not None and context.access_token:
+            token = context.access_token
+        elif self.credential_provider is not None:
+            try:
+                token = self.credential_provider.get_access_token(plan.user_id)
+            except Exception as exc:
+                return ProviderSubmissionResult(
+                    status=ExecutionReceiptStatus.CONFIRMED_FAILED,
+                    external_confirmation_id=None,
+                    error_category=ExecutionErrorCategory.PROVIDER_AUTH_ERROR,
+                    error_message=f"Failed to obtain OAuth access token: {exc}",
+                    provider_metadata={"provider_kind": ExecutionProviderKind.GMAIL_API.value},
+                )
+        else:
             return ProviderSubmissionResult(
                 status=ExecutionReceiptStatus.CONFIRMED_FAILED,
                 external_confirmation_id=None,
                 error_category=ExecutionErrorCategory.PROVIDER_AUTH_ERROR,
                 error_message="OAuth credential provider is not configured.",
-                provider_metadata={"provider_kind": ExecutionProviderKind.GMAIL_API.value},
-            )
-
-        try:
-            token = self.credential_provider.get_access_token(plan.user_id)
-        except Exception as exc:
-            return ProviderSubmissionResult(
-                status=ExecutionReceiptStatus.CONFIRMED_FAILED,
-                external_confirmation_id=None,
-                error_category=ExecutionErrorCategory.PROVIDER_AUTH_ERROR,
-                error_message=f"Failed to obtain OAuth access token: {exc}",
                 provider_metadata={"provider_kind": ExecutionProviderKind.GMAIL_API.value},
             )
 

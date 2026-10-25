@@ -46,6 +46,7 @@ class ExecutionAttemptContext:
     action_id: str
     sealed_payload_hash: str | None = None
     sealed_payload_bytes: bytes | None = None
+    access_token: str | None = None
 
 
 @dataclass(frozen=True)

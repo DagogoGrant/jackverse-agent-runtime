@@ -32,9 +32,6 @@ def verify_operator_token(token: str, secret: str) -> str | None:
     """Verify an operator token and return operator_id if valid and unexpired."""
     if not token or not secret or len(secret) < 32:
         return None
-    # Direct secret match
-    if hmac.compare_digest(token.strip(), secret.strip()):
-        return "operator"
 
     # Signed token format op.<operator_id>.<expires>.<sig>
     parts = token.strip().split(".")
@@ -89,23 +86,16 @@ class FailClosedIdentityProvider:
 
     async def get_principal(self, request: Request) -> Principal:
         auth_header = request.headers.get("Authorization")
-        if not auth_header:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Missing Authorization header.",
-                headers={"WWW-Authenticate": "Bearer"},
-            )
-        if not auth_header.startswith("Bearer "):
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid Authorization header scheme. Expected Bearer token.",
-                headers={"WWW-Authenticate": "Bearer"},
-            )
-        token = auth_header[7:].strip()
+        token = ""
+        if auth_header and auth_header.startswith("Bearer "):
+            token = auth_header[7:].strip()
+        elif request.cookies.get("jackverse_operator_session"):
+            token = request.cookies.get("jackverse_operator_session", "").strip()
+
         if not token:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Empty Bearer token.",
+                detail="Missing Authorization header or operator session.",
                 headers={"WWW-Authenticate": "Bearer"},
             )
 
@@ -134,19 +124,23 @@ class DevelopmentIdentityProvider:
         self.operator_secret = operator_secret
 
     async def get_principal(self, request: Request) -> Principal:
-        # 1. Check for genuine operator bearer token first
+        # 1. Check for genuine operator bearer token or session cookie first
         auth_header = request.headers.get("Authorization", "")
+        token = ""
         if auth_header.startswith("Bearer "):
             token = auth_header[7:].strip()
-            if self.operator_secret and len(self.operator_secret) >= 32:
-                op_id = verify_operator_token(token, self.operator_secret)
-                if op_id:
-                    return Principal(
-                        user_id=op_id,
-                        roles=("operator", "user"),
-                        is_authenticated=True,
-                        auth_method="operator_token",
-                    )
+        elif request.cookies.get("jackverse_operator_session"):
+            token = request.cookies.get("jackverse_operator_session", "").strip()
+
+        if token and self.operator_secret and len(self.operator_secret) >= 32:
+            op_id = verify_operator_token(token, self.operator_secret)
+            if op_id:
+                return Principal(
+                    user_id=op_id,
+                    roles=("operator", "user"),
+                    is_authenticated=True,
+                    auth_method="operator_token",
+                )
 
         if not self.dev_auth_enabled:
             # When dev auth disabled and no operator token verified, fail closed

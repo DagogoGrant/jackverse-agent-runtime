@@ -9,19 +9,22 @@ import secrets
 from typing import Annotated
 import urllib.parse
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
+from fastapi.responses import HTMLResponse
 import httpx
 
 from caseworker.adapters.crypto.token_cipher import TokenCipher
 from caseworker.adapters.gmail_provider import DatabaseOAuthCredentialProvider
 from caseworker.api.config import APIConfig
 from caseworker.api.dependencies import get_config, get_principal, get_storage
-from caseworker.api.identity import Principal
+from caseworker.api.identity import Principal, generate_operator_token, verify_operator_token
 from caseworker.api.schemas.auth import (
     GoogleAuthAuthorizeResponse,
     GoogleAuthCallbackResponse,
     GoogleAuthDisconnectResponse,
     GoogleAuthStatusResponse,
+    OperatorSessionRequest,
+    OperatorSessionResponse,
 )
 from caseworker.domain.types import now_utc
 from caseworker.persistence.sqlite import (
@@ -35,11 +38,15 @@ router = APIRouter(tags=["auth"])
 GOOGLE_AUTH_BASE_URL = "https://accounts.google.com/o/oauth2/v2/auth"
 GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
 GOOGLE_USERINFO_URL = "https://www.googleapis.com/oauth2/v3/userinfo"
+GMAIL_TOKENINFO_URL = "https://www.googleapis.com/oauth2/v3/tokeninfo"
+GMAIL_SEND_SCOPE = "https://www.googleapis.com/auth/gmail.send"
 REQUIRED_SCOPES = [
     "openid",
     "https://www.googleapis.com/auth/userinfo.email",
-    "https://www.googleapis.com/auth/gmail.send",
+    GMAIL_SEND_SCOPE,
 ]
+OAUTH_NONCE_COOKIE = "jackverse_oauth_nonce"
+OPERATOR_SESSION_COOKIE = "jackverse_operator_session"
 
 
 @router.get("/api/v1/auth/google/status", response_model=GoogleAuthStatusResponse)
@@ -67,6 +74,7 @@ async def get_google_auth_status(
 
 @router.get("/api/v1/auth/google/authorize", response_model=GoogleAuthAuthorizeResponse)
 async def authorize_google(
+    response: Response,
     principal: Annotated[Principal, Depends(get_principal)],
     storage: Annotated[SQLiteCaseworkerStorage, Depends(get_storage)],
     config: Annotated[APIConfig, Depends(get_config)],
@@ -82,6 +90,7 @@ async def authorize_google(
     digest = hashlib.sha256(code_verifier.encode("ascii")).digest()
     code_challenge = base64.urlsafe_b64encode(digest).decode("ascii").rstrip("=")
     state = secrets.token_urlsafe(32)
+    session_nonce = secrets.token_urlsafe(32)
 
     now = now_utc()
     expires_dt = now + timedelta(minutes=10)
@@ -97,9 +106,19 @@ async def authorize_google(
             redirect_uri=config.gmail_redirect_uri,
             created_at=created_at_iso,
             expires_at=expires_at_iso,
+            session_nonce=session_nonce,
         )
         uow.oauth_states.save(state_record)
         uow.commit()
+
+    response.set_cookie(
+        key=OAUTH_NONCE_COOKIE,
+        value=session_nonce,
+        max_age=600,
+        httponly=True,
+        samesite="lax",
+        path="/api/v1/auth",
+    )
 
     params = {
         "client_id": config.gmail_client_id,
@@ -118,14 +137,19 @@ async def authorize_google(
 
 @router.get("/api/v1/auth/google/callback", response_model=GoogleAuthCallbackResponse)
 async def google_auth_callback(
+    request: Request,
+    response: Response,
     storage: Annotated[SQLiteCaseworkerStorage, Depends(get_storage)],
     config: Annotated[APIConfig, Depends(get_config)],
     code: str | None = Query(None, description="Google OAuth authorization code"),
     state: str | None = Query(None, description="One-time state parameter"),
     error: str | None = Query(None, description="Google OAuth error code"),
     error_description: str | None = Query(None, description="Google OAuth error message"),
-) -> GoogleAuthCallbackResponse:
+) -> Any:
     """Validate Google OAuth callback, exchange code with PKCE, verify identity, and encrypt tokens."""
+    # Delete nonce cookie from response
+    response.delete_cookie(OAUTH_NONCE_COOKIE, path="/api/v1/auth")
+
     if error:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -137,6 +161,9 @@ async def google_auth_callback(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Missing required OAuth 'code' or 'state' parameter.",
         )
+
+    # 1. Nonce validation
+    cookie_nonce = request.cookies.get(OAUTH_NONCE_COOKIE)
 
     now_iso = now_utc().isoformat().replace("+00:00", "Z")
 
@@ -170,6 +197,33 @@ async def google_auth_callback(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Invalid OAuth state expiration timestamp.",
             )
+
+        # Enforce exact browser session nonce match
+        if not cookie_nonce or not state_rec.session_nonce or cookie_nonce != state_rec.session_nonce:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="OAuth session nonce validation failed: cookie missing or mismatched. Cross-browser or cross-session linking is strictly prohibited.",
+            )
+
+        # If caller identity is present, ensure it matches state_rec.user_id
+        if config.dev_auth:
+            dev_user = request.headers.get("X-JackVerse-User", "").strip()
+            if dev_user and dev_user != state_rec.user_id:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="OAuth callback caller identity does not match initiating user ID.",
+                )
+
+        caller_token = request.headers.get("Authorization", "").replace("Bearer ", "").strip()
+        if not caller_token:
+            caller_token = request.cookies.get(OPERATOR_SESSION_COOKIE, "").strip()
+        if caller_token and config.operator_secret:
+            caller_id = verify_operator_token(caller_token, config.operator_secret)
+            if caller_id and caller_id != state_rec.user_id:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="OAuth callback caller identity does not match initiating user ID.",
+                )
 
         # Mark used atomically
         marked = uow.oauth_states.mark_used(state, now_iso)
@@ -223,7 +277,25 @@ async def google_auth_callback(
         refresh_token = token_data.get("refresh_token")
         expires_in = int(token_data.get("expires_in", 3600))
         granted_scope_str = token_data.get("scope", "")
-        granted_scopes = [s for s in granted_scope_str.split(" ") if s] or REQUIRED_SCOPES
+        granted_scopes = [s for s in granted_scope_str.split(" ") if s]
+
+        if not granted_scopes:
+            try:
+                ti_resp = await client.get(
+                    GMAIL_TOKENINFO_URL,
+                    params={"access_token": access_token},
+                )
+                if ti_resp.status_code == 200:
+                    ti_data = ti_resp.json()
+                    granted_scopes = [s for s in ti_data.get("scope", "").split(" ") if s]
+            except Exception:
+                pass
+
+        if GMAIL_SEND_SCOPE not in granted_scopes:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Google OAuth connection lacks required scope '{GMAIL_SEND_SCOPE}'. Please grant Gmail send permissions.",
+            )
 
         # Fetch Google userinfo to verify sub, email, and email_verified
         try:
@@ -292,6 +364,28 @@ async def google_auth_callback(
         uow.oauth_credentials.save(cred_record)
         uow.commit()
 
+    if "text/html" in request.headers.get("accept", ""):
+        html_content = f"""<!DOCTYPE html>
+<html>
+<head><title>JackVerse OAuth Connected</title></head>
+<body style="font-family: sans-serif; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; background: #0f172a; color: #f8fafc;">
+  <div style="text-align: center; max-width: 400px; padding: 2rem; border: 1px solid #334155; border-radius: 8px; background: #1e293b;">
+    <h2 style="margin-top: 0; color: #10b981;">Account Connected</h2>
+    <p>Google account <strong>{email}</strong> has been linked.</p>
+    <p style="color: #94a3b8; font-size: 0.875rem;">This window will close automatically.</p>
+  </div>
+  <script>
+    if (window.opener) {{
+      window.opener.postMessage({{ type: 'jackverse:oauth:success', email: '{email}' }}, '*');
+      setTimeout(() => window.close(), 1200);
+    }} else {{
+      setTimeout(() => {{ window.location.href = '/cases'; }}, 1500);
+    }}
+  </script>
+</body>
+</html>"""
+        return HTMLResponse(content=html_content, status_code=200)
+
     return GoogleAuthCallbackResponse(
         success=True,
         email=str(email),
@@ -316,3 +410,76 @@ async def disconnect_google(
     )
     provider.revoke_and_disconnect(principal.user_id)
     return GoogleAuthDisconnectResponse(success=True, disconnected=True)
+
+
+@router.post("/api/v1/auth/operator/session", response_model=OperatorSessionResponse)
+async def create_operator_session(
+    req: OperatorSessionRequest,
+    response: Response,
+    config: Annotated[APIConfig, Depends(get_config)],
+) -> OperatorSessionResponse:
+    """Establish an operator session cookie from a valid signed operator bearer token."""
+    if not config.operator_secret or len(config.operator_secret) < 32:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Operator authentication is not configured on this server.",
+        )
+    op_id = verify_operator_token(req.operator_token, config.operator_secret)
+    if not op_id:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired operator token.",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    response.set_cookie(
+        key=OPERATOR_SESSION_COOKIE,
+        value=req.operator_token.strip(),
+        max_age=86400,
+        httponly=True,
+        samesite="lax",
+        path="/",
+    )
+    return OperatorSessionResponse(
+        success=True,
+        operator_id=op_id,
+    )
+
+
+@router.delete("/api/v1/auth/operator/session")
+async def delete_operator_session(response: Response) -> dict[str, bool]:
+    """Terminate the operator session by clearing the operator session cookie."""
+    response.delete_cookie(OPERATOR_SESSION_COOKIE, path="/")
+    return {"success": True}
+
+
+@router.post("/api/v1/auth/operator/dev-session", response_model=OperatorSessionResponse)
+async def create_dev_operator_session(
+    response: Response,
+    config: Annotated[APIConfig, Depends(get_config)],
+    operator_id: str = Query("dev-operator", description="Operator ID for dev session"),
+) -> OperatorSessionResponse:
+    """Convenience endpoint in dev mode to generate a signed operator token and cookie."""
+    if not config.dev_auth:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Dev operator session endpoint is only available when CASEWORKER_DEV_AUTH is enabled.",
+        )
+    if not config.operator_secret or len(config.operator_secret) < 32:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Operator secret is not configured.",
+        )
+    token = generate_operator_token(operator_id=operator_id, secret=config.operator_secret, ttl_seconds=86400)
+    response.set_cookie(
+        key=OPERATOR_SESSION_COOKIE,
+        value=token,
+        max_age=86400,
+        httponly=True,
+        samesite="lax",
+        path="/",
+    )
+    return OperatorSessionResponse(
+        success=True,
+        operator_id=operator_id,
+    )
+

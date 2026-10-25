@@ -14,7 +14,7 @@ class TestSQLiteMigration(unittest.TestCase):
         cur = conn.cursor()
         cur.execute("PRAGMA user_version;")
         version = cur.fetchone()[0]
-        self.assertEqual(version, 12)
+        self.assertEqual(version, 13)
 
         # Verify all tables exist
         cur.execute("SELECT name FROM sqlite_master WHERE type='table';")
@@ -39,6 +39,7 @@ class TestSQLiteMigration(unittest.TestCase):
             "execution_receipts",
             "user_oauth_credentials",
             "oauth_states",
+            "verified_email_acceptance_records",
         }
         for table in expected_tables:
             self.assertIn(table, tables, f"Expected table '{table}' missing after migration.")
@@ -637,9 +638,9 @@ class TestSQLiteMigration(unittest.TestCase):
         conn.executescript(MIGRATION_V8_TABLES_DDL)
         conn.execute("PRAGMA user_version = 8;")
 
-        # Migrate to latest (v12)
+        # Migrate to latest (v13)
         new_version = SQLiteMigrator.migrate(conn)
-        self.assertEqual(new_version, 12)
+        self.assertEqual(new_version, 13)
 
         cur = conn.cursor()
         cur.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='external_execution_plans';")
@@ -680,9 +681,9 @@ class TestSQLiteMigration(unittest.TestCase):
         conn.executescript(MIGRATION_V9_TABLES_DDL)
         conn.execute("PRAGMA user_version = 9;")
 
-        # Run migration 9 -> 12
+        # Run migration 9 -> 13
         new_version = SQLiteMigrator.migrate(conn)
-        self.assertEqual(new_version, 12)
+        self.assertEqual(new_version, 13)
 
         cur = conn.cursor()
         for tbl in ("execution_leases", "execution_attempts", "execution_receipts"):
@@ -719,9 +720,9 @@ class TestSQLiteMigration(unittest.TestCase):
         conn.executescript(MIGRATION_V10_TABLES_DDL)
         conn.execute("PRAGMA user_version = 10;")
 
-        # Run migration 10 -> 12
+        # Run migration 10 -> 13
         new_version = SQLiteMigrator.migrate(conn)
-        self.assertEqual(new_version, 12)
+        self.assertEqual(new_version, 13)
 
         cur = conn.cursor()
         cur.execute("PRAGMA table_info(external_execution_plans);")
@@ -750,9 +751,9 @@ class TestSQLiteMigration(unittest.TestCase):
         conn.executescript(MIGRATION_V10_TABLES_DDL)
         conn.execute("PRAGMA user_version = 11;")
 
-        # Run migration 11 -> 12
+        # Run migration 11 -> 13
         new_version = SQLiteMigrator.migrate(conn)
-        self.assertEqual(new_version, 12)
+        self.assertEqual(new_version, 13)
 
         cur = conn.cursor()
         for tbl in ("user_oauth_credentials", "oauth_states"):
@@ -768,8 +769,52 @@ class TestSQLiteMigration(unittest.TestCase):
         # Verify columns on oauth_states
         cur.execute("PRAGMA table_info(oauth_states);")
         state_cols = {row[1] for row in cur.fetchall()}
-        for col in ("state", "user_id", "provider", "code_verifier", "redirect_uri", "expires_at", "used_at"):
+        for col in ("state", "user_id", "provider", "code_verifier", "redirect_uri", "expires_at", "used_at", "session_nonce"):
             self.assertIn(col, state_cols)
+
+        conn.close()
+
+    def test_migration_from_v12_to_v13_creates_email_acceptance_records(self) -> None:
+        """Verify explicit migration from v12 to v13 adds verified_email_acceptance_records and session_nonce."""
+        conn = sqlite3.connect(":memory:")
+        from caseworker.persistence.migration import (
+            MIGRATION_V1_DDL,
+            MIGRATION_V2_TABLES_DDL,
+            MIGRATION_V6_TABLES_DDL,
+            MIGRATION_V7_TABLES_DDL,
+            MIGRATION_V8_TABLES_DDL,
+            MIGRATION_V9_TABLES_DDL,
+            MIGRATION_V10_TABLES_DDL,
+            MIGRATION_V12_TABLES_DDL,
+        )
+        conn.executescript(MIGRATION_V1_DDL)
+        conn.executescript(MIGRATION_V2_TABLES_DDL)
+        conn.executescript(MIGRATION_V6_TABLES_DDL)
+        conn.executescript(MIGRATION_V7_TABLES_DDL)
+        conn.executescript(MIGRATION_V8_TABLES_DDL)
+        conn.executescript(MIGRATION_V9_TABLES_DDL)
+        conn.executescript(MIGRATION_V10_TABLES_DDL)
+        conn.executescript(MIGRATION_V12_TABLES_DDL)
+        conn.execute("PRAGMA user_version = 12;")
+
+        # Run migration 12 -> 13
+        new_version = SQLiteMigrator.migrate(conn)
+        self.assertEqual(new_version, 13)
+
+        cur = conn.cursor()
+        cur.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='verified_email_acceptance_records';")
+        self.assertIsNotNone(cur.fetchone(), "Table 'verified_email_acceptance_records' must exist after v13 migration")
+
+        # Verify columns
+        cur.execute("PRAGMA table_info(verified_email_acceptance_records);")
+        cols = {row[1] for row in cur.fetchall()}
+        for col in ("evidence_id", "opportunity_id", "user_id", "verified_recipient_email", "evidence_source", "source_uri", "instructions_text", "employer_domain", "verified_by", "verified_at", "snapshot_hash", "evidence_digest", "evidence_version", "is_active"):
+            self.assertIn(col, cols)
+
+        # Verify session_nonce on oauth_states
+        cur.execute("PRAGMA table_info(oauth_states);")
+        state_cols = {row[1] for row in cur.fetchall()}
+        self.assertIn("session_nonce", state_cols)
 
         conn.close()
 

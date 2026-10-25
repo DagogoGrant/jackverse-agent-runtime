@@ -20,6 +20,12 @@ from caseworker.api.schemas.auth import (
     GoogleAuthCallbackResponse,
     GoogleAuthDisconnectResponse,
     GoogleAuthStatusResponse,
+    OperatorSessionRequest,
+    OperatorSessionResponse,
+)
+from caseworker.api.schemas.evidence import (
+    VerifyEmailAcceptanceRequest,
+    VerifyEmailAcceptanceResponse,
 )
 from caseworker.api.schemas.claim import (
     ClaimResponse,

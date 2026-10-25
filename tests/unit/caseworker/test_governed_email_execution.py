@@ -117,6 +117,34 @@ class TestGovernedEmailExecution(unittest.TestCase):
             )
             uow.opportunities.save(self.opportunity)
 
+            from caseworker.domain.execution_plan import EmailAcceptanceEvidence, VerifiedEmailAcceptanceRecord
+            ev = EmailAcceptanceEvidence(
+                evidence_source="official_job_posting",
+                source_uri="https://cloudscale.io/careers/lead-infra",
+                instructions_text="Please email your resume and cover letter to jobs@cloudscale.io",
+                verified_recipient_email="jobs@cloudscale.io",
+                employer_domain="cloudscale.io",
+                verified_by="operator:grant",
+                verified_at="2026-10-25T10:00:00Z",
+            )
+            self.email_acceptance = VerifiedEmailAcceptanceRecord(
+                evidence_id="ev-email-1",
+                opportunity_id=self.opp_id,
+                user_id=self.user_id,
+                verified_recipient_email="jobs@cloudscale.io",
+                evidence_source="official_job_posting",
+                source_uri="https://cloudscale.io/careers/lead-infra",
+                instructions_text="Please email your resume and cover letter to jobs@cloudscale.io",
+                employer_domain="cloudscale.io",
+                verified_by="operator:grant",
+                verified_at="2026-10-25T10:00:00Z",
+                snapshot_hash=ev.evidence_snapshot_hash,
+                evidence_digest=ev.evidence_digest,
+                evidence_version=1,
+                is_active=True,
+            )
+            uow.verified_email_acceptance.save(self.email_acceptance)
+
             # 3. Verified Facts (Applicant Email & Full Name)
             self.fact_email = ContextFact(
                 fact_id="fact-email-1",
@@ -299,12 +327,14 @@ class TestGovernedEmailExecution(unittest.TestCase):
     def test_affirmative_acceptance_verified_seals_mime_payload(self) -> None:
         """With affirmative acceptance, compile_plan generates sealed EmailPayloadManifest with hash."""
         with self.storage.unit_of_work() as uow:
+            rec = uow.verified_email_acceptance.get_active_by_opportunity(self.opp_id)
             plan = ExecutionPlanCompiler.compile_plan(
                 case=self.case,
                 opportunity=self.opportunity,
                 package=self.package,
                 artifacts=[self.art_cv, self.art_cl, self.art_qa],
                 context_facts=[self.fact_email, self.fact_name],
+                verified_email_acceptance=rec,
             )
             self.assertEqual(plan.status, ExternalExecutionPlanStatus.READY_FOR_AUTHORIZATION)
             self.assertIsNotNone(plan.email_manifest)
@@ -375,6 +405,7 @@ class TestGovernedEmailExecution(unittest.TestCase):
         attempt, receipt = exec_service.execute_action(
             user_id=self.user_id,
             action_id=action.action_id,
+            principal_auth_method="operator_token",
         )
 
         self.assertIsNotNone(receipt)
@@ -400,6 +431,7 @@ class TestGovernedEmailExecution(unittest.TestCase):
         replay_attempt, replay_receipt = exec_service.execute_action(
             user_id=self.user_id,
             action_id=action.action_id,
+            principal_auth_method="operator_token",
         )
         self.assertEqual(replay_receipt.receipt_id, receipt.receipt_id)
         self.assertEqual(len(captured_requests), 1)  # Zero additional outbound network calls
@@ -467,6 +499,7 @@ class TestGovernedEmailExecution(unittest.TestCase):
                 user_id=self.user_id,
                 action_id=action.action_id,
                 provider=tamper_provider,
+                principal_auth_method="operator_token",
             )
         self.assertEqual(ctx.exception.details.get("failure_kind"), "payload_integrity_mismatch")
 

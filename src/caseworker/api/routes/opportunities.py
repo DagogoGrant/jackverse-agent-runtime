@@ -3,12 +3,15 @@
 from __future__ import annotations
 
 from typing import Annotated
-from fastapi import APIRouter, Depends, Request, Response, status
+import urllib.parse
+import uuid
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 
 from caseworker.api.dependencies import (
     PaginationParams,
     get_opportunity_service,
     get_principal,
+    get_storage,
 )
 from caseworker.api.etag import check_if_match, set_etag_header
 from caseworker.api.identity import Principal
@@ -33,7 +36,14 @@ from caseworker.domain.case import Case
 from caseworker.domain.enums import OpportunityStatus
 from caseworker.domain.errors import EntityNotFoundError, InvalidStateTransitionError
 from caseworker.domain.opportunity_evaluator import OpportunityEvaluationSnapshot
-from caseworker.domain.types import to_iso_utc
+from caseworker.domain.types import canonical_json_dumps, compute_sha256, now_utc, to_iso_utc
+from caseworker.domain.execution_plan import VerifiedEmailAcceptanceRecord
+from caseworker.domain.ssrf_validator import validate_evidence_source_uri
+from caseworker.api.schemas.evidence import (
+    VerifyEmailAcceptanceRequest,
+    VerifyEmailAcceptanceResponse,
+)
+from caseworker.persistence.sqlite import SQLiteCaseworkerStorage
 from caseworker.services.opportunity_service import OpportunityService
 
 router = APIRouter(prefix="/api/v1/opportunities", tags=["opportunities"])
@@ -376,3 +386,148 @@ async def transition_opportunity(
     )
     set_etag_header(response, "opportunity", updated.opportunity_id, updated.version)
     return make_opportunity_response(updated)
+
+
+@router.post(
+    "/{opportunity_id}/verify-email-acceptance",
+    response_model=VerifyEmailAcceptanceResponse,
+    status_code=status.HTTP_200_OK,
+)
+async def verify_email_acceptance(
+    opportunity_id: str,
+    req: VerifyEmailAcceptanceRequest,
+    principal: Annotated[Principal, Depends(get_principal)],
+    storage: Annotated[SQLiteCaseworkerStorage, Depends(get_storage)],
+) -> VerifyEmailAcceptanceResponse:
+    """Verify and persist authoritative employer email acceptance evidence.
+
+    Constitutional Boundaries:
+    - Operator authority required; development identity headers fail closed.
+    - Derives verified_by strictly from authenticated operator principal identity.
+    - Enforces SSRF safe public URL validation on source_uri.
+    - Enforces that application instructions independently identify/substantiate the destination email.
+    - Enforces immutable records; modified evidence produces an explicit superseded version transition.
+    """
+    if not principal.is_operator:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Operator authority required to verify employer email application acceptance.",
+        )
+
+    clean_recipient = req.verified_recipient_email.strip().lower()
+    if "@" not in clean_recipient or "." not in clean_recipient:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"Invalid verified_recipient_email format: '{req.verified_recipient_email}'.",
+        )
+
+    # Validate that instructions text independently substantiates recipient email
+    if clean_recipient not in req.instructions_text.lower():
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"Employer application instructions must independently cite or contain the recipient email '{clean_recipient}'.",
+        )
+
+    # Validate source_uri via SSRF defense
+    try:
+        safe_uri = validate_evidence_source_uri(req.source_uri)
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"Invalid or unsafe evidence source URI: {exc}",
+        )
+
+    parsed = urllib.parse.urlparse(safe_uri)
+    employer_domain = (req.employer_domain or parsed.netloc).strip().lower()
+    instructions_clean = req.instructions_text.strip()
+    snapshot_hash = compute_sha256(instructions_clean)
+    verified_by = f"operator:{principal.user_id}"
+    now_iso = now_utc().isoformat().replace("+00:00", "Z")
+
+    digest_components = [
+        req.evidence_source.strip().lower(),
+        safe_uri,
+        instructions_clean,
+        clean_recipient,
+        employer_domain,
+        snapshot_hash,
+        verified_by,
+        now_iso,
+    ]
+    evidence_digest = compute_sha256(canonical_json_dumps(digest_components))
+
+    with storage.unit_of_work() as uow:
+        opportunity = uow.opportunities.get_by_id(opportunity_id)
+        if opportunity is None:
+            raise EntityNotFoundError("Opportunity", opportunity_id)
+
+        # Check existing active record
+        active = uow.verified_email_acceptance.get_active_by_opportunity(opportunity_id)
+        if active is not None:
+            # If content and recipient are identical, return active record (idempotent)
+            if (
+                active.source_uri == safe_uri
+                and active.instructions_text == instructions_clean
+                and active.verified_recipient_email == clean_recipient
+                and active.employer_domain == employer_domain
+            ):
+                return VerifyEmailAcceptanceResponse(
+                    evidence_id=active.evidence_id,
+                    opportunity_id=active.opportunity_id,
+                    user_id=active.user_id,
+                    evidence_source=active.evidence_source,
+                    source_uri=active.source_uri,
+                    instructions_text=active.instructions_text,
+                    verified_recipient_email=active.verified_recipient_email,
+                    employer_domain=active.employer_domain,
+                    snapshot_hash=active.snapshot_hash,
+                    evidence_digest=active.evidence_digest,
+                    verified_by=active.verified_by,
+                    verified_at=active.verified_at,
+                    evidence_version=active.evidence_version,
+                    is_active=active.is_active,
+                )
+
+            # Different evidence: explicitly supersede existing active record
+            uow.verified_email_acceptance.supersede_active(opportunity_id, now_iso)
+            version = active.evidence_version + 1
+        else:
+            version = 1
+
+        evidence_id = f"ev-{uuid.uuid4().hex[:16]}"
+        record = VerifiedEmailAcceptanceRecord(
+            evidence_id=evidence_id,
+            opportunity_id=opportunity_id,
+            user_id=opportunity.user_id,
+            evidence_source=req.evidence_source.strip().lower(),
+            source_uri=safe_uri,
+            instructions_text=instructions_clean,
+            verified_recipient_email=clean_recipient,
+            employer_domain=employer_domain,
+            snapshot_hash=snapshot_hash,
+            evidence_digest=evidence_digest,
+            verified_by=verified_by,
+            verified_at=now_iso,
+            evidence_version=version,
+            is_active=True,
+            superseded_at=None,
+        )
+        uow.verified_email_acceptance.save(record)
+        uow.commit()
+
+    return VerifyEmailAcceptanceResponse(
+        evidence_id=record.evidence_id,
+        opportunity_id=record.opportunity_id,
+        user_id=record.user_id,
+        evidence_source=record.evidence_source,
+        source_uri=record.source_uri,
+        instructions_text=record.instructions_text,
+        verified_recipient_email=record.verified_recipient_email,
+        employer_domain=record.employer_domain,
+        snapshot_hash=record.snapshot_hash,
+        evidence_digest=record.evidence_digest,
+        verified_by=record.verified_by,
+        verified_at=record.verified_at,
+        evidence_version=record.evidence_version,
+        is_active=record.is_active,
+    )

@@ -71,6 +71,7 @@ from caseworker.domain.execution_plan import (
     ExternalExecutionPlan,
     TargetInteractionSchema,
     TargetSubmitControlSpec,
+    VerifiedEmailAcceptanceRecord,
 )
 from caseworker.domain.mission import Mission
 from caseworker.domain.namespaces import matches_namespace_filter
@@ -3165,8 +3166,9 @@ class OAuthStateRecord:
     provider: str
     code_verifier: str
     redirect_uri: str
-    created_at: str
-    expires_at: str
+    session_nonce: str = ""
+    created_at: str = ""
+    expires_at: str = ""
     used_at: str | None = None
 
 
@@ -3179,8 +3181,8 @@ class SQLiteOAuthStateRepository:
     def save(self, record: OAuthStateRecord) -> None:
         sql = """
         INSERT INTO oauth_states (
-            state, user_id, provider, code_verifier, redirect_uri, created_at, expires_at, used_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?);
+            state, user_id, provider, code_verifier, redirect_uri, session_nonce, created_at, expires_at, used_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);
         """
         self.conn.execute(
             sql,
@@ -3190,6 +3192,7 @@ class SQLiteOAuthStateRepository:
                 record.provider,
                 record.code_verifier,
                 record.redirect_uri,
+                record.session_nonce,
                 record.created_at,
                 record.expires_at,
                 record.used_at,
@@ -3198,7 +3201,7 @@ class SQLiteOAuthStateRepository:
 
     def get_by_state(self, state: str) -> OAuthStateRecord | None:
         sql = """
-        SELECT state, user_id, provider, code_verifier, redirect_uri, created_at, expires_at, used_at
+        SELECT state, user_id, provider, code_verifier, redirect_uri, session_nonce, created_at, expires_at, used_at
         FROM oauth_states
         WHERE state = ?;
         """
@@ -3212,9 +3215,10 @@ class SQLiteOAuthStateRepository:
             provider=row[2],
             code_verifier=row[3],
             redirect_uri=row[4],
-            created_at=row[5],
-            expires_at=row[6],
-            used_at=row[7],
+            session_nonce=row[5] or "",
+            created_at=row[6],
+            expires_at=row[7],
+            used_at=row[8],
         )
 
     def mark_used(self, state: str, used_at: str) -> bool:
@@ -3223,6 +3227,113 @@ class SQLiteOAuthStateRepository:
             (used_at, state),
         )
         return cur.rowcount > 0
+
+
+class SQLiteVerifiedEmailAcceptanceRepository:
+    """Repository for managing immutable, authenticated verified email acceptance records."""
+
+    def __init__(self, conn: sqlite3.Connection) -> None:
+        self.conn = conn
+
+    def save(self, record: VerifiedEmailAcceptanceRecord) -> None:
+        sql = """
+        INSERT INTO verified_email_acceptance_records (
+            evidence_id, opportunity_id, user_id, evidence_version, is_active,
+            evidence_source, source_uri, instructions_text, verified_recipient_email,
+            employer_domain, snapshot_hash, evidence_digest, verified_by, verified_at, superseded_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+        """
+        self.conn.execute(
+            sql,
+            (
+                record.evidence_id,
+                record.opportunity_id,
+                record.user_id,
+                record.evidence_version,
+                1 if record.is_active else 0,
+                record.evidence_source,
+                record.source_uri,
+                record.instructions_text,
+                record.verified_recipient_email,
+                record.employer_domain,
+                record.snapshot_hash,
+                record.evidence_digest,
+                record.verified_by,
+                record.verified_at,
+                record.superseded_at,
+            ),
+        )
+
+    def get_active_by_opportunity(self, opportunity_id: str) -> VerifiedEmailAcceptanceRecord | None:
+        sql = """
+        SELECT evidence_id, opportunity_id, user_id, evidence_source, source_uri,
+               instructions_text, verified_recipient_email, employer_domain, snapshot_hash,
+               evidence_digest, verified_by, verified_at, evidence_version, is_active, superseded_at
+        FROM verified_email_acceptance_records
+        WHERE opportunity_id = ? AND is_active = 1
+        ORDER BY evidence_version DESC
+        LIMIT 1;
+        """
+        cur = self.conn.execute(sql, (opportunity_id,))
+        row = cur.fetchone()
+        if not row:
+            return None
+        return VerifiedEmailAcceptanceRecord(
+            evidence_id=row[0],
+            opportunity_id=row[1],
+            user_id=row[2],
+            evidence_source=row[3],
+            source_uri=row[4],
+            instructions_text=row[5],
+            verified_recipient_email=row[6],
+            employer_domain=row[7],
+            snapshot_hash=row[8],
+            evidence_digest=row[9],
+            verified_by=row[10],
+            verified_at=row[11],
+            evidence_version=row[12],
+            is_active=bool(row[13]),
+            superseded_at=row[14],
+        )
+
+    def list_by_opportunity(self, opportunity_id: str) -> list[VerifiedEmailAcceptanceRecord]:
+        sql = """
+        SELECT evidence_id, opportunity_id, user_id, evidence_source, source_uri,
+               instructions_text, verified_recipient_email, employer_domain, snapshot_hash,
+               evidence_digest, verified_by, verified_at, evidence_version, is_active, superseded_at
+        FROM verified_email_acceptance_records
+        WHERE opportunity_id = ?
+        ORDER BY evidence_version ASC;
+        """
+        cur = self.conn.execute(sql, (opportunity_id,))
+        rows = cur.fetchall()
+        return [
+            VerifiedEmailAcceptanceRecord(
+                evidence_id=row[0],
+                opportunity_id=row[1],
+                user_id=row[2],
+                evidence_source=row[3],
+                source_uri=row[4],
+                instructions_text=row[5],
+                verified_recipient_email=row[6],
+                employer_domain=row[7],
+                snapshot_hash=row[8],
+                evidence_digest=row[9],
+                verified_by=row[10],
+                verified_at=row[11],
+                evidence_version=row[12],
+                is_active=bool(row[13]),
+                superseded_at=row[14],
+            )
+            for row in rows
+        ]
+
+    def supersede_active(self, opportunity_id: str, superseded_at: str) -> int:
+        cur = self.conn.execute(
+            "UPDATE verified_email_acceptance_records SET is_active = 0, superseded_at = ? WHERE opportunity_id = ? AND is_active = 1;",
+            (superseded_at, opportunity_id),
+        )
+        return cur.rowcount
 
 
 class SQLiteCaseworkerUnitOfWork(CaseworkerUnitOfWork):
@@ -3249,6 +3360,7 @@ class SQLiteCaseworkerUnitOfWork(CaseworkerUnitOfWork):
         self.execution_receipts = SQLiteExecutionReceiptRepository(conn)
         self.oauth_credentials = SQLiteOAuthCredentialRepository(conn)
         self.oauth_states = SQLiteOAuthStateRepository(conn)
+        self.verified_email_acceptance = SQLiteVerifiedEmailAcceptanceRepository(conn)
         self.events = SQLiteEventStore(conn)
         self._in_transaction = False
 

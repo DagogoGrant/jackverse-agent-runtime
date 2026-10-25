@@ -185,7 +185,7 @@ class GovernedExecutionService:
         user_id: str,
         action_id: str,
         provider: ExecutionProviderAdapter | None = None,
-        principal_auth_method: str = "operator_token",
+        principal_auth_method: str = "",
     ) -> tuple[ExecutionAttempt, ExecutionReceipt | None]:
         """Execute an approved transmission action through the two-barrier governed pipeline."""
         active_provider = provider
@@ -558,36 +558,73 @@ class GovernedExecutionService:
                         "OAuth credentials not found or unauthenticated for user. Please connect Google account before executing transmission.",
                         details={"failure_kind": "provider_auth_error"},
                     )
-                if principal_auth_method == "dev_header":
+                if principal_auth_method != "operator_token":
                     raise ApprovalValidationError(
-                        "Real execution requires verified operator authentication; development identity headers are not permitted for live external transmission.",
+                        "Real execution requires verified operator authentication; unauthorized or non-operator identity is not permitted for live external transmission.",
                         details={"failure_kind": "operator_auth_required"},
                     )
-                try:
-                    auth_email = self.credential_provider.get_authenticated_email(user_id)
-                    expected_from = (plan.email_manifest.from_email if plan.email_manifest else "").strip().lower()
-                    if not auth_email or (expected_from and auth_email.strip().lower() != expected_from):
-                        raise ApprovalValidationError(
-                            f"Authenticated Google account '{auth_email}' does not match plan sender email '{expected_from}'.",
-                            details={"failure_kind": "provider_auth_error"},
-                        )
-                except ApprovalValidationError:
-                    raise
-                except Exception as exc:
-                    raise ApprovalValidationError(
-                        f"Failed to verify Google account credentials for user: {exc}",
-                        details={"failure_kind": "provider_auth_error"},
-                    )
 
-            # Step 2: Barrier A — Live Pre-Staging Revalidation
+        # Pre-Dispatch Readiness: Validate OAuth tokens and scopes OUTSIDE SQLite write locks
+        validated_session = None
+        if active_provider.provider_kind == ExecutionProviderKind.GMAIL_API:
+            expected_from = (plan.email_manifest.from_email if plan.email_manifest else "").strip().lower()
+            try:
+                validated_session = self.credential_provider.verify_pre_dispatch_readiness(
+                    user_id=user_id,
+                    expected_sender=expected_from,
+                )
+            except Exception as exc:
+                raise ApprovalValidationError(
+                    f"Failed to verify Google account credentials and permissions: {exc}",
+                    details={"failure_kind": "provider_auth_error"},
+                )
+
+        # Step 2: Acquire Lease, Run Barrier A, and Initialize Attempt in fresh UoW
+        with self.storage.unit_of_work() as uow:
+            # Re-fetch entities to ensure state has not mutated during lock-free credential check
+            fresh_action = uow.actions.get_by_id(action_id)
+            fresh_case = uow.cases.get_by_id(fresh_action.case_id if fresh_action else "")
+            fresh_approval = uow.approvals.get_by_action_id(action_id)
+            fresh_plan = uow.execution_plans.get_by_id(plan.plan_id)
+
+            if not fresh_action or fresh_action.status != ActionStatus.APPROVED:
+                raise ApprovalValidationError(
+                    "Action status changed prior to execution start.",
+                    details={"failure_kind": "action_not_approved"},
+                )
+            if not fresh_approval or fresh_approval.status != ApprovalStatus.APPROVED:
+                raise ApprovalValidationError(
+                    "Approval status changed prior to execution start.",
+                    details={"failure_kind": "approval_not_approved"},
+                )
+            if not fresh_case or fresh_case.status != CaseStatus.ACTION_REQUIRED:
+                raise ApprovalValidationError(
+                    "Case status changed prior to execution start.",
+                    details={"failure_kind": "invalid_case_status"},
+                )
+            if not fresh_plan or fresh_plan.status != ExternalExecutionPlanStatus.READY_FOR_AUTHORIZATION:
+                raise ApprovalValidationError(
+                    "Plan status changed prior to execution start.",
+                    details={"failure_kind": "invalid_plan_status"},
+                )
+
+            # Re-verify active lease
+            fresh_lease = uow.execution_leases.get_active_lease(fresh_case.case_id, fresh_plan.plan_id, fresh_action.action_id)
+            if fresh_lease is not None and not fresh_lease.is_expired():
+                raise ApprovalValidationError(
+                    f"An execution attempt is currently active under lease token '{fresh_lease.lease_token}'.",
+                    details={"failure_kind": "execution_in_progress", "lease_token": fresh_lease.lease_token},
+                )
+
+            # Barrier A — Live Pre-Staging Revalidation
             val_result = ExecutionPlanIntegrityValidator.validate(
                 uow=uow,
-                case=case,
-                plan=plan,
+                case=fresh_case,
+                plan=fresh_plan,
                 user_id=user_id,
                 expected_plan_status=ExternalExecutionPlanStatus.READY_FOR_AUTHORIZATION,
-                action=action,
-                approval=approval,
+                action=fresh_action,
+                approval=fresh_approval,
             )
             if not val_result.is_valid:
                 raise ApprovalValidationError(
@@ -595,26 +632,26 @@ class GovernedExecutionService:
                     details={"failure_kind": val_result.failure_kind.value},
                 )
 
-            # Step 3: Acquire Lease and Initialize Attempt
-            prev_attempts = uow.execution_attempts.list_by_case(case.case_id)
-            action_attempts = [a for a in prev_attempts if a.action_id == action.action_id]
+            # Acquire Lease and Initialize Attempt
+            prev_attempts = uow.execution_attempts.list_by_case(fresh_case.case_id)
+            action_attempts = [a for a in prev_attempts if a.action_id == fresh_action.action_id]
             attempt_number = len(action_attempts) + 1
 
             attempt_id = f"att-{uuid.uuid4().hex[:16]}"
             lease = uow.execution_leases.acquire_lease(
-                case_id=case.case_id,
-                plan_id=plan.plan_id,
-                action_id=action.action_id,
+                case_id=fresh_case.case_id,
+                plan_id=fresh_plan.plan_id,
+                action_id=fresh_action.action_id,
                 user_id=user_id,
                 attempt_id=attempt_id,
             )
 
             attempt = ExecutionAttempt(
                 attempt_id=attempt_id,
-                action_id=action.action_id,
-                approval_id=approval.approval_id,
-                plan_id=plan.plan_id,
-                case_id=case.case_id,
+                action_id=fresh_action.action_id,
+                approval_id=fresh_approval.approval_id,
+                plan_id=fresh_plan.plan_id,
+                case_id=fresh_case.case_id,
                 user_id=user_id,
                 lease_token=lease.lease_token,
                 fencing_token=lease.fencing_token,
@@ -627,9 +664,9 @@ class GovernedExecutionService:
             uow.events.append(
                 make_execution_attempt_started_event(
                     user_id=user_id,
-                    case_id=case.case_id,
-                    plan_id=plan.plan_id,
-                    action_id=action.action_id,
+                    case_id=fresh_case.case_id,
+                    plan_id=fresh_plan.plan_id,
+                    action_id=fresh_action.action_id,
                     attempt_id=attempt.attempt_id,
                     provider_kind=attempt.provider_kind.value,
                     fencing_token=attempt.fencing_token,
@@ -642,10 +679,12 @@ class GovernedExecutionService:
                 lease_token=lease.lease_token,
                 fencing_token=lease.fencing_token,
                 user_id=user_id,
-                case_id=case.case_id,
-                plan_id=plan.plan_id,
-                action_id=action.action_id,
+                case_id=fresh_case.case_id,
+                plan_id=fresh_plan.plan_id,
+                action_id=fresh_action.action_id,
+                access_token=validated_session.access_token if validated_session else None,
             )
+            uow.commit()
 
         # Step 4: Provider Staging (Reversible Phase)
         attempt.transition_to(ExecutionAttemptStatus.STAGING)

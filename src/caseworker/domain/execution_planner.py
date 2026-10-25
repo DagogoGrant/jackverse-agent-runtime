@@ -38,6 +38,7 @@ from caseworker.domain.execution_plan import (
     EXEC_PLAN_SCHEMA_VERSION,
     FORBIDDEN_FIELD_PATTERN,
     EmailAcceptanceEvidence,
+    VerifiedEmailAcceptanceRecord,
     EmailAttachmentManifest,
     EmailPayloadManifest,
     ExecutionDestination,
@@ -86,6 +87,7 @@ class ExecutionPlanCompiler:
         facts: list[ContextFact] | None = None,
         final_submit_control: TargetSubmitControlSpec | None = None,
         field_bindings: list[TargetFieldBinding] | None = None,
+        verified_email_acceptance: VerifiedEmailAcceptanceRecord | EmailAcceptanceEvidence | None = None,
     ) -> ExternalExecutionPlan:
         """Compile an ExternalExecutionPlan deterministically.
 
@@ -218,8 +220,7 @@ class ExecutionPlanCompiler:
         # Affirmative employer acceptance verification for email applications (Audit Hardening)
         email_acceptance_evidence: EmailAcceptanceEvidence | None = None
         if dest_type_val == ExecutionDestinationType.EMAIL.value:
-            evidence_data = opportunity.metadata.get("email_acceptance_evidence") or opportunity.metadata.get("application_email_evidence")
-            if not isinstance(evidence_data, dict):
+            if verified_email_acceptance is None:
                 findings.append(
                     ExecutionPlanFinding(
                         check_name="email_application_acceptance_verification",
@@ -228,7 +229,7 @@ class ExecutionPlanCompiler:
                         code="EMAIL_APPLICATION_NOT_ACCEPTED",
                         message=(
                             "The opportunity does not provide grounded, trustworthy evidence that applications by email are accepted. "
-                            "An email address alone or unverified metadata flag is not sufficient without verified employer acceptance provenance."
+                            "Unverified metadata claims are strictly rejected; an active authenticated operator verification record is required."
                         ),
                         details={
                             "opportunity_id": opportunity.opportunity_id,
@@ -243,35 +244,41 @@ class ExecutionPlanCompiler:
                     else canonical_url.strip().lower()
                 )
                 try:
-                    source_uri = str(evidence_data.get("source_uri", "")).strip()
-                    safe_uri = validate_evidence_source_uri(source_uri)
-                    instr = str(evidence_data.get("instructions_text", "")).strip()
-                    recip = str(evidence_data.get("verified_recipient_email", "")).strip().lower()
-                    src = str(evidence_data.get("evidence_source", "")).strip()
-                    org_dom = str(evidence_data.get("employer_domain", "")).strip().lower()
-                    v_by = str(evidence_data.get("verified_by", "")).strip()
-                    v_at = str(evidence_data.get("verified_at", "")).strip() or now_utc().isoformat().replace("+00:00", "Z")
-
-                    # Authority validation: verified_by must be a trusted authority string (e.g. operator:* or system:*)
-                    if not (v_by.startswith("operator:") or v_by.startswith("system:")):
-                        raise ValueError(f"Verifier identity '{v_by}' is not derived from a trusted application authority.")
-
-                    if not instr:
-                        raise ValueError("Evidence instructions_text cannot be empty.")
-                    if clean_dest_email not in instr.lower() and recip != clean_dest_email:
-                        raise ValueError(f"Evidence instructions do not reference destination email '{clean_dest_email}'.")
-                    if recip != clean_dest_email:
-                        raise ValueError(f"verified_recipient_email '{recip}' does not match destination '{clean_dest_email}'.")
-
-                    email_acceptance_evidence = EmailAcceptanceEvidence(
-                        evidence_source=src or "official_job_posting",
-                        source_uri=safe_uri,
-                        instructions_text=instr,
-                        verified_recipient_email=recip,
-                        employer_domain=org_dom or destination.normalized_hostname or "unknown",
-                        verified_by=v_by,
-                        verified_at=v_at,
+                    ev = (
+                        verified_email_acceptance
+                        if isinstance(verified_email_acceptance, EmailAcceptanceEvidence)
+                        else verified_email_acceptance.to_evidence()
                     )
+
+                    # Validate SSRF safety on source_uri
+                    safe_uri = validate_evidence_source_uri(ev.source_uri)
+
+                    # Authority validation: verified_by must be a trusted authority string (operator:* or system:*)
+                    if not (ev.verified_by.startswith("operator:") or ev.verified_by.startswith("system:")):
+                        raise ValueError(f"Verifier identity '{ev.verified_by}' is not derived from a trusted application authority.")
+
+                    if not ev.instructions_text:
+                        raise ValueError("Evidence instructions_text cannot be empty.")
+
+                    # Exact recipient check: verified_recipient_email must match destination email
+                    recip = ev.verified_recipient_email.strip().lower()
+                    if recip != clean_dest_email:
+                        raise ValueError(f"Verified recipient email '{recip}' does not match destination '{clean_dest_email}'.")
+
+                    # Independent substantiation check: instructions_text must cite/substantiate the destination email
+                    if clean_dest_email not in ev.instructions_text.lower():
+                        raise ValueError(f"Evidence instructions do not cite or substantiate destination email '{clean_dest_email}'.")
+
+                    # Validate snapshot hash and evidence digest
+                    expected_snap = compute_sha256(ev.instructions_text.strip())
+                    if ev.evidence_snapshot_hash and ev.evidence_snapshot_hash.lower() != expected_snap.lower():
+                        raise ValueError("Evidence snapshot hash does not match instructions text.")
+
+                    expected_digest = ev.compute_digest()
+                    if ev.evidence_digest and ev.evidence_digest.lower() != expected_digest.lower():
+                        raise ValueError("Evidence digest does not match verified parameters.")
+
+                    email_acceptance_evidence = ev
                 except Exception as ev_err:
                     findings.append(
                         ExecutionPlanFinding(

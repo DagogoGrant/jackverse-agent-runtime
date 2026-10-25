@@ -224,6 +224,50 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/auth/operator/dev-session": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create Dev Operator Session
+         * @description Convenience endpoint in dev mode to generate a signed operator token and cookie.
+         */
+        post: operations["create_dev_operator_session_api_v1_auth_operator_dev_session_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/operator/session": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create Operator Session
+         * @description Establish an operator session cookie from a valid signed operator bearer token.
+         */
+        post: operations["create_operator_session_api_v1_auth_operator_session_post"];
+        /**
+         * Delete Operator Session
+         * @description Terminate the operator session by clearing the operator session cookie.
+         */
+        delete: operations["delete_operator_session_api_v1_auth_operator_session_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/cases": {
         parameters: {
             query?: never;
@@ -1329,6 +1373,33 @@ export interface paths {
          *     Protected transitions (normalized, evaluating, shortlisted, converted_to_case) are blocked.
          */
         post: operations["transition_opportunity_api_v1_opportunities__opportunity_id__transition_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/opportunities/{opportunity_id}/verify-email-acceptance": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Verify Email Acceptance
+         * @description Verify and persist authoritative employer email acceptance evidence.
+         *
+         *     Constitutional Boundaries:
+         *     - Operator authority required; development identity headers fail closed.
+         *     - Derives verified_by strictly from authenticated operator principal identity.
+         *     - Enforces SSRF safe public URL validation on source_uri.
+         *     - Enforces that application instructions independently identify/substantiate the destination email.
+         *     - Enforces immutable records; modified evidence produces an explicit superseded version transition.
+         */
+        post: operations["verify_email_acceptance_api_v1_opportunities__opportunity_id__verify_email_acceptance_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2649,6 +2720,33 @@ export interface components {
             /** Value */
             value?: unknown;
         };
+        /**
+         * OperatorSessionRequest
+         * @description Request to establish an operator session cookie.
+         */
+        OperatorSessionRequest: {
+            /**
+             * Operator Token
+             * @description Time-limited signed operator bearer token.
+             */
+            operator_token: string;
+        };
+        /**
+         * OperatorSessionResponse
+         * @description Response returned after establishing or terminating an operator session.
+         */
+        OperatorSessionResponse: {
+            /**
+             * Operator Id
+             * @description Authenticated operator ID if session active.
+             */
+            operator_id?: string | null;
+            /**
+             * Success
+             * @description Whether the operator session operation succeeded.
+             */
+            success: boolean;
+        };
         /** OpportunityResponse */
         OpportunityResponse: {
             /** Converted Case Id */
@@ -3517,6 +3615,72 @@ export interface components {
          * @enum {string}
          */
         VerificationStatus: "unverified" | "user_verified" | "source_verified" | "rejected";
+        /**
+         * VerifyEmailAcceptanceRequest
+         * @description Operator request to verify employer email application acceptance.
+         */
+        VerifyEmailAcceptanceRequest: {
+            /**
+             * Employer Domain
+             * @description Employer domain (e.g. example.com).
+             */
+            employer_domain?: string | null;
+            /**
+             * Evidence Source
+             * @description Provenance channel/source.
+             * @default official_job_posting
+             */
+            evidence_source: string;
+            /**
+             * Instructions Text
+             * @description Verbatim employer application instructions text.
+             */
+            instructions_text: string;
+            /**
+             * Source Uri
+             * @description Public employer URL where instructions were published.
+             */
+            source_uri: string;
+            /**
+             * Verified Recipient Email
+             * @description Verified recipient email address specified in employer instructions.
+             */
+            verified_recipient_email: string;
+        };
+        /**
+         * VerifyEmailAcceptanceResponse
+         * @description Response containing immutable verified employer acceptance record.
+         */
+        VerifyEmailAcceptanceResponse: {
+            /** Employer Domain */
+            employer_domain: string;
+            /** Evidence Digest */
+            evidence_digest: string;
+            /** Evidence Id */
+            evidence_id: string;
+            /** Evidence Source */
+            evidence_source: string;
+            /** Evidence Version */
+            evidence_version: number;
+            /** Instructions Text */
+            instructions_text: string;
+            /** Is Active */
+            is_active: boolean;
+            /** Opportunity Id */
+            opportunity_id: string;
+            /** Snapshot Hash */
+            snapshot_hash: string;
+            /** Source Uri */
+            source_uri: string;
+            /** User Id */
+            user_id: string;
+            /** Verified At */
+            verified_at: string;
+            /** Verified By */
+            verified_by: string;
+            /** Verified Recipient Email */
+            verified_recipient_email: string;
+        };
         /** VerifyFactRequest */
         VerifyFactRequest: {
             /**
@@ -3885,6 +4049,93 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["GoogleAuthStatusResponse"];
+                };
+            };
+        };
+    };
+    create_dev_operator_session_api_v1_auth_operator_dev_session_post: {
+        parameters: {
+            query?: {
+                /** @description Operator ID for dev session */
+                operator_id?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OperatorSessionResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_operator_session_api_v1_auth_operator_session_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OperatorSessionRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OperatorSessionResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_operator_session_api_v1_auth_operator_session_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: boolean;
+                    };
                 };
             };
         };
@@ -5939,6 +6190,41 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["OpportunityResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    verify_email_acceptance_api_v1_opportunities__opportunity_id__verify_email_acceptance_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                opportunity_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["VerifyEmailAcceptanceRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VerifyEmailAcceptanceResponse"];
                 };
             };
             /** @description Validation Error */

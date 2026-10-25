@@ -3154,6 +3154,48 @@
         "title": "NormalizedRequirementResponse",
         "type": "object"
       },
+      "OperatorSessionRequest": {
+        "description": "Request to establish an operator session cookie.",
+        "properties": {
+          "operator_token": {
+            "description": "Time-limited signed operator bearer token.",
+            "title": "Operator Token",
+            "type": "string"
+          }
+        },
+        "required": [
+          "operator_token"
+        ],
+        "title": "OperatorSessionRequest",
+        "type": "object"
+      },
+      "OperatorSessionResponse": {
+        "description": "Response returned after establishing or terminating an operator session.",
+        "properties": {
+          "operator_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Authenticated operator ID if session active.",
+            "title": "Operator Id"
+          },
+          "success": {
+            "description": "Whether the operator session operation succeeded.",
+            "title": "Success",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "success"
+        ],
+        "title": "OperatorSessionResponse",
+        "type": "object"
+      },
       "OpportunityResponse": {
         "properties": {
           "converted_case_id": {
@@ -5002,6 +5044,130 @@
         "title": "VerificationStatus",
         "type": "string"
       },
+      "VerifyEmailAcceptanceRequest": {
+        "description": "Operator request to verify employer email application acceptance.",
+        "properties": {
+          "employer_domain": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Employer domain (e.g. example.com).",
+            "title": "Employer Domain"
+          },
+          "evidence_source": {
+            "default": "official_job_posting",
+            "description": "Provenance channel/source.",
+            "title": "Evidence Source",
+            "type": "string"
+          },
+          "instructions_text": {
+            "description": "Verbatim employer application instructions text.",
+            "title": "Instructions Text",
+            "type": "string"
+          },
+          "source_uri": {
+            "description": "Public employer URL where instructions were published.",
+            "title": "Source Uri",
+            "type": "string"
+          },
+          "verified_recipient_email": {
+            "description": "Verified recipient email address specified in employer instructions.",
+            "title": "Verified Recipient Email",
+            "type": "string"
+          }
+        },
+        "required": [
+          "instructions_text",
+          "verified_recipient_email",
+          "source_uri"
+        ],
+        "title": "VerifyEmailAcceptanceRequest",
+        "type": "object"
+      },
+      "VerifyEmailAcceptanceResponse": {
+        "description": "Response containing immutable verified employer acceptance record.",
+        "properties": {
+          "employer_domain": {
+            "title": "Employer Domain",
+            "type": "string"
+          },
+          "evidence_digest": {
+            "title": "Evidence Digest",
+            "type": "string"
+          },
+          "evidence_id": {
+            "title": "Evidence Id",
+            "type": "string"
+          },
+          "evidence_source": {
+            "title": "Evidence Source",
+            "type": "string"
+          },
+          "evidence_version": {
+            "title": "Evidence Version",
+            "type": "integer"
+          },
+          "instructions_text": {
+            "title": "Instructions Text",
+            "type": "string"
+          },
+          "is_active": {
+            "title": "Is Active",
+            "type": "boolean"
+          },
+          "opportunity_id": {
+            "title": "Opportunity Id",
+            "type": "string"
+          },
+          "snapshot_hash": {
+            "title": "Snapshot Hash",
+            "type": "string"
+          },
+          "source_uri": {
+            "title": "Source Uri",
+            "type": "string"
+          },
+          "user_id": {
+            "title": "User Id",
+            "type": "string"
+          },
+          "verified_at": {
+            "title": "Verified At",
+            "type": "string"
+          },
+          "verified_by": {
+            "title": "Verified By",
+            "type": "string"
+          },
+          "verified_recipient_email": {
+            "title": "Verified Recipient Email",
+            "type": "string"
+          }
+        },
+        "required": [
+          "evidence_id",
+          "opportunity_id",
+          "user_id",
+          "evidence_source",
+          "source_uri",
+          "instructions_text",
+          "verified_recipient_email",
+          "employer_domain",
+          "snapshot_hash",
+          "evidence_digest",
+          "verified_by",
+          "verified_at",
+          "evidence_version",
+          "is_active"
+        ],
+        "title": "VerifyEmailAcceptanceResponse",
+        "type": "object"
+      },
       "VerifyFactRequest": {
         "additionalProperties": false,
         "properties": {
@@ -5601,6 +5767,118 @@
           }
         },
         "summary": "Get Google Auth Status",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/v1/auth/operator/dev-session": {
+      "post": {
+        "description": "Convenience endpoint in dev mode to generate a signed operator token and cookie.",
+        "operationId": "create_dev_operator_session_api_v1_auth_operator_dev_session_post",
+        "parameters": [
+          {
+            "description": "Operator ID for dev session",
+            "in": "query",
+            "name": "operator_id",
+            "required": false,
+            "schema": {
+              "default": "dev-operator",
+              "description": "Operator ID for dev session",
+              "title": "Operator Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OperatorSessionResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Dev Operator Session",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/v1/auth/operator/session": {
+      "delete": {
+        "description": "Terminate the operator session by clearing the operator session cookie.",
+        "operationId": "delete_operator_session_api_v1_auth_operator_session_delete",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "type": "boolean"
+                  },
+                  "title": "Response Delete Operator Session Api V1 Auth Operator Session Delete",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Delete Operator Session",
+        "tags": [
+          "auth"
+        ]
+      },
+      "post": {
+        "description": "Establish an operator session cookie from a valid signed operator bearer token.",
+        "operationId": "create_operator_session_api_v1_auth_operator_session_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OperatorSessionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OperatorSessionResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Operator Session",
         "tags": [
           "auth"
         ]
@@ -8832,6 +9110,59 @@
           }
         },
         "summary": "Transition Opportunity",
+        "tags": [
+          "opportunities"
+        ]
+      }
+    },
+    "/api/v1/opportunities/{opportunity_id}/verify-email-acceptance": {
+      "post": {
+        "description": "Verify and persist authoritative employer email acceptance evidence.\n\nConstitutional Boundaries:\n- Operator authority required; development identity headers fail closed.\n- Derives verified_by strictly from authenticated operator principal identity.\n- Enforces SSRF safe public URL validation on source_uri.\n- Enforces that application instructions independently identify/substantiate the destination email.\n- Enforces immutable records; modified evidence produces an explicit superseded version transition.",
+        "operationId": "verify_email_acceptance_api_v1_opportunities__opportunity_id__verify_email_acceptance_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "opportunity_id",
+            "required": true,
+            "schema": {
+              "title": "Opportunity Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VerifyEmailAcceptanceRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VerifyEmailAcceptanceResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Verify Email Acceptance",
         "tags": [
           "opportunities"
         ]

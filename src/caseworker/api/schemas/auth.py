@@ -35,3 +35,17 @@ class GoogleAuthDisconnectResponse(BaseModel):
 
     success: bool = Field(..., description="Whether disconnect was processed.")
     disconnected: bool = Field(..., description="Whether local credential record was deleted.")
+
+
+class OperatorSessionRequest(BaseModel):
+    """Request to establish an operator session cookie."""
+
+    operator_token: str = Field(..., description="Time-limited signed operator bearer token.")
+
+
+class OperatorSessionResponse(BaseModel):
+    """Response returned after establishing or terminating an operator session."""
+
+    success: bool = Field(..., description="Whether the operator session operation succeeded.")
+    operator_id: str | None = Field(None, description="Authenticated operator ID if session active.")
+

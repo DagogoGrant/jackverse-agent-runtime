@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import sqlite3
 
-LATEST_SCHEMA_VERSION = 12
+LATEST_SCHEMA_VERSION = 13
 
 MIGRATION_V1_DDL = """
 CREATE TABLE IF NOT EXISTS missions (
@@ -451,12 +451,36 @@ CREATE TABLE IF NOT EXISTS oauth_states (
     provider TEXT NOT NULL,
     code_verifier TEXT NOT NULL,
     redirect_uri TEXT NOT NULL,
+    session_nonce TEXT NOT NULL DEFAULT '',
     created_at TEXT NOT NULL,
     expires_at TEXT NOT NULL,
     used_at TEXT
 );
 
 CREATE INDEX IF NOT EXISTS idx_oauth_states_user ON oauth_states(user_id);
+"""
+
+MIGRATION_V13_TABLES_DDL = """
+CREATE TABLE IF NOT EXISTS verified_email_acceptance_records (
+    evidence_id TEXT PRIMARY KEY,
+    opportunity_id TEXT NOT NULL,
+    user_id TEXT NOT NULL,
+    evidence_version INTEGER NOT NULL DEFAULT 1,
+    is_active INTEGER NOT NULL DEFAULT 1,
+    evidence_source TEXT NOT NULL,
+    source_uri TEXT NOT NULL,
+    instructions_text TEXT NOT NULL,
+    verified_recipient_email TEXT NOT NULL,
+    employer_domain TEXT NOT NULL,
+    snapshot_hash TEXT NOT NULL,
+    evidence_digest TEXT NOT NULL,
+    verified_by TEXT NOT NULL,
+    verified_at TEXT NOT NULL,
+    superseded_at TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_verified_email_acc_opp ON verified_email_acceptance_records(opportunity_id, is_active);
+CREATE INDEX IF NOT EXISTS idx_verified_email_acc_user ON verified_email_acceptance_records(user_id);
 """
 
 
@@ -657,6 +681,17 @@ class SQLiteMigrator:
             conn.executescript(MIGRATION_V12_TABLES_DDL)
             conn.execute("PRAGMA user_version = 12;")
             current_version = 12
+
+        # Migrate 12 -> 13 (Phase 5.3.3.1 Authority Boundaries: OAuth session nonce & immutable verified email acceptance)
+        if current_version < 13:
+            conn.executescript(MIGRATION_V13_TABLES_DDL)
+            cur = conn.cursor()
+            cur.execute("PRAGMA table_info(oauth_states);")
+            columns = {row[1] for row in cur.fetchall()}
+            if "session_nonce" not in columns:
+                conn.execute("ALTER TABLE oauth_states ADD COLUMN session_nonce TEXT NOT NULL DEFAULT '';")
+            conn.execute("PRAGMA user_version = 13;")
+            current_version = 13
 
         return current_version
 

@@ -913,6 +913,40 @@ class EmailAcceptanceEvidence:
 
 
 @dataclass(frozen=True)
+class VerifiedEmailAcceptanceRecord:
+    """Immutable persistent record of verified employer acceptance of email applications."""
+
+    evidence_id: str
+    opportunity_id: str
+    user_id: str
+    evidence_source: str
+    source_uri: str
+    instructions_text: str
+    verified_recipient_email: str
+    employer_domain: str
+    snapshot_hash: str
+    evidence_digest: str
+    verified_by: str
+    verified_at: str
+    evidence_version: int = 1
+    is_active: bool = True
+    superseded_at: str | None = None
+
+    def to_evidence(self) -> EmailAcceptanceEvidence:
+        return EmailAcceptanceEvidence(
+            evidence_source=self.evidence_source,
+            source_uri=self.source_uri,
+            instructions_text=self.instructions_text,
+            verified_recipient_email=self.verified_recipient_email,
+            employer_domain=self.employer_domain,
+            evidence_snapshot_hash=self.snapshot_hash,
+            verified_by=self.verified_by,
+            verified_at=self.verified_at,
+            evidence_digest=self.evidence_digest,
+        )
+
+
+@dataclass(frozen=True)
 class EmailPayloadManifest:
     """Immutable, content-addressed email serialization manifest frozen before authorization."""
 

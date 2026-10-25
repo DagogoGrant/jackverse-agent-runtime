@@ -154,6 +154,10 @@ export type GoogleAuthStatus = Schemas['GoogleAuthStatusResponse'];
 export type GoogleAuthAuthorize = Schemas['GoogleAuthAuthorizeResponse'];
 export type GoogleAuthCallback = Schemas['GoogleAuthCallbackResponse'];
 export type GoogleAuthDisconnect = Schemas['GoogleAuthDisconnectResponse'];
+export type OperatorSessionRequest = Schemas['OperatorSessionRequest'];
+export type OperatorSessionResponse = Schemas['OperatorSessionResponse'];
+export type VerifyEmailAcceptanceRequest = Schemas['VerifyEmailAcceptanceRequest'];
+export type VerifyEmailAcceptanceResponse = Schemas['VerifyEmailAcceptanceResponse'];
 
 
 // ----------------------------------------------------------------------------

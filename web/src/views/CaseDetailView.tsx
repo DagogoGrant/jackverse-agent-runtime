@@ -26,6 +26,8 @@ import {
   useExecutionReceipt,
   useExecutionAttempts,
   useGoogleAuthStatus,
+  useAuthorizeGoogleAuth,
+  useDisconnectGoogleAuth,
 } from '../hooks/useCaseworker';
 import { apiRequest, PreconditionFailedError } from '../api/client';
 import type {
@@ -109,6 +111,10 @@ export const CaseDetailView: React.FC = () => {
   );
 
   const { data: googleAuth } = useGoogleAuthStatus();
+  const authorizeGoogle = useAuthorizeGoogleAuth();
+  const disconnectGoogle = useDisconnectGoogleAuth();
+  const [googleAuthError, setGoogleAuthError] = useState<string | null>(null);
+
   const [executionError, setExecutionError] = useState<string | null>(null);
   const [showExecutionModal, setShowExecutionModal] = useState(false);
   const [simulationMode, setSimulationMode] = useState<string>('');
@@ -128,6 +134,37 @@ export const CaseDetailView: React.FC = () => {
   const isEmailDestination = targetPlan?.destination?.destination_type === 'email';
   const isGoogleConnected = Boolean(googleAuth?.connected);
 
+  const hasGoogleSendScope = Boolean(
+    googleAuth?.scopes?.some((s) => s.includes('gmail.send'))
+  );
+  const expectedSenderEmail = targetPlan?.email_manifest?.from_email?.trim().toLowerCase();
+  const actualSenderEmail = googleAuth?.authenticated_email?.trim().toLowerCase();
+  const isSenderEmailMatching = Boolean(
+    expectedSenderEmail && actualSenderEmail && expectedSenderEmail === actualSenderEmail
+  );
+  const isGoogleSendReady = isGoogleConnected && hasGoogleSendScope && isSenderEmailMatching;
+
+  const handleConnectGoogle = async () => {
+    setGoogleAuthError(null);
+    try {
+      const res = await authorizeGoogle.mutateAsync();
+      if (res?.authorization_url) {
+        window.location.href = res.authorization_url;
+      }
+    } catch (err: unknown) {
+      setGoogleAuthError(err instanceof Error ? err.message : 'Failed to initiate Google authorization.');
+    }
+  };
+
+  const handleDisconnectGoogle = async () => {
+    setGoogleAuthError(null);
+    try {
+      await disconnectGoogle.mutateAsync();
+    } catch (err: unknown) {
+      setGoogleAuthError(err instanceof Error ? err.message : 'Failed to disconnect Google account.');
+    }
+  };
+
   const isPlanFingerprintMatching = Boolean(
     approvedTransmissionAction &&
       targetPlan &&
@@ -141,7 +178,7 @@ export const CaseDetailView: React.FC = () => {
       targetPlan.plan_id === approvedPlanId &&
       isPlanFingerprintMatching &&
       targetPlan.status === 'ready_for_authorization' &&
-      (!isEmailDestination || isGoogleConnected)
+      (!isEmailDestination || isGoogleSendReady)
   );
 
   const handleExecuteTransmission = async () => {
@@ -3109,9 +3146,11 @@ export const CaseDetailView: React.FC = () => {
 
             {isEmailDestination && (
               <div className="space-y-3">
-                <div className={`p-3 border text-xs font-interface space-y-1.5 ${
-                  isGoogleConnected
+                <div className={`p-3 border text-xs font-interface space-y-2 ${
+                  isGoogleSendReady
                     ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300'
+                    : isGoogleConnected
+                    ? 'border-rose-500/40 bg-rose-500/10 text-rose-700 dark:text-rose-300'
                     : 'border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-300'
                 }`}>
                   <div className="font-semibold flex items-center justify-between">
@@ -3120,20 +3159,83 @@ export const CaseDetailView: React.FC = () => {
                       GOOGLE OAUTH TRANSMISSION PROVIDER
                     </span>
                     <span className="font-machine text-[10px] uppercase px-1.5 py-0.5 border border-current">
-                      {isGoogleConnected ? 'CONNECTED & AUTHORIZED' : 'NOT CONNECTED'}
+                      {isGoogleSendReady
+                        ? 'CONNECTED & AUTHORIZED'
+                        : !isGoogleConnected
+                        ? 'NOT CONNECTED'
+                        : !hasGoogleSendScope
+                        ? 'MISSING SEND PERMISSION'
+                        : 'SENDER MISMATCH'}
                     </span>
                   </div>
+
+                  {googleAuthError && (
+                    <div className="p-2 border border-rose-500/40 bg-rose-500/20 text-rose-300 text-[11px] flex items-center gap-1.5">
+                      <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+                      <span>{googleAuthError}</span>
+                    </div>
+                  )}
+
                   {isGoogleConnected ? (
-                    <div className="text-[11px] space-y-0.5">
-                      <div><span className="text-jv-muted">Sender Account:</span> <span className="font-mono">{googleAuth?.authenticated_email}</span></div>
-                      <div><span className="text-jv-muted">Granted Scopes:</span> <span className="font-mono">{googleAuth?.scopes?.join(', ') || 'gmail.send, userinfo.email'}</span></div>
+                    <div className="text-[11px] space-y-1.5">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <span className="text-jv-muted">Sender Account:</span>{' '}
+                          <span className="font-mono">{googleAuth?.authenticated_email}</span>
+                          {!isSenderEmailMatching && expectedSenderEmail && (
+                            <span className="ml-1 text-rose-400">
+                              (Expected plan sender: {expectedSenderEmail})
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                      <div>
+                        <span className="text-jv-muted">Granted Scopes:</span>{' '}
+                        <span className="font-mono">{googleAuth?.scopes?.join(', ') || 'none'}</span>
+                        {!hasGoogleSendScope && (
+                          <span className="ml-1 text-rose-400 font-semibold">
+                            (Missing required 'gmail.send')
+                          </span>
+                        )}
+                      </div>
+                      <div className="pt-2 flex items-center gap-2">
+                        {(!hasGoogleSendScope || !isSenderEmailMatching) && (
+                          <TactileButton
+                            size="sm"
+                            variant="secondary"
+                            onClick={handleConnectGoogle}
+                            disabled={authorizeGoogle.isPending}
+                            className="text-[10px]"
+                          >
+                            {authorizeGoogle.isPending ? 'Connecting…' : 'Reconnect Google Account'}
+                          </TactileButton>
+                        )}
+                        <TactileButton
+                          size="sm"
+                          variant="secondary"
+                          onClick={handleDisconnectGoogle}
+                          disabled={disconnectGoogle.isPending}
+                          className="text-[10px]"
+                        >
+                          {disconnectGoogle.isPending ? 'Disconnecting…' : 'Disconnect'}
+                        </TactileButton>
+                      </div>
                     </div>
                   ) : (
-                    <div className="text-[11px] space-y-1">
+                    <div className="text-[11px] space-y-2">
                       <p>
-                        Real external email transmission requires an authenticated Google account.
+                        Real external email transmission requires an authenticated Google account with send permissions.
                         Please connect your Google account before executing transmission.
                       </p>
+                      <TactileButton
+                        size="sm"
+                        variant="primary"
+                        onClick={handleConnectGoogle}
+                        disabled={authorizeGoogle.isPending}
+                        className="text-[10px]"
+                      >
+                        {authorizeGoogle.isPending ? 'Initiating…' : 'Connect Google Account'}
+                      </TactileButton>
                     </div>
                   )}
                 </div>

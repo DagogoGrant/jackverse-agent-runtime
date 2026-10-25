@@ -33,7 +33,12 @@ import type {
   ExecutionAttempt,
   ExecutionAttemptList,
   GoogleAuthStatus,
+  GoogleAuthAuthorize,
   GoogleAuthDisconnect,
+  OperatorSessionRequest,
+  OperatorSessionResponse,
+  VerifyEmailAcceptanceRequest,
+  VerifyEmailAcceptanceResponse,
 } from '../api/types';
 
 // Invalidate on dev user switch
@@ -1286,6 +1291,15 @@ export function useGoogleAuthStatus() {
   });
 }
 
+export function useAuthorizeGoogleAuth() {
+  return useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest<GoogleAuthAuthorize>('/auth/google/authorize');
+      return res.data;
+    },
+  });
+}
+
 export function useDisconnectGoogleAuth() {
   const queryClient = useQueryClient();
   return useMutation({
@@ -1300,4 +1314,69 @@ export function useDisconnectGoogleAuth() {
     },
   });
 }
+
+export function useCreateOperatorSession() {
+  return useMutation({
+    mutationFn: async (req: OperatorSessionRequest) => {
+      const res = await apiRequest<OperatorSessionResponse>('/auth/operator/session', {
+        method: 'POST',
+        body: JSON.stringify(req),
+      });
+      return res.data;
+    },
+  });
+}
+
+export function useCreateDevOperatorSession() {
+  return useMutation({
+    mutationFn: async (operatorId: string = 'dev-operator') => {
+      const res = await apiRequest<OperatorSessionResponse>(
+        `/auth/operator/dev-session?operator_id=${encodeURIComponent(operatorId)}`,
+        {
+          method: 'POST',
+        }
+      );
+      return res.data;
+    },
+  });
+}
+
+export function useDeleteOperatorSession() {
+  return useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest<{ success: boolean }>('/auth/operator/session', {
+        method: 'DELETE',
+      });
+      return res.data;
+    },
+  });
+}
+
+export function useVerifyEmailAcceptance() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({
+      opportunityId,
+      data,
+    }: {
+      opportunityId: string;
+      data: VerifyEmailAcceptanceRequest;
+    }) => {
+      const res = await apiRequest<VerifyEmailAcceptanceResponse>(
+        `/opportunities/${opportunityId}/verify-email-acceptance`,
+        {
+          method: 'POST',
+          body: JSON.stringify(data),
+        }
+      );
+      return res.data;
+    },
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['opportunity', variables.opportunityId] });
+      queryClient.invalidateQueries({ queryKey: ['opportunities'] });
+      queryClient.invalidateQueries({ queryKey: ['cases'] });
+    },
+  });
+}
+
 
