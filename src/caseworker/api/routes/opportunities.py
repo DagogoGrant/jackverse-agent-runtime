@@ -461,6 +461,12 @@ async def verify_email_acceptance(
         if opportunity is None:
             raise EntityNotFoundError("Opportunity", opportunity_id)
 
+        if opportunity.user_id != principal.user_id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"Principal '{principal.user_id}' does not own Opportunity '{opportunity_id}'. Operator cannot attest to another user's opportunity.",
+            )
+
         # Check existing active record
         active = uow.verified_email_acceptance.get_active_by_opportunity(opportunity_id)
         if active is not None:

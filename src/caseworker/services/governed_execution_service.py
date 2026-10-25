@@ -159,6 +159,7 @@ class GovernedExecutionService:
         real_execution_enabled: bool | None = None,
         gmail_execution_enabled: bool | None = None,
         credential_provider: OAuthCredentialProvider | None = None,
+        dev_auth: bool | None = None,
     ) -> None:
         self.storage = storage
         if allow_simulation is None:
@@ -175,6 +176,11 @@ class GovernedExecutionService:
             self.gmail_execution_enabled = os.getenv("CASEWORKER_GMAIL_EXECUTION_ENABLED", "false").lower() in ("true", "1", "yes")
         else:
             self.gmail_execution_enabled = bool(gmail_execution_enabled)
+
+        if dev_auth is None:
+            self.dev_auth = os.getenv("CASEWORKER_DEV_AUTH", "false").lower() in ("true", "1", "yes")
+        else:
+            self.dev_auth = bool(dev_auth)
 
         self.credential_provider = credential_provider
         self.default_provider = default_provider or SimulatedExecutionProvider(SimulationMode.SUCCESS)
@@ -548,6 +554,11 @@ class GovernedExecutionService:
                     )
 
             if active_provider.provider_kind == ExecutionProviderKind.GMAIL_API:
+                if self.dev_auth and (self.real_execution_enabled or self.gmail_execution_enabled):
+                    raise ApprovalValidationError(
+                        "Insecure configuration: Development authentication (CASEWORKER_DEV_AUTH) cannot be combined with live real execution or Gmail transmission.",
+                        details={"failure_kind": "insecure_configuration_rejected"},
+                    )
                 if not self.real_execution_enabled or not self.gmail_execution_enabled:
                     raise ApprovalValidationError(
                         "Gmail execution is currently disabled in configuration (CASEWORKER_REAL_EXECUTION_ENABLED=false or CASEWORKER_GMAIL_EXECUTION_ENABLED=false). Real external transmission cannot proceed.",
@@ -558,7 +569,7 @@ class GovernedExecutionService:
                         "OAuth credentials not found or unauthenticated for user. Please connect Google account before executing transmission.",
                         details={"failure_kind": "provider_auth_error"},
                     )
-                if principal_auth_method != "operator_token":
+                if principal_auth_method != "operator_token" or user_id.startswith("dev-") or user_id.startswith("dev_"):
                     raise ApprovalValidationError(
                         "Real execution requires verified operator authentication; unauthorized or non-operator identity is not permitted for live external transmission.",
                         details={"failure_kind": "operator_auth_required"},

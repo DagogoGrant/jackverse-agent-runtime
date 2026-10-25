@@ -145,10 +145,13 @@ class DatabaseOAuthCredentialProvider(OAuthCredentialProvider):
         client = self.http_client or httpx.Client(timeout=10.0)
         close_client = self.http_client is None
         try:
-            resp = client.get(
+            resp = client.post(
                 GMAIL_TOKENINFO_URL,
-                params={"access_token": access_token},
-                headers={"Accept": "application/json"},
+                data={"access_token": access_token},
+                headers={
+                    "Accept": "application/json",
+                    "Authorization": f"Bearer {access_token}",
+                },
             )
             if resp.status_code == 200:
                 data = resp.json()
@@ -371,7 +374,7 @@ class DatabaseOAuthCredentialProvider(OAuthCredentialProvider):
         try:
             resp = client.post(
                 GMAIL_REVOKE_URL,
-                params={"token": token_to_revoke},
+                data={"token": token_to_revoke},
                 headers={"Content-Type": "application/x-www-form-urlencoded"},
             )
             remote_revoked = resp.status_code == 200

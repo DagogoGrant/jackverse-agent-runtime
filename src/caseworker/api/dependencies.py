@@ -134,6 +134,7 @@ def get_governed_execution_service(
         allow_simulation=config.simulation_enabled,
         real_execution_enabled=config.real_execution_enabled,
         gmail_execution_enabled=config.gmail_execution_enabled,
+        dev_auth=config.dev_auth,
     )
 
 

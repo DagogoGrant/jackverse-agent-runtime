@@ -5,9 +5,11 @@ from __future__ import annotations
 from typing import Annotated
 from fastapi import APIRouter, Depends, Request, Response, status
 
+from caseworker.api.config import APIConfig
 from caseworker.api.dependencies import (
     get_action_service,
     get_case_service,
+    get_config,
     get_governed_execution_service,
     get_principal,
     get_storage,
@@ -211,9 +213,11 @@ async def execute_action(
     action_service: Annotated[ActionService, Depends(get_action_service)],
     exec_service: Annotated[GovernedExecutionService, Depends(get_governed_execution_service)],
     storage: Annotated[SQLiteCaseworkerStorage, Depends(get_storage)],
+    config: Annotated[APIConfig, Depends(get_config)],
     req: ExecuteActionRequest | None = None,
 ) -> ExecuteActionResponse:
     """Execute an approved transmission action under two-barrier live integrity and lease fencing."""
+    cfg = config
     # 1. Assert action exists and user owns the parent case
     action = action_service.get_action_for_user(principal.user_id, action_id)
     if action is None:
@@ -285,6 +289,18 @@ async def execute_action(
                     details={"failure_kind": "simulation_not_permitted"},
                 )
         provider = SimulatedExecutionProvider(req.simulation_mode)
+    else:
+        # Genuine live transmission: development identity cannot authorize live external execution
+        if cfg.dev_auth and (cfg.real_execution_enabled or cfg.gmail_execution_enabled):
+            raise ApprovalValidationError(
+                "Insecure configuration: Development authentication (CASEWORKER_DEV_AUTH) cannot be combined with live real execution or Gmail transmission.",
+                details={"failure_kind": "insecure_configuration_rejected"},
+            )
+        if principal.auth_method == "dev_operator_token" or principal.user_id.startswith("dev-") or principal.user_id.startswith("dev_"):
+            raise ApprovalValidationError(
+                "Real execution requires verified genuine operator authentication; developer identities cannot authorize live external transmissions.",
+                details={"failure_kind": "operator_auth_required"},
+            )
 
     # 5. Execute through governed pipeline
     attempt, receipt = exec_service.execute_action(

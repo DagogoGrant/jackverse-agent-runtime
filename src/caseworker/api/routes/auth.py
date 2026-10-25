@@ -5,8 +5,9 @@ from __future__ import annotations
 import base64
 from datetime import datetime, timedelta, timezone
 import hashlib
+import html
 import secrets
-from typing import Annotated
+from typing import Annotated, Any
 import urllib.parse
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
@@ -49,6 +50,22 @@ OAUTH_NONCE_COOKIE = "jackverse_oauth_nonce"
 OPERATOR_SESSION_COOKIE = "jackverse_operator_session"
 
 
+def _is_secure_request(request: Request) -> bool:
+    forwarded_proto = request.headers.get("x-forwarded-proto", "").lower()
+    scheme = request.url.scheme.lower()
+    return scheme == "https" or forwarded_proto == "https"
+
+
+def _resolve_cookie_security(request: Request, config: APIConfig) -> bool:
+    is_https = _is_secure_request(request)
+    if not config.dev_auth and not is_https:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Insecure deployment: Production OAuth and operator sessions require HTTPS.",
+        )
+    return is_https or not config.dev_auth
+
+
 @router.get("/api/v1/auth/google/status", response_model=GoogleAuthStatusResponse)
 async def get_google_auth_status(
     principal: Annotated[Principal, Depends(get_principal)],
@@ -74,12 +91,15 @@ async def get_google_auth_status(
 
 @router.get("/api/v1/auth/google/authorize", response_model=GoogleAuthAuthorizeResponse)
 async def authorize_google(
+    request: Request,
     response: Response,
     principal: Annotated[Principal, Depends(get_principal)],
     storage: Annotated[SQLiteCaseworkerStorage, Depends(get_storage)],
     config: Annotated[APIConfig, Depends(get_config)],
 ) -> GoogleAuthAuthorizeResponse:
     """Generate PKCE challenge, save one-time state, and return Google OAuth authorization URL."""
+    secure = _resolve_cookie_security(request, config)
+
     if not config.gmail_client_id:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
@@ -117,6 +137,7 @@ async def authorize_google(
         max_age=600,
         httponly=True,
         samesite="lax",
+        secure=secure,
         path="/api/v1/auth",
     )
 
@@ -147,8 +168,19 @@ async def google_auth_callback(
     error_description: str | None = Query(None, description="Google OAuth error message"),
 ) -> Any:
     """Validate Google OAuth callback, exchange code with PKCE, verify identity, and encrypt tokens."""
-    # Delete nonce cookie from response
-    response.delete_cookie(OAUTH_NONCE_COOKIE, path="/api/v1/auth")
+    secure = _resolve_cookie_security(request, config)
+
+    def _clear_nonce(resp: Response) -> None:
+        resp.delete_cookie(
+            key=OAUTH_NONCE_COOKIE,
+            path="/api/v1/auth",
+            httponly=True,
+            samesite="lax",
+            secure=secure,
+        )
+
+    # Initial nonce deletion on injected response
+    _clear_nonce(response)
 
     if error:
         raise HTTPException(
@@ -281,9 +313,13 @@ async def google_auth_callback(
 
         if not granted_scopes:
             try:
-                ti_resp = await client.get(
+                ti_resp = await client.post(
                     GMAIL_TOKENINFO_URL,
-                    params={"access_token": access_token},
+                    data={"access_token": access_token},
+                    headers={
+                        "Accept": "application/json",
+                        "Authorization": f"Bearer {access_token}",
+                    },
                 )
                 if ti_resp.status_code == 200:
                     ti_data = ti_resp.json()
@@ -365,27 +401,27 @@ async def google_auth_callback(
         uow.commit()
 
     if "text/html" in request.headers.get("accept", ""):
+        escaped_email = html.escape(str(email))
         html_content = f"""<!DOCTYPE html>
 <html>
-<head><title>JackVerse OAuth Connected</title></head>
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="refresh" content="2;url=/cases">
+  <title>JackVerse OAuth Connected</title>
+</head>
 <body style="font-family: sans-serif; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; background: #0f172a; color: #f8fafc;">
   <div style="text-align: center; max-width: 400px; padding: 2rem; border: 1px solid #334155; border-radius: 8px; background: #1e293b;">
     <h2 style="margin-top: 0; color: #10b981;">Account Connected</h2>
-    <p>Google account <strong>{email}</strong> has been linked.</p>
-    <p style="color: #94a3b8; font-size: 0.875rem;">This window will close automatically.</p>
+    <p>Google account <strong>{escaped_email}</strong> has been linked.</p>
+    <p style="color: #94a3b8; font-size: 0.875rem;">Redirecting to your cases...</p>
   </div>
-  <script>
-    if (window.opener) {{
-      window.opener.postMessage({{ type: 'jackverse:oauth:success', email: '{email}' }}, '*');
-      setTimeout(() => window.close(), 1200);
-    }} else {{
-      setTimeout(() => {{ window.location.href = '/cases'; }}, 1500);
-    }}
-  </script>
 </body>
 </html>"""
-        return HTMLResponse(content=html_content, status_code=200)
+        html_resp = HTMLResponse(content=html_content, status_code=200)
+        _clear_nonce(html_resp)
+        return html_resp
 
+    _clear_nonce(response)
     return GoogleAuthCallbackResponse(
         success=True,
         email=str(email),
@@ -414,11 +450,14 @@ async def disconnect_google(
 
 @router.post("/api/v1/auth/operator/session", response_model=OperatorSessionResponse)
 async def create_operator_session(
+    request: Request,
     req: OperatorSessionRequest,
     response: Response,
     config: Annotated[APIConfig, Depends(get_config)],
 ) -> OperatorSessionResponse:
     """Establish an operator session cookie from a valid signed operator bearer token."""
+    secure = _resolve_cookie_security(request, config)
+
     if not config.operator_secret or len(config.operator_secret) < 32:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
@@ -437,6 +476,7 @@ async def create_operator_session(
         max_age=86400,
         httponly=True,
         samesite="lax",
+        secure=secure,
         path="/",
     )
     return OperatorSessionResponse(
@@ -446,14 +486,26 @@ async def create_operator_session(
 
 
 @router.delete("/api/v1/auth/operator/session")
-async def delete_operator_session(response: Response) -> dict[str, bool]:
+async def delete_operator_session(
+    request: Request,
+    response: Response,
+    config: Annotated[APIConfig, Depends(get_config)],
+) -> dict[str, bool]:
     """Terminate the operator session by clearing the operator session cookie."""
-    response.delete_cookie(OPERATOR_SESSION_COOKIE, path="/")
+    secure = _is_secure_request(request) or not config.dev_auth
+    response.delete_cookie(
+        key=OPERATOR_SESSION_COOKIE,
+        path="/",
+        httponly=True,
+        samesite="lax",
+        secure=secure,
+    )
     return {"success": True}
 
 
 @router.post("/api/v1/auth/operator/dev-session", response_model=OperatorSessionResponse)
 async def create_dev_operator_session(
+    request: Request,
     response: Response,
     config: Annotated[APIConfig, Depends(get_config)],
     operator_id: str = Query("dev-operator", description="Operator ID for dev session"),
@@ -464,22 +516,34 @@ async def create_dev_operator_session(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Dev operator session endpoint is only available when CASEWORKER_DEV_AUTH is enabled.",
         )
+    if config.real_execution_enabled or config.gmail_execution_enabled:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Developer operator sessions are strictly forbidden when real execution or Gmail transmission is enabled.",
+        )
     if not config.operator_secret or len(config.operator_secret) < 32:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Operator secret is not configured.",
         )
-    token = generate_operator_token(operator_id=operator_id, secret=config.operator_secret, ttl_seconds=86400)
+
+    clean_id = operator_id.strip()
+    if not (clean_id.startswith("dev-") or clean_id.startswith("dev_")):
+        clean_id = f"dev-{clean_id}"
+
+    token = generate_operator_token(operator_id=clean_id, secret=config.operator_secret, ttl_seconds=86400)
+    secure = _is_secure_request(request)
     response.set_cookie(
         key=OPERATOR_SESSION_COOKIE,
         value=token,
         max_age=86400,
         httponly=True,
         samesite="lax",
+        secure=secure,
         path="/",
     )
     return OperatorSessionResponse(
         success=True,
-        operator_id=operator_id,
+        operator_id=clean_id,
     )
 

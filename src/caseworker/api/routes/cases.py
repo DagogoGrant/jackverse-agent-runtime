@@ -5,10 +5,12 @@ from __future__ import annotations
 from typing import Annotated
 from fastapi import APIRouter, Depends, Request, Response, status
 
+from caseworker.api.config import APIConfig
 from caseworker.api.dependencies import (
     PaginationParams,
     get_action_service,
     get_artifact_service,
+    get_config,
     get_execution_plan_service,
     get_governed_execution_service,
     get_package_service,
@@ -1248,6 +1250,7 @@ async def execute_case_action(
     action_service: Annotated[ActionService, Depends(get_action_service)],
     exec_service: Annotated[GovernedExecutionService, Depends(get_governed_execution_service)],
     storage: Annotated[SQLiteCaseworkerStorage, Depends(get_storage)],
+    config: Annotated[APIConfig, Depends(get_config)],
     req: ExecuteActionRequest | None = None,
 ) -> ExecuteActionResponse:
     """Execute an approved transmission action for a case under governed execution pipeline."""
@@ -1265,6 +1268,7 @@ async def execute_case_action(
         action_service=action_service,
         exec_service=exec_service,
         storage=storage,
+        config=config,
         req=req,
     )
 

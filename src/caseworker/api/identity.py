@@ -68,7 +68,7 @@ class Principal:
 
     @property
     def is_operator(self) -> bool:
-        return self.has_role("operator") and self.auth_method in ("operator_token", "production_token")
+        return self.has_role("operator") and self.auth_method in ("operator_token", "production_token", "dev_operator_token")
 
 
 class IdentityProvider(Protocol):
@@ -102,6 +102,12 @@ class FailClosedIdentityProvider:
         if self.operator_secret and len(self.operator_secret) >= 32:
             op_id = verify_operator_token(token, self.operator_secret)
             if op_id:
+                if op_id.startswith("dev-") or op_id.startswith("dev_"):
+                    raise HTTPException(
+                        status_code=status.HTTP_401_UNAUTHORIZED,
+                        detail="Developer operator tokens are strictly forbidden in production mode.",
+                        headers={"WWW-Authenticate": "Bearer"},
+                    )
                 return Principal(
                     user_id=op_id,
                     roles=("operator", "user"),
@@ -135,11 +141,12 @@ class DevelopmentIdentityProvider:
         if token and self.operator_secret and len(self.operator_secret) >= 32:
             op_id = verify_operator_token(token, self.operator_secret)
             if op_id:
+                auth_method = "dev_operator_token" if (op_id.startswith("dev-") or op_id.startswith("dev_")) else "operator_token"
                 return Principal(
                     user_id=op_id,
                     roles=("operator", "user"),
                     is_authenticated=True,
-                    auth_method="operator_token",
+                    auth_method=auth_method,
                 )
 
         if not self.dev_auth_enabled:

@@ -997,7 +997,7 @@ class TestGmailHardeningRegressions(unittest.TestCase):
         from fastapi.testclient import TestClient
         client = TestClient(app)
 
-        valid_op_token = generate_operator_token("op_admin", self.OPERATOR_SECRET, ttl_seconds=3600)
+        valid_op_token = generate_operator_token(self.user_id, self.OPERATOR_SECRET, ttl_seconds=3600)
         op_headers = {"Authorization": f"Bearer {valid_op_token}", "X-JackVerse-User": self.user_id}
 
         # A. Non-operator caller rejected with 403
@@ -1052,7 +1052,7 @@ class TestGmailHardeningRegressions(unittest.TestCase):
         )
         self.assertEqual(valid_resp.status_code, 200)
         body = valid_resp.json()
-        self.assertEqual(body["verified_by"], "operator:op_admin")
+        self.assertEqual(body["verified_by"], f"operator:{self.user_id}")
         self.assertEqual(body["employer_domain"], "cloudscale.io")
         self.assertTrue(body["evidence_digest"])
         self.assertEqual(body["evidence_version"], 2)
@@ -1062,7 +1062,7 @@ class TestGmailHardeningRegressions(unittest.TestCase):
             active_rec = uow.verified_email_acceptance.get_active_by_opportunity(self.opp_id)
             self.assertIsNotNone(active_rec)
             self.assertEqual(active_rec.evidence_version, 2)
-            self.assertEqual(active_rec.verified_by, "operator:op_admin")
+            self.assertEqual(active_rec.verified_by, f"operator:{self.user_id}")
 
     def test_case_19_predispatch_readiness_outside_sqlite_write_locks(self) -> None:
         """Case 19: Pre-dispatch readiness executes outside SQLite write transactions."""
@@ -1109,3 +1109,318 @@ class TestGmailHardeningRegressions(unittest.TestCase):
         )
         self.assertEqual(receipt.status, ExecutionReceiptStatus.VERIFIED_SUCCESS)
         self.assertEqual(readiness_called, [True])
+
+    def test_case_20_dev_operator_session_rejected_when_real_execution_enabled(self) -> None:
+        """Case 20: POST /auth/operator/dev-session fails closed (403) when real execution flags are enabled."""
+        from fastapi.testclient import TestClient
+
+        # A. real_execution_enabled=True -> 403
+        config_real = APIConfig(
+            dev_auth=True,
+            operator_secret=self.OPERATOR_SECRET,
+            real_execution_enabled=True,
+            gmail_execution_enabled=False,
+        )
+        app_real = create_app(config=config_real, storage=self.storage)
+        client_real = TestClient(app_real)
+        resp_real = client_real.post("/api/v1/auth/operator/dev-session")
+        self.assertEqual(resp_real.status_code, 403)
+        self.assertIn("strictly forbidden when real execution or Gmail transmission is enabled", resp_real.text)
+
+        # B. gmail_execution_enabled=True -> 403
+        config_gmail = APIConfig(
+            dev_auth=True,
+            operator_secret=self.OPERATOR_SECRET,
+            real_execution_enabled=False,
+            gmail_execution_enabled=True,
+        )
+        app_gmail = create_app(config=config_gmail, storage=self.storage)
+        client_gmail = TestClient(app_gmail)
+        resp_gmail = client_gmail.post("/api/v1/auth/operator/dev-session")
+        self.assertEqual(resp_gmail.status_code, 403)
+        self.assertIn("strictly forbidden when real execution or Gmail transmission is enabled", resp_gmail.text)
+
+    def test_case_21_dev_operator_identity_cannot_execute_real_gmail(self) -> None:
+        """Case 21: Developer-generated operator identities cannot authorize genuine external transmissions."""
+        action, _ = self._setup_authorized_email_action()
+        mock_cred = StaticOAuthCredentialProvider("ya29.tok", self.applicant_email)
+        exec_service = GovernedExecutionService(
+            storage=self.storage,
+            real_execution_enabled=True,
+            gmail_execution_enabled=True,
+            credential_provider=mock_cred,
+            dev_auth=False,  # In production, but caller presents dev operator token
+        )
+
+        # 1. Dev operator auth method rejected at service level
+        with self.assertRaises(ApprovalValidationError) as ctx:
+            exec_service.execute_action(
+                user_id=self.user_id,
+                action_id=action.action_id,
+                principal_auth_method="dev_operator_token",
+            )
+        self.assertEqual(ctx.exception.details.get("failure_kind"), "operator_auth_required")
+
+        # 2. In API route: calling execute with dev operator token fails closed
+        from fastapi.testclient import TestClient
+        from caseworker.api.identity import generate_operator_token
+
+        config = APIConfig(
+            dev_auth=False,
+            real_execution_enabled=True,
+            gmail_execution_enabled=True,
+            operator_secret=self.OPERATOR_SECRET,
+        )
+        app = create_app(config=config, storage=self.storage)
+        client = TestClient(app)
+
+        dev_token = generate_operator_token("dev-operator", self.OPERATOR_SECRET, ttl_seconds=3600)
+        resp = client.post(
+            f"/api/v1/actions/{action.action_id}/execute",
+            headers={
+                "Authorization": f"Bearer {dev_token}",
+                "If-Match": f'action:{action.action_id}:{action.version}',
+            },
+        )
+        self.assertIn(resp.status_code, (400, 401, 403, 404, 422))
+
+    def test_case_22_simultaneous_dev_auth_and_real_gmail_fails_closed(self) -> None:
+        """Case 22: Combining dev_auth=True with real execution flags fails closed on live execution."""
+        action, _ = self._setup_authorized_email_action()
+        mock_cred = StaticOAuthCredentialProvider("ya29.tok", self.applicant_email)
+        exec_service = GovernedExecutionService(
+            storage=self.storage,
+            real_execution_enabled=True,
+            gmail_execution_enabled=True,
+            credential_provider=mock_cred,
+            dev_auth=True,  # Insecure combination
+        )
+
+        with self.assertRaises(ApprovalValidationError) as ctx:
+            exec_service.execute_action(
+                user_id=self.user_id,
+                action_id=action.action_id,
+                principal_auth_method="operator_token",
+            )
+        self.assertEqual(ctx.exception.details.get("failure_kind"), "insecure_configuration_rejected")
+
+    def test_case_23_cross_user_evidence_attestation_rejected(self) -> None:
+        """Case 23: Operator A cannot verify, replace, or supersede Operator B's evidence (cross-user rejected 403)."""
+        from caseworker.api.identity import generate_operator_token
+        from fastapi.testclient import TestClient
+
+        # Setup User B and Opportunity B
+        user_b = "user_b_applicant"
+        opp_b_id = "opp_b_email"
+        with self.storage.unit_of_work() as uow:
+            opp_b = Opportunity(
+                opportunity_id=opp_b_id,
+                user_id=user_b,
+                opportunity_type=OpportunityType.JOB,
+                title="Backend Engineer",
+                organization="BetaCorp",
+                source_url="https://betacorp.io/careers/backend",
+                status=OpportunityStatus.SHORTLISTED,
+            )
+            uow.opportunities.save(opp_b)
+            uow.commit()
+
+        config = APIConfig(
+            dev_auth=True,
+            operator_secret=self.OPERATOR_SECRET,
+        )
+        app = create_app(config=config, storage=self.storage)
+        client = TestClient(app)
+
+        # Operator A attempts to attest evidence for User B's opportunity
+        token_a = generate_operator_token("operator_a", self.OPERATOR_SECRET, ttl_seconds=3600)
+        headers_a = {"Authorization": f"Bearer {token_a}"}
+
+        resp = client.post(
+            f"/api/v1/opportunities/{opp_b_id}/verify-email-acceptance",
+            headers=headers_a,
+            json={
+                "source_uri": "https://betacorp.io/careers/backend",
+                "instructions_text": "Apply directly to jobs@betacorp.io",
+                "verified_recipient_email": "jobs@betacorp.io",
+                "evidence_source": "official_job_posting",
+            },
+        )
+        self.assertEqual(resp.status_code, 403)
+        self.assertIn("does not own Opportunity", resp.text)
+
+    def test_case_24_production_cookie_security_attributes_and_insecure_http_rejection(self) -> None:
+        """Case 24: Production HTTPS requires Secure cookies; insecure HTTP deployments fail closed."""
+        from caseworker.api.identity import generate_operator_token
+        from fastapi.testclient import TestClient
+
+        prod_config = APIConfig(
+            dev_auth=False,
+            gmail_client_id="test-client-id.apps.googleusercontent.com",
+            operator_secret=self.OPERATOR_SECRET,
+        )
+        app = create_app(config=prod_config, storage=self.storage)
+        client = TestClient(app)
+
+        # A. Insecure HTTP request in production fails closed with 400
+        valid_tok = generate_operator_token("prod_operator_1", self.OPERATOR_SECRET, ttl_seconds=3600)
+        insecure_resp = client.post(
+            "/api/v1/auth/operator/session",
+            json={"operator_token": valid_tok},
+        )
+        self.assertEqual(insecure_resp.status_code, 400)
+        self.assertIn("Insecure deployment", insecure_resp.text)
+
+        # B. HTTPS request (via X-Forwarded-Proto) succeeds and sets Secure, HttpOnly, SameSite=lax
+        secure_resp = client.post(
+            "/api/v1/auth/operator/session",
+            headers={"X-Forwarded-Proto": "https"},
+            json={"operator_token": valid_tok},
+        )
+        self.assertEqual(secure_resp.status_code, 200)
+        set_cookie = secure_resp.headers.get("set-cookie", "")
+        self.assertIn("jackverse_operator_session=", set_cookie)
+        self.assertIn("Secure", set_cookie)
+        self.assertIn("HttpOnly", set_cookie)
+        self.assertIn("samesite=lax", set_cookie.lower())
+
+    def test_case_25_callback_html_response_clears_cookie_and_escapes_xss(self) -> None:
+        """Case 25: Callback HTML response clears nonce on actual response, escapes email, and has no inline scripts."""
+        import secrets
+        from datetime import datetime, timedelta, timezone
+        from fastapi.testclient import TestClient
+        from caseworker.adapters.gmail_provider import GMAIL_SEND_SCOPE
+
+        state = secrets.token_urlsafe(32)
+        nonce = secrets.token_urlsafe(32)
+        now_dt = datetime.now(timezone.utc)
+        exp_dt = now_dt + timedelta(minutes=10)
+
+        with self.storage.unit_of_work() as uow:
+            rec = OAuthStateRecord(
+                state=state,
+                user_id=self.user_id,
+                provider="gmail",
+                code_verifier="test-verifier",
+                redirect_uri="http://localhost:8000/api/v1/auth/google/callback",
+                created_at=now_dt.isoformat().replace("+00:00", "Z"),
+                expires_at=exp_dt.isoformat().replace("+00:00", "Z"),
+                session_nonce=nonce,
+            )
+            uow.oauth_states.save(rec)
+            uow.commit()
+
+        # Mock token & userinfo with malicious XSS email
+        xss_email = '<script>alert("xss")</script>@evil.com'
+
+        def mock_google_api(req: httpx.Request) -> httpx.Response:
+            if "oauth2.googleapis.com/token" in str(req.url):
+                return httpx.Response(
+                    200,
+                    json={
+                        "access_token": "ya29.valid-xss-token",
+                        "refresh_token": "1//refresh-xss",
+                        "expires_in": 3600,
+                        "scope": f"openid https://www.googleapis.com/auth/userinfo.email {GMAIL_SEND_SCOPE}",
+                    },
+                )
+            if "oauth2/v3/userinfo" in str(req.url):
+                return httpx.Response(
+                    200,
+                    json={
+                        "sub": "sub-xss-999",
+                        "email": xss_email,
+                        "email_verified": True,
+                    },
+                )
+            return httpx.Response(404)
+
+        config = APIConfig(
+            dev_auth=True,
+            gmail_client_id="test-client-id.apps.googleusercontent.com",
+            gmail_client_secret="test-secret",
+            encryption_key=self.TEST_KEY,
+            operator_secret=self.OPERATOR_SECRET,
+        )
+        app = create_app(config=config, storage=self.storage)
+
+        # Patch httpx.AsyncClient used in auth.py callback
+        import unittest.mock as mock
+        with mock.patch("httpx.AsyncClient", return_value=httpx.AsyncClient(transport=httpx.MockTransport(mock_google_api))):
+            client = TestClient(app)
+            client.cookies.set("jackverse_oauth_nonce", nonce, path="/api/v1/auth")
+            resp = client.get(
+                "/api/v1/auth/google/callback",
+                params={"code": "valid-auth-code", "state": state},
+                headers={"Accept": "text/html", "X-JackVerse-User": self.user_id},
+            )
+
+        self.assertEqual(resp.status_code, 200)
+        self.assertIn("text/html", resp.headers.get("content-type", ""))
+
+        # Nonce cookie cleared on returned HTML response
+        set_cookie = resp.headers.get("set-cookie", "")
+        self.assertIn("jackverse_oauth_nonce=", set_cookie)
+        self.assertTrue("max-age=0" in set_cookie.lower() or "expires=" in set_cookie.lower())
+
+        # Email is HTML-escaped and NO executable script tags or postMessage
+        self.assertNotIn('<script>alert("xss")</script>', resp.text)
+        self.assertIn("&lt;script&gt;alert(&quot;xss&quot;)&lt;/script&gt;@evil.com", resp.text)
+        self.assertNotIn("<script>", resp.text.lower())
+        self.assertNotIn("postMessage", resp.text)
+        self.assertIn('http-equiv="refresh"', resp.text)
+
+    def test_case_26_oauth_credentials_not_in_url_params(self) -> None:
+        """Case 26: OAuth tokens are sent in request body and headers, never in URL query strings."""
+        requests_seen = []
+
+        def mock_capture(req: httpx.Request) -> httpx.Response:
+            requests_seen.append(req)
+            if "tokeninfo" in str(req.url):
+                return httpx.Response(200, json={"scope": "https://www.googleapis.com/auth/gmail.send"})
+            if "revoke" in str(req.url):
+                return httpx.Response(200)
+            return httpx.Response(404)
+
+        mock_http = httpx.Client(transport=httpx.MockTransport(mock_capture))
+        provider = DatabaseOAuthCredentialProvider(
+            storage=self.storage,
+            cipher=self.cipher,
+            http_client=mock_http,
+        )
+
+        # 1. Scope query
+        test_access_token = "ya29.secret_access_token_12345"
+        scopes = provider._fetch_scopes_from_tokeninfo(test_access_token)
+        self.assertEqual(scopes, ["https://www.googleapis.com/auth/gmail.send"])
+        ti_req = requests_seen[-1]
+        self.assertEqual(ti_req.method, "POST")
+        self.assertNotIn("access_token", ti_req.url.query.decode("ascii"))
+        self.assertIn("ya29.secret_access_token_12345", ti_req.read().decode("ascii"))
+        self.assertEqual(ti_req.headers.get("Authorization"), f"Bearer {test_access_token}")
+
+        # 2. Revoke call
+        with self.storage.unit_of_work() as uow:
+            rec = OAuthCredentialRecord(
+                user_id="user_revoke_test",
+                provider="gmail",
+                google_sub="sub-revoke",
+                access_token_enc=self.cipher.encrypt("ya29.revoke_token_999"),
+                refresh_token_enc=None,
+                token_expiry="2030-01-01T00:00:00Z",
+                authenticated_email="revoke@test.com",
+                scopes=["gmail.send"],
+                created_at="2026-01-01T00:00:00Z",
+                updated_at="2026-01-01T00:00:00Z",
+            )
+            uow.oauth_credentials.save(rec)
+            uow.commit()
+
+        success, err = provider.revoke_and_disconnect("user_revoke_test")
+        self.assertTrue(success)
+        self.assertIsNone(err)
+        revoke_req = requests_seen[-1]
+        self.assertEqual(revoke_req.method, "POST")
+        self.assertNotIn("token", revoke_req.url.query.decode("ascii"))
+        self.assertIn("ya29.revoke_token_999", revoke_req.read().decode("ascii"))
+
