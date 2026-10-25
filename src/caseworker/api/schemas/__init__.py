@@ -15,6 +15,12 @@ from caseworker.api.schemas.case import (
     ResolveCaseRequest,
     TransitionCaseRequest,
 )
+from caseworker.api.schemas.auth import (
+    GoogleAuthAuthorizeResponse,
+    GoogleAuthCallbackResponse,
+    GoogleAuthDisconnectResponse,
+    GoogleAuthStatusResponse,
+)
 from caseworker.api.schemas.claim import (
     ClaimResponse,
     EvaluateClaimRequest,
@@ -102,6 +108,10 @@ __all__ = [
     "EvidenceMappingItemResponse",
     "FactResponse",
     "GapItemResponse",
+    "GoogleAuthAuthorizeResponse",
+    "GoogleAuthCallbackResponse",
+    "GoogleAuthDisconnectResponse",
+    "GoogleAuthStatusResponse",
     "MissionResponse",
     "OpportunityResponse",
     "PaginatedResponse",

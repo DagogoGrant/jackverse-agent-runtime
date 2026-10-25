@@ -144,6 +144,86 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/auth/google/authorize": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Authorize Google
+         * @description Generate PKCE challenge, save one-time state, and return Google OAuth authorization URL.
+         */
+        get: operations["authorize_google_api_v1_auth_google_authorize_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/google/callback": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Google Auth Callback
+         * @description Validate Google OAuth callback, exchange code with PKCE, verify identity, and encrypt tokens.
+         */
+        get: operations["google_auth_callback_api_v1_auth_google_callback_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/google/disconnect": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Disconnect Google
+         * @description Disconnect Google OAuth credentials, revoking remote tokens best-effort and deleting local storage.
+         */
+        post: operations["disconnect_google_api_v1_auth_google_disconnect_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/google/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Google Auth Status
+         * @description Return Google OAuth connection status for the authenticated user.
+         */
+        get: operations["get_google_auth_status_api_v1_auth_google_status_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/cases": {
         parameters: {
             query?: never;
@@ -1852,6 +1932,60 @@ export interface components {
             /** Status */
             status: string;
         };
+        /** EmailAcceptanceEvidenceResponse */
+        EmailAcceptanceEvidenceResponse: {
+            /** Employer Domain */
+            employer_domain: string;
+            /** Evidence Digest */
+            evidence_digest: string;
+            /** Evidence Snapshot Hash */
+            evidence_snapshot_hash: string;
+            /** Evidence Source */
+            evidence_source: string;
+            /** Instructions Text */
+            instructions_text: string;
+            /** Source Uri */
+            source_uri: string;
+            /** Verified At */
+            verified_at: string;
+            /** Verified By */
+            verified_by: string;
+            /** Verified Recipient Email */
+            verified_recipient_email: string;
+        };
+        /** EmailAttachmentManifestResponse */
+        EmailAttachmentManifestResponse: {
+            /** Asset Id */
+            asset_id: string;
+            /** Byte Size */
+            byte_size: number;
+            /** Content Sha256 */
+            content_sha256: string;
+            /** Filename */
+            filename: string;
+            /** Mime Type */
+            mime_type: string;
+        };
+        /** EmailPayloadManifestResponse */
+        EmailPayloadManifestResponse: {
+            acceptance_evidence?: components["schemas"]["EmailAcceptanceEvidenceResponse"] | null;
+            /** Attachments */
+            attachments?: components["schemas"]["EmailAttachmentManifestResponse"][];
+            /** Body Text */
+            body_text: string;
+            /** Date Header */
+            date_header: string;
+            /** From Email */
+            from_email: string;
+            /** Message Id */
+            message_id: string;
+            /** Sealed Payload Hash */
+            sealed_payload_hash: string;
+            /** Subject */
+            subject: string;
+            /** To Email */
+            to_email: string;
+        };
         /** EvaluateClaimRequest */
         EvaluateClaimRequest: Record<string, never>;
         /** EvaluationSnapshotResponse */
@@ -2026,7 +2160,7 @@ export interface components {
          * @description Classification of execution errors.
          * @enum {string}
          */
-        ExecutionErrorCategory: "pre_submit_network" | "selector_not_found" | "staging_validation_failed" | "submit_timeout" | "submit_rejected" | "integrity_violation" | "fencing_violation" | "lease_expired" | "unknown";
+        ExecutionErrorCategory: "pre_submit_network" | "selector_not_found" | "staging_validation_failed" | "submit_timeout" | "submit_rejected" | "integrity_violation" | "fencing_violation" | "lease_expired" | "provider_auth_error" | "payload_integrity_mismatch" | "unsupported_destination" | "unknown";
         /** ExecutionFieldMappingResponse */
         ExecutionFieldMappingResponse: {
             /** Allowed Purposes */
@@ -2068,7 +2202,7 @@ export interface components {
          * @description Execution adapter provider types.
          * @enum {string}
          */
-        ExecutionProviderKind: "simulated_test";
+        ExecutionProviderKind: "simulated_test" | "gmail_api";
         /** ExecutionReceiptResponse */
         ExecutionReceiptResponse: {
             /** Action Id */
@@ -2188,6 +2322,7 @@ export interface components {
              * @default
              */
             destination_provenance: string;
+            email_manifest?: components["schemas"]["EmailPayloadManifestResponse"] | null;
             /** Execution Input Hash */
             execution_input_hash: string;
             /** Execution Plan Fingerprint */
@@ -2351,6 +2486,91 @@ export interface components {
             requirement_type: string;
             /** Severity */
             severity: string;
+        };
+        /**
+         * GoogleAuthAuthorizeResponse
+         * @description Response containing the Google OAuth authorization redirect URL and state.
+         */
+        GoogleAuthAuthorizeResponse: {
+            /**
+             * Authorization Url
+             * @description Google OAuth authorization consent URL.
+             */
+            authorization_url: string;
+            /**
+             * State
+             * @description Cryptographically random one-time state token.
+             */
+            state: string;
+        };
+        /**
+         * GoogleAuthCallbackResponse
+         * @description Response returned upon successful OAuth authorization code exchange.
+         */
+        GoogleAuthCallbackResponse: {
+            /**
+             * Email
+             * @description Verified Google email address.
+             */
+            email: string;
+            /**
+             * Provider
+             * @description Identity and OAuth provider name.
+             * @default google
+             */
+            provider: string;
+            /**
+             * Success
+             * @description Whether token exchange and credential storage succeeded.
+             */
+            success: boolean;
+            /**
+             * User Id
+             * @description Caseworker user ID bound to this credential.
+             */
+            user_id: string;
+        };
+        /**
+         * GoogleAuthDisconnectResponse
+         * @description Response returned upon disconnecting Google OAuth credentials.
+         */
+        GoogleAuthDisconnectResponse: {
+            /**
+             * Disconnected
+             * @description Whether local credential record was deleted.
+             */
+            disconnected: boolean;
+            /**
+             * Success
+             * @description Whether disconnect was processed.
+             */
+            success: boolean;
+        };
+        /**
+         * GoogleAuthStatusResponse
+         * @description Google OAuth connection status for the authenticated user.
+         */
+        GoogleAuthStatusResponse: {
+            /**
+             * Authenticated Email
+             * @description The authenticated Google email address.
+             */
+            authenticated_email?: string | null;
+            /**
+             * Connected
+             * @description Whether a valid OAuth credential exists for this user.
+             */
+            connected: boolean;
+            /**
+             * Expires At
+             * @description ISO UTC timestamp when the access token expires.
+             */
+            expires_at?: string | null;
+            /**
+             * Scopes
+             * @description Granted OAuth scopes.
+             */
+            scopes?: string[];
         };
         /** HTTPValidationError */
         HTTPValidationError: {
@@ -3567,6 +3787,104 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    authorize_google_api_v1_auth_google_authorize_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GoogleAuthAuthorizeResponse"];
+                };
+            };
+        };
+    };
+    google_auth_callback_api_v1_auth_google_callback_get: {
+        parameters: {
+            query?: {
+                /** @description Google OAuth authorization code */
+                code?: string | null;
+                /** @description One-time state parameter */
+                state?: string | null;
+                /** @description Google OAuth error code */
+                error?: string | null;
+                /** @description Google OAuth error message */
+                error_description?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GoogleAuthCallbackResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    disconnect_google_api_v1_auth_google_disconnect_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GoogleAuthDisconnectResponse"];
+                };
+            };
+        };
+    };
+    get_google_auth_status_api_v1_auth_google_status_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GoogleAuthStatusResponse"];
                 };
             };
         };

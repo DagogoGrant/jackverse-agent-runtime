@@ -34,6 +34,15 @@ class APIConfig:
     gmail_refresh_token: str = field(
         default_factory=lambda: os.getenv("CASEWORKER_GMAIL_REFRESH_TOKEN", "")
     )
+    gmail_redirect_uri: str = field(
+        default_factory=lambda: os.getenv("CASEWORKER_GMAIL_REDIRECT_URI", "http://localhost:8000/api/v1/auth/google/callback")
+    )
+    encryption_key: str = field(
+        default_factory=lambda: os.getenv("CASEWORKER_ENCRYPTION_KEY", "")
+    )
+    operator_secret: str = field(
+        default_factory=lambda: os.getenv("CASEWORKER_OPERATOR_SECRET", "")
+    )
     allowed_origins: list[str] = field(
         default_factory=lambda: [
             origin.strip()

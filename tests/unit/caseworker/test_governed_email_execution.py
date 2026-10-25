@@ -102,6 +102,15 @@ class TestGovernedEmailExecution(unittest.TestCase):
                     "application_channel": "email",
                     "application_email": "jobs@cloudscale.io",
                     "accepts_email_applications": True,
+                    "email_acceptance_evidence": {
+                        "evidence_source": "official_job_posting",
+                        "source_uri": "https://cloudscale.io/careers/lead-infra",
+                        "instructions_text": "Please email your resume and cover letter to jobs@cloudscale.io",
+                        "verified_recipient_email": "jobs@cloudscale.io",
+                        "employer_domain": "cloudscale.io",
+                        "verified_by": "operator:grant",
+                        "verified_at": "2026-10-25T10:00:00Z",
+                    },
                 },
                 converted_case_id=self.case_id,
                 status=OpportunityStatus.SHORTLISTED,
@@ -303,7 +312,7 @@ class TestGovernedEmailExecution(unittest.TestCase):
             self.assertEqual(manifest.to_email, "jobs@cloudscale.io")
             self.assertEqual(manifest.from_email, self.applicant_email)
             self.assertTrue(manifest.message_id.startswith("<plan-"))
-            self.assertIn("@cloudscale.io>", manifest.message_id)
+            self.assertIn("@example.com>", manifest.message_id)
             self.assertTrue(manifest.sealed_payload_hash)
             self.assertTrue(len(manifest.attachments) >= 1)
 

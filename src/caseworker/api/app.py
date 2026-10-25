@@ -13,6 +13,7 @@ from caseworker.api.middleware import CorrelationIdMiddleware, SecurityHeadersMi
 from caseworker.api.routes import (
     actions_router,
     approvals_router,
+    auth_router,
     cases_router,
     claims_router,
     context_router,
@@ -75,6 +76,7 @@ def create_app(
 
     # Mount API routers
     app.include_router(health_router)
+    app.include_router(auth_router)
     app.include_router(missions_router)
     app.include_router(cases_router)
     app.include_router(opportunities_router)

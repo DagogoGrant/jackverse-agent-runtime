@@ -89,3 +89,27 @@ class PackageVerificationError(CaseworkerError):
             "findings": [f.to_dict() if hasattr(f, "to_dict") else f for f in self.findings],
         }
 
+
+class CryptoConfigurationError(CaseworkerError):
+    """Raised when encryption key is missing, invalid, or insecure."""
+
+
+class TokenDecryptionError(CaseworkerError):
+    """Raised when token decryption or authentication verification fails."""
+
+
+class OAuthError(CaseworkerError):
+    """Raised when OAuth authorization, token exchange, or account verification fails."""
+
+    def __init__(self, message: str, details: dict[str, Any] | None = None) -> None:
+        super().__init__(message)
+        self.details = details or {}
+
+
+class SSRFValidationError(CaseworkerError):
+    """Raised when an evidence source URI targets internal, reserved, or prohibited destinations."""
+
+
+class ProviderAuthError(OAuthError):
+    """Raised when provider authentication fails or credentials are unavailable."""
+

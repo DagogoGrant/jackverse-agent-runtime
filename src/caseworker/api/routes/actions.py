@@ -24,7 +24,11 @@ from caseworker.api.schemas.execution import (
 )
 from caseworker.domain.action import Action
 from caseworker.domain.approval import Approval
-from caseworker.domain.enums import ExecutionAttemptStatus, ExecutionReceiptStatus
+from caseworker.domain.enums import (
+    ExecutionAttemptStatus,
+    ExecutionDestinationType,
+    ExecutionReceiptStatus,
+)
 from caseworker.domain.errors import ApprovalValidationError, EntityNotFoundError
 from caseworker.domain.execution_attempt import ExecutionAttempt
 from caseworker.domain.execution_receipt import ExecutionReceipt
@@ -268,6 +272,18 @@ async def execute_action(
                 "In live production environments, real-world execution requires an authorized genuine provider adapter.",
                 details={"failure_kind": "simulation_not_permitted"},
             )
+        # Email transmissions must use genuine governed provider; simulation mode rejected
+        with storage.unit_of_work() as uow:
+            plan_id = action.parameters.get("plan_id", "")
+            plan = uow.execution_plans.get_by_id(plan_id) if plan_id else None
+            if plan and (
+                (hasattr(plan.destination.destination_type, "value") and plan.destination.destination_type.value == ExecutionDestinationType.EMAIL.value)
+                or str(plan.destination.destination_type) == ExecutionDestinationType.EMAIL.value
+            ):
+                raise ApprovalValidationError(
+                    "Simulation request rejected for live real-transmission approval. Email transmissions must use the genuine governed provider.",
+                    details={"failure_kind": "simulation_not_permitted"},
+                )
         provider = SimulatedExecutionProvider(req.simulation_mode)
 
     # 5. Execute through governed pipeline
@@ -275,6 +291,7 @@ async def execute_action(
         user_id=principal.user_id,
         action_id=action_id,
         provider=provider,
+        principal_auth_method=principal.auth_method,
     )
 
     fresh_action = action_service.get_action_for_user(principal.user_id, action_id) or action

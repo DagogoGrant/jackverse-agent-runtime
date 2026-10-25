@@ -1362,6 +1362,152 @@
         "title": "EligibilityResultResponse",
         "type": "object"
       },
+      "EmailAcceptanceEvidenceResponse": {
+        "properties": {
+          "employer_domain": {
+            "title": "Employer Domain",
+            "type": "string"
+          },
+          "evidence_digest": {
+            "title": "Evidence Digest",
+            "type": "string"
+          },
+          "evidence_snapshot_hash": {
+            "title": "Evidence Snapshot Hash",
+            "type": "string"
+          },
+          "evidence_source": {
+            "title": "Evidence Source",
+            "type": "string"
+          },
+          "instructions_text": {
+            "title": "Instructions Text",
+            "type": "string"
+          },
+          "source_uri": {
+            "title": "Source Uri",
+            "type": "string"
+          },
+          "verified_at": {
+            "title": "Verified At",
+            "type": "string"
+          },
+          "verified_by": {
+            "title": "Verified By",
+            "type": "string"
+          },
+          "verified_recipient_email": {
+            "title": "Verified Recipient Email",
+            "type": "string"
+          }
+        },
+        "required": [
+          "evidence_source",
+          "source_uri",
+          "instructions_text",
+          "verified_recipient_email",
+          "employer_domain",
+          "verified_by",
+          "verified_at",
+          "evidence_snapshot_hash",
+          "evidence_digest"
+        ],
+        "title": "EmailAcceptanceEvidenceResponse",
+        "type": "object"
+      },
+      "EmailAttachmentManifestResponse": {
+        "properties": {
+          "asset_id": {
+            "title": "Asset Id",
+            "type": "string"
+          },
+          "byte_size": {
+            "title": "Byte Size",
+            "type": "integer"
+          },
+          "content_sha256": {
+            "title": "Content Sha256",
+            "type": "string"
+          },
+          "filename": {
+            "title": "Filename",
+            "type": "string"
+          },
+          "mime_type": {
+            "title": "Mime Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "asset_id",
+          "filename",
+          "mime_type",
+          "content_sha256",
+          "byte_size"
+        ],
+        "title": "EmailAttachmentManifestResponse",
+        "type": "object"
+      },
+      "EmailPayloadManifestResponse": {
+        "properties": {
+          "acceptance_evidence": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/EmailAcceptanceEvidenceResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "attachments": {
+            "items": {
+              "$ref": "#/components/schemas/EmailAttachmentManifestResponse"
+            },
+            "title": "Attachments",
+            "type": "array"
+          },
+          "body_text": {
+            "title": "Body Text",
+            "type": "string"
+          },
+          "date_header": {
+            "title": "Date Header",
+            "type": "string"
+          },
+          "from_email": {
+            "title": "From Email",
+            "type": "string"
+          },
+          "message_id": {
+            "title": "Message Id",
+            "type": "string"
+          },
+          "sealed_payload_hash": {
+            "title": "Sealed Payload Hash",
+            "type": "string"
+          },
+          "subject": {
+            "title": "Subject",
+            "type": "string"
+          },
+          "to_email": {
+            "title": "To Email",
+            "type": "string"
+          }
+        },
+        "required": [
+          "to_email",
+          "from_email",
+          "subject",
+          "body_text",
+          "message_id",
+          "date_header",
+          "sealed_payload_hash"
+        ],
+        "title": "EmailPayloadManifestResponse",
+        "type": "object"
+      },
       "EvaluateClaimRequest": {
         "additionalProperties": false,
         "properties": {},
@@ -1831,6 +1977,9 @@
           "integrity_violation",
           "fencing_violation",
           "lease_expired",
+          "provider_auth_error",
+          "payload_integrity_mismatch",
+          "unsupported_destination",
           "unknown"
         ],
         "title": "ExecutionErrorCategory",
@@ -1926,7 +2075,8 @@
       "ExecutionProviderKind": {
         "description": "Execution adapter provider types.",
         "enum": [
-          "simulated_test"
+          "simulated_test",
+          "gmail_api"
         ],
         "title": "ExecutionProviderKind",
         "type": "string"
@@ -2210,6 +2360,16 @@
             "default": "",
             "title": "Destination Provenance",
             "type": "string"
+          },
+          "email_manifest": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/EmailPayloadManifestResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "execution_input_hash": {
             "title": "Execution Input Hash",
@@ -2673,6 +2833,128 @@
           "mitigation_guidance"
         ],
         "title": "GapItemResponse",
+        "type": "object"
+      },
+      "GoogleAuthAuthorizeResponse": {
+        "description": "Response containing the Google OAuth authorization redirect URL and state.",
+        "properties": {
+          "authorization_url": {
+            "description": "Google OAuth authorization consent URL.",
+            "title": "Authorization Url",
+            "type": "string"
+          },
+          "state": {
+            "description": "Cryptographically random one-time state token.",
+            "title": "State",
+            "type": "string"
+          }
+        },
+        "required": [
+          "authorization_url",
+          "state"
+        ],
+        "title": "GoogleAuthAuthorizeResponse",
+        "type": "object"
+      },
+      "GoogleAuthCallbackResponse": {
+        "description": "Response returned upon successful OAuth authorization code exchange.",
+        "properties": {
+          "email": {
+            "description": "Verified Google email address.",
+            "title": "Email",
+            "type": "string"
+          },
+          "provider": {
+            "default": "google",
+            "description": "Identity and OAuth provider name.",
+            "title": "Provider",
+            "type": "string"
+          },
+          "success": {
+            "description": "Whether token exchange and credential storage succeeded.",
+            "title": "Success",
+            "type": "boolean"
+          },
+          "user_id": {
+            "description": "Caseworker user ID bound to this credential.",
+            "title": "User Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "success",
+          "email",
+          "user_id"
+        ],
+        "title": "GoogleAuthCallbackResponse",
+        "type": "object"
+      },
+      "GoogleAuthDisconnectResponse": {
+        "description": "Response returned upon disconnecting Google OAuth credentials.",
+        "properties": {
+          "disconnected": {
+            "description": "Whether local credential record was deleted.",
+            "title": "Disconnected",
+            "type": "boolean"
+          },
+          "success": {
+            "description": "Whether disconnect was processed.",
+            "title": "Success",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "success",
+          "disconnected"
+        ],
+        "title": "GoogleAuthDisconnectResponse",
+        "type": "object"
+      },
+      "GoogleAuthStatusResponse": {
+        "description": "Google OAuth connection status for the authenticated user.",
+        "properties": {
+          "authenticated_email": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The authenticated Google email address.",
+            "title": "Authenticated Email"
+          },
+          "connected": {
+            "description": "Whether a valid OAuth credential exists for this user.",
+            "title": "Connected",
+            "type": "boolean"
+          },
+          "expires_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "ISO UTC timestamp when the access token expires.",
+            "title": "Expires At"
+          },
+          "scopes": {
+            "description": "Granted OAuth scopes.",
+            "items": {
+              "type": "string"
+            },
+            "title": "Scopes",
+            "type": "array"
+          }
+        },
+        "required": [
+          "connected"
+        ],
+        "title": "GoogleAuthStatusResponse",
         "type": "object"
       },
       "HTTPValidationError": {
@@ -5149,6 +5431,178 @@
         "summary": "Reject Action",
         "tags": [
           "approvals"
+        ]
+      }
+    },
+    "/api/v1/auth/google/authorize": {
+      "get": {
+        "description": "Generate PKCE challenge, save one-time state, and return Google OAuth authorization URL.",
+        "operationId": "authorize_google_api_v1_auth_google_authorize_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GoogleAuthAuthorizeResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Authorize Google",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/v1/auth/google/callback": {
+      "get": {
+        "description": "Validate Google OAuth callback, exchange code with PKCE, verify identity, and encrypt tokens.",
+        "operationId": "google_auth_callback_api_v1_auth_google_callback_get",
+        "parameters": [
+          {
+            "description": "Google OAuth authorization code",
+            "in": "query",
+            "name": "code",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Google OAuth authorization code",
+              "title": "Code"
+            }
+          },
+          {
+            "description": "One-time state parameter",
+            "in": "query",
+            "name": "state",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "One-time state parameter",
+              "title": "State"
+            }
+          },
+          {
+            "description": "Google OAuth error code",
+            "in": "query",
+            "name": "error",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Google OAuth error code",
+              "title": "Error"
+            }
+          },
+          {
+            "description": "Google OAuth error message",
+            "in": "query",
+            "name": "error_description",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Google OAuth error message",
+              "title": "Error Description"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GoogleAuthCallbackResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Google Auth Callback",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/v1/auth/google/disconnect": {
+      "post": {
+        "description": "Disconnect Google OAuth credentials, revoking remote tokens best-effort and deleting local storage.",
+        "operationId": "disconnect_google_api_v1_auth_google_disconnect_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GoogleAuthDisconnectResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Disconnect Google",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/v1/auth/google/status": {
+      "get": {
+        "description": "Return Google OAuth connection status for the authenticated user.",
+        "operationId": "get_google_auth_status_api_v1_auth_google_status_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GoogleAuthStatusResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get Google Auth Status",
+        "tags": [
+          "auth"
         ]
       }
     },

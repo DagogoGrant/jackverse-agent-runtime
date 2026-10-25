@@ -13,6 +13,7 @@ Features:
 from __future__ import annotations
 
 from collections.abc import Sequence
+from dataclasses import dataclass
 from datetime import datetime
 import json
 from pathlib import Path
@@ -3073,6 +3074,157 @@ class SQLiteExecutionReceiptRepository(ExecutionReceiptRepository):
         )
 
 
+@dataclass
+class OAuthCredentialRecord:
+    user_id: str
+    provider: str
+    google_sub: str
+    access_token_enc: str
+    refresh_token_enc: str | None
+    token_expiry: str
+    authenticated_email: str
+    scopes: list[str]
+    created_at: str
+    updated_at: str
+
+
+class SQLiteOAuthCredentialRepository:
+    """Repository for managing encrypted user OAuth credentials."""
+
+    def __init__(self, conn: sqlite3.Connection) -> None:
+        self.conn = conn
+
+    def save(self, record: OAuthCredentialRecord) -> None:
+        scopes_str = " ".join(record.scopes) if isinstance(record.scopes, (list, tuple, set)) else str(record.scopes)
+        sql = """
+        INSERT INTO user_oauth_credentials (
+            user_id, provider, google_sub, access_token_enc, refresh_token_enc,
+            token_expiry, authenticated_email, scopes, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(user_id, provider) DO UPDATE SET
+            google_sub = excluded.google_sub,
+            access_token_enc = excluded.access_token_enc,
+            refresh_token_enc = coalesce(excluded.refresh_token_enc, user_oauth_credentials.refresh_token_enc),
+            token_expiry = excluded.token_expiry,
+            authenticated_email = excluded.authenticated_email,
+            scopes = excluded.scopes,
+            updated_at = excluded.updated_at;
+        """
+        self.conn.execute(
+            sql,
+            (
+                record.user_id,
+                record.provider,
+                record.google_sub,
+                record.access_token_enc,
+                record.refresh_token_enc,
+                record.token_expiry,
+                record.authenticated_email,
+                scopes_str,
+                record.created_at,
+                record.updated_at,
+            ),
+        )
+
+    def get_by_user_and_provider(self, user_id: str, provider: str) -> OAuthCredentialRecord | None:
+        sql = """
+        SELECT user_id, provider, google_sub, access_token_enc, refresh_token_enc,
+               token_expiry, authenticated_email, scopes, created_at, updated_at
+        FROM user_oauth_credentials
+        WHERE user_id = ? AND provider = ?;
+        """
+        cur = self.conn.execute(sql, (user_id, provider))
+        row = cur.fetchone()
+        if not row:
+            return None
+        return OAuthCredentialRecord(
+            user_id=row[0],
+            provider=row[1],
+            google_sub=row[2],
+            access_token_enc=row[3],
+            refresh_token_enc=row[4],
+            token_expiry=row[5],
+            authenticated_email=row[6],
+            scopes=[s for s in row[7].split(" ") if s],
+            created_at=row[8],
+            updated_at=row[9],
+        )
+
+    def delete_by_user_and_provider(self, user_id: str, provider: str) -> bool:
+        cur = self.conn.execute(
+            "DELETE FROM user_oauth_credentials WHERE user_id = ? AND provider = ?;",
+            (user_id, provider),
+        )
+        return cur.rowcount > 0
+
+
+@dataclass
+class OAuthStateRecord:
+    state: str
+    user_id: str
+    provider: str
+    code_verifier: str
+    redirect_uri: str
+    created_at: str
+    expires_at: str
+    used_at: str | None = None
+
+
+class SQLiteOAuthStateRepository:
+    """Repository for managing one-time PKCE OAuth states with expiration and replay protection."""
+
+    def __init__(self, conn: sqlite3.Connection) -> None:
+        self.conn = conn
+
+    def save(self, record: OAuthStateRecord) -> None:
+        sql = """
+        INSERT INTO oauth_states (
+            state, user_id, provider, code_verifier, redirect_uri, created_at, expires_at, used_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?);
+        """
+        self.conn.execute(
+            sql,
+            (
+                record.state,
+                record.user_id,
+                record.provider,
+                record.code_verifier,
+                record.redirect_uri,
+                record.created_at,
+                record.expires_at,
+                record.used_at,
+            ),
+        )
+
+    def get_by_state(self, state: str) -> OAuthStateRecord | None:
+        sql = """
+        SELECT state, user_id, provider, code_verifier, redirect_uri, created_at, expires_at, used_at
+        FROM oauth_states
+        WHERE state = ?;
+        """
+        cur = self.conn.execute(sql, (state,))
+        row = cur.fetchone()
+        if not row:
+            return None
+        return OAuthStateRecord(
+            state=row[0],
+            user_id=row[1],
+            provider=row[2],
+            code_verifier=row[3],
+            redirect_uri=row[4],
+            created_at=row[5],
+            expires_at=row[6],
+            used_at=row[7],
+        )
+
+    def mark_used(self, state: str, used_at: str) -> bool:
+        cur = self.conn.execute(
+            "UPDATE oauth_states SET used_at = ? WHERE state = ? AND used_at IS NULL;",
+            (used_at, state),
+        )
+        return cur.rowcount > 0
+
+
 class SQLiteCaseworkerUnitOfWork(CaseworkerUnitOfWork):
     """Transaction / Unit-of-Work boundary using SQLite."""
 
@@ -3095,6 +3247,8 @@ class SQLiteCaseworkerUnitOfWork(CaseworkerUnitOfWork):
         self.execution_leases = SQLiteExecutionLeaseRepository(conn)
         self.execution_attempts = SQLiteExecutionAttemptRepository(conn)
         self.execution_receipts = SQLiteExecutionReceiptRepository(conn)
+        self.oauth_credentials = SQLiteOAuthCredentialRepository(conn)
+        self.oauth_states = SQLiteOAuthStateRepository(conn)
         self.events = SQLiteEventStore(conn)
         self._in_transaction = False
 

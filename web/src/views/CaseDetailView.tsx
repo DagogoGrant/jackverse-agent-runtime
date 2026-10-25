@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
-import { ArrowLeft, AlertTriangle, CheckCircle2, XCircle, Search, ChevronDown, FileText, Copy, Check, ShieldCheck, ShieldAlert, X, Lock, Send, Eye, EyeOff, FileCode, Settings, Zap, CheckCircle } from 'lucide-react';
+import { ArrowLeft, AlertTriangle, CheckCircle2, XCircle, Search, ChevronDown, FileText, Copy, Check, ShieldCheck, ShieldAlert, X, Lock, Send, Eye, EyeOff, FileCode, Settings, Zap, CheckCircle, Mail } from 'lucide-react';
 import {
   useCase,
   useCaseActions,
@@ -25,6 +25,7 @@ import {
   useExecuteAction,
   useExecutionReceipt,
   useExecutionAttempts,
+  useGoogleAuthStatus,
 } from '../hooks/useCaseworker';
 import { apiRequest, PreconditionFailedError } from '../api/client';
 import type {
@@ -107,9 +108,10 @@ export const CaseDetailView: React.FC = () => {
     (attempts.length > 0 && attempts[attempts.length - 1].provider_kind === 'simulated_test')
   );
 
+  const { data: googleAuth } = useGoogleAuthStatus();
   const [executionError, setExecutionError] = useState<string | null>(null);
   const [showExecutionModal, setShowExecutionModal] = useState(false);
-  const [simulationMode, setSimulationMode] = useState<string>('success');
+  const [simulationMode, setSimulationMode] = useState<string>('');
   const [copiedReceiptHash, setCopiedReceiptHash] = useState(false);
 
   const approvedTransmissionAction = actions?.find(
@@ -123,6 +125,9 @@ export const CaseDetailView: React.FC = () => {
   const approvedPlanId = (approvedTransmissionAction?.parameters?.plan_id as string) || undefined;
   const { data: approvedPlan, isLoading: isPlanLoading } = useExecutionPlan(caseId, approvedPlanId);
   const targetPlan = (latestPlan?.plan_id === approvedPlanId ? latestPlan : approvedPlan) || null;
+  const isEmailDestination = targetPlan?.destination?.destination_type === 'email';
+  const isGoogleConnected = Boolean(googleAuth?.connected);
+
   const isPlanFingerprintMatching = Boolean(
     approvedTransmissionAction &&
       targetPlan &&
@@ -135,7 +140,8 @@ export const CaseDetailView: React.FC = () => {
       !isPlanLoading &&
       targetPlan.plan_id === approvedPlanId &&
       isPlanFingerprintMatching &&
-      targetPlan.status === 'ready_for_authorization'
+      targetPlan.status === 'ready_for_authorization' &&
+      (!isEmailDestination || isGoogleConnected)
   );
 
   const handleExecuteTransmission = async () => {
@@ -144,11 +150,12 @@ export const CaseDetailView: React.FC = () => {
     setConcurrencyNotice(null);
     try {
       const actionEtag = `"action:${approvedTransmissionAction.action_id}:v${approvedTransmissionAction.version}"`;
+      const activeSimulation = isEmailDestination ? undefined : (simulationMode || undefined);
       await executeActionMutation.mutateAsync({
         actionId: approvedTransmissionAction.action_id,
         caseId,
         etag: actionEtag,
-        simulationMode: simulationMode || undefined,
+        simulationMode: activeSimulation,
       });
       setShowExecutionModal(false);
       await refetchCase();
@@ -3100,26 +3107,119 @@ export const CaseDetailView: React.FC = () => {
               </div>
             )}
 
-            {/* Simulation Mode selector (for demo / dev testing) */}
-            <div className="space-y-1.5 text-xs">
-              <label className="font-machine text-[11px] uppercase text-jv-muted font-semibold">
-                Execution Provider Mode
-              </label>
-              <select
-                value={simulationMode}
-                onChange={(e) => setSimulationMode(e.target.value)}
-                className="w-full p-2 border border-jv-rule bg-jv-bg font-mono text-xs text-jv-ink rounded-none"
-              >
-                <option value="success">simulated_test: Deterministic Verified Success</option>
-                <option value="pre_stage_failure">simulated_test: Barrier A Integrity Failure</option>
-                <option value="staging_failure">simulated_test: Form Staging Failure</option>
-                <option value="submit_confirmed_failure">simulated_test: External Rejection</option>
-                <option value="submit_timeout">simulated_test: Ambiguous Submit Timeout</option>
-              </select>
-              <p className="text-[10px] text-jv-muted">
-                Under Phase 5.3.3, execution uses the deterministic SimulatedExecutionProvider.
-              </p>
-            </div>
+            {isEmailDestination && (
+              <div className="space-y-3">
+                <div className={`p-3 border text-xs font-interface space-y-1.5 ${
+                  isGoogleConnected
+                    ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300'
+                    : 'border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-300'
+                }`}>
+                  <div className="font-semibold flex items-center justify-between">
+                    <span className="flex items-center gap-1.5">
+                      <Mail className="w-4 h-4 shrink-0" />
+                      GOOGLE OAUTH TRANSMISSION PROVIDER
+                    </span>
+                    <span className="font-machine text-[10px] uppercase px-1.5 py-0.5 border border-current">
+                      {isGoogleConnected ? 'CONNECTED & AUTHORIZED' : 'NOT CONNECTED'}
+                    </span>
+                  </div>
+                  {isGoogleConnected ? (
+                    <div className="text-[11px] space-y-0.5">
+                      <div><span className="text-jv-muted">Sender Account:</span> <span className="font-mono">{googleAuth?.authenticated_email}</span></div>
+                      <div><span className="text-jv-muted">Granted Scopes:</span> <span className="font-mono">{googleAuth?.scopes?.join(', ') || 'gmail.send, userinfo.email'}</span></div>
+                    </div>
+                  ) : (
+                    <div className="text-[11px] space-y-1">
+                      <p>
+                        Real external email transmission requires an authenticated Google account.
+                        Please connect your Google account before executing transmission.
+                      </p>
+                    </div>
+                  )}
+                </div>
+
+                {/* Email Review Dossier */}
+                {targetPlan.email_manifest && (
+                  <div className="p-3 border border-jv-rule bg-jv-canvas/40 space-y-2 text-xs">
+                    <div className="font-machine text-[11px] uppercase font-semibold text-jv-ink flex items-center gap-1.5 border-b border-jv-rule pb-1">
+                      <FileText className="w-3.5 h-3.5" />
+                      EMAIL TRANSMISSION REVIEW DOSSIER
+                    </div>
+                    <div className="grid grid-cols-2 gap-2 text-[11px]">
+                      <div>
+                        <span className="text-jv-muted">From:</span>{' '}
+                        <span className="font-mono text-jv-ink">{targetPlan.email_manifest.from_email}</span>
+                      </div>
+                      <div>
+                        <span className="text-jv-muted">To:</span>{' '}
+                        <span className="font-mono text-jv-ink">{targetPlan.email_manifest.to_email}</span>
+                      </div>
+                      <div className="col-span-2">
+                        <span className="text-jv-muted">Subject:</span>{' '}
+                        <span className="font-mono text-jv-ink font-semibold">{targetPlan.email_manifest.subject}</span>
+                      </div>
+                      <div className="col-span-2">
+                        <span className="text-jv-muted">Message-ID:</span>{' '}
+                        <span className="font-mono text-[10px] text-jv-muted">{targetPlan.email_manifest.message_id}</span>
+                      </div>
+                      <div className="col-span-2">
+                        <span className="text-jv-muted">Sealed Payload Hash (SHA-256):</span>{' '}
+                        <span className="font-mono text-[10px] text-emerald-600 break-all">{targetPlan.email_manifest.sealed_payload_hash}</span>
+                      </div>
+                    </div>
+
+                    {/* Full Body Preview */}
+                    <div className="space-y-1 pt-1">
+                      <span className="text-jv-muted text-[11px] font-semibold">Message Body Preview:</span>
+                      <pre className="p-2 border border-jv-rule bg-jv-bg font-mono text-[11px] text-jv-ink whitespace-pre-wrap max-h-32 overflow-y-auto">
+                        {targetPlan.email_manifest.body_text}
+                      </pre>
+                    </div>
+
+                    {/* Attachments */}
+                    {targetPlan.email_manifest.attachments && targetPlan.email_manifest.attachments.length > 0 && (
+                      <div className="space-y-1 pt-1">
+                        <span className="text-jv-muted text-[11px] font-semibold">
+                          Attachments ({targetPlan.email_manifest.attachments.length}):
+                        </span>
+                        <div className="space-y-1">
+                          {targetPlan.email_manifest.attachments.map((att) => (
+                            <div key={att.asset_id} className="p-1.5 border border-jv-rule bg-jv-bg text-[10px] font-mono flex items-center justify-between">
+                              <span className="font-semibold text-jv-ink">{att.filename} ({att.byte_size} bytes)</span>
+                              <span className="text-jv-muted text-[9px] truncate max-w-[200px]" title={att.content_sha256}>SHA: {att.content_sha256.slice(0, 16)}...</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Developer Simulation Controls (Isolated in collapsed drawer, never pre-selected) */}
+            <details className="border border-jv-rule bg-jv-canvas/20 text-xs">
+              <summary className="p-2 cursor-pointer font-machine text-[11px] uppercase text-jv-muted font-semibold hover:text-jv-ink select-none">
+                Developer: Simulation Provider Controls
+              </summary>
+              <div className="p-3 pt-1 border-t border-jv-rule space-y-1.5">
+                <select
+                  value={simulationMode}
+                  onChange={(e) => setSimulationMode(e.target.value)}
+                  className="w-full p-2 border border-jv-rule bg-jv-bg font-mono text-xs text-jv-ink rounded-none"
+                >
+                  <option value="">Genuine Governed Provider (Default)</option>
+                  <option value="success">simulated_test: Deterministic Verified Success</option>
+                  <option value="pre_stage_failure">simulated_test: Barrier A Integrity Failure</option>
+                  <option value="staging_failure">simulated_test: Form Staging Failure</option>
+                  <option value="submit_confirmed_failure">simulated_test: External Rejection</option>
+                  <option value="submit_timeout">simulated_test: Ambiguous Submit Timeout</option>
+                </select>
+                <p className="text-[10px] text-jv-muted">
+                  Note: Simulation modes are strictly rejected for live email transmissions.
+                </p>
+              </div>
+            </details>
 
             <div className="flex justify-end gap-2 pt-2 border-t border-jv-rule">
               <TactileButton

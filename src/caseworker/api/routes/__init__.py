@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from caseworker.api.routes.actions import router as actions_router
 from caseworker.api.routes.approvals import router as approvals_router
+from caseworker.api.routes.auth import router as auth_router
 from caseworker.api.routes.cases import router as cases_router
 from caseworker.api.routes.claims import router as claims_router
 from caseworker.api.routes.context import router as context_router
@@ -15,6 +16,7 @@ from caseworker.api.routes.opportunities import router as opportunities_router
 __all__ = [
     "actions_router",
     "approvals_router",
+    "auth_router",
     "cases_router",
     "claims_router",
     "context_router",

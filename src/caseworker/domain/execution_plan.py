@@ -826,6 +826,93 @@ class EmailAttachmentManifest:
 
 
 @dataclass(frozen=True)
+class EmailAcceptanceEvidence:
+    """Trustworthy provenance connecting opportunity, employer, recipient, and application instructions."""
+
+    evidence_source: str
+    source_uri: str
+    instructions_text: str
+    verified_recipient_email: str
+    employer_domain: str
+    evidence_snapshot_hash: str = ""
+    verified_by: str = ""
+    verified_at: str = ""
+    evidence_digest: str = ""
+
+    def __post_init__(self) -> None:
+        if not self.evidence_source or not self.evidence_source.strip():
+            raise DomainValidationError("evidence_source cannot be empty.")
+        if not self.source_uri or not self.source_uri.strip():
+            raise DomainValidationError("source_uri cannot be empty.")
+        if not self.instructions_text or not self.instructions_text.strip():
+            raise DomainValidationError("instructions_text cannot be empty.")
+        if not self.verified_recipient_email or not self.verified_recipient_email.strip():
+            raise DomainValidationError("verified_recipient_email cannot be empty.")
+        if not self.employer_domain or not self.employer_domain.strip():
+            raise DomainValidationError("employer_domain cannot be empty.")
+        if not self.verified_by or not self.verified_by.strip():
+            raise DomainValidationError("verified_by cannot be empty.")
+        if not self.verified_at or not self.verified_at.strip():
+            raise DomainValidationError("verified_at cannot be empty.")
+
+        expected_snapshot_hash = compute_sha256(self.instructions_text.strip())
+        if self.evidence_snapshot_hash and self.evidence_snapshot_hash.lower() != expected_snapshot_hash.lower():
+            raise DomainValidationError(
+                f"evidence_snapshot_hash mismatch (expected {expected_snapshot_hash}, got {self.evidence_snapshot_hash})."
+            )
+        if not self.evidence_snapshot_hash:
+            object.__setattr__(self, "evidence_snapshot_hash", expected_snapshot_hash)
+
+        computed_digest = self.compute_digest()
+        if self.evidence_digest and self.evidence_digest.lower() != computed_digest.lower():
+            raise DomainValidationError(
+                f"evidence_digest mismatch (expected {computed_digest}, got {self.evidence_digest})."
+            )
+        if not self.evidence_digest:
+            object.__setattr__(self, "evidence_digest", computed_digest)
+
+    def compute_digest(self) -> str:
+        components = [
+            self.evidence_source.strip().lower(),
+            self.source_uri.strip(),
+            self.instructions_text.strip(),
+            self.verified_recipient_email.strip().lower(),
+            self.employer_domain.strip().lower(),
+            self.evidence_snapshot_hash.strip().lower(),
+            self.verified_by.strip(),
+            self.verified_at.strip(),
+        ]
+        return compute_sha256(canonical_json_dumps(components))
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "evidence_source": self.evidence_source,
+            "source_uri": self.source_uri,
+            "instructions_text": self.instructions_text,
+            "verified_recipient_email": self.verified_recipient_email,
+            "employer_domain": self.employer_domain,
+            "evidence_snapshot_hash": self.evidence_snapshot_hash,
+            "verified_by": self.verified_by,
+            "verified_at": self.verified_at,
+            "evidence_digest": self.evidence_digest,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> EmailAcceptanceEvidence:
+        return cls(
+            evidence_source=data["evidence_source"],
+            source_uri=data["source_uri"],
+            instructions_text=data["instructions_text"],
+            verified_recipient_email=data["verified_recipient_email"],
+            employer_domain=data["employer_domain"],
+            evidence_snapshot_hash=data.get("evidence_snapshot_hash", ""),
+            verified_by=data.get("verified_by", ""),
+            verified_at=data.get("verified_at", ""),
+            evidence_digest=data.get("evidence_digest", ""),
+        )
+
+
+@dataclass(frozen=True)
 class EmailPayloadManifest:
     """Immutable, content-addressed email serialization manifest frozen before authorization."""
 
@@ -838,6 +925,7 @@ class EmailPayloadManifest:
     mime_boundary: str
     attachments: list[EmailAttachmentManifest] = field(default_factory=list)
     sealed_payload_hash: str = ""
+    acceptance_evidence: EmailAcceptanceEvidence | None = None
 
     def compute_manifest_hash(self) -> str:
         """Deterministic canonical hash of the manifest inputs."""
@@ -854,6 +942,7 @@ class EmailPayloadManifest:
             self.body_text.strip(),
             self.mime_boundary.strip(),
             canonical_attachments,
+            self.acceptance_evidence.evidence_digest if self.acceptance_evidence else "",
         ]
         return compute_sha256(canonical_json_dumps(payload))
 
@@ -868,10 +957,12 @@ class EmailPayloadManifest:
             "mime_boundary": self.mime_boundary,
             "attachments": [a.to_dict() for a in self.attachments],
             "sealed_payload_hash": self.sealed_payload_hash,
+            "acceptance_evidence": self.acceptance_evidence.to_dict() if self.acceptance_evidence else None,
         }
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> EmailPayloadManifest:
+        ev_data = data.get("acceptance_evidence")
         return cls(
             to_email=data["to_email"],
             from_email=data["from_email"],
@@ -882,6 +973,7 @@ class EmailPayloadManifest:
             mime_boundary=data["mime_boundary"],
             attachments=[EmailAttachmentManifest.from_dict(a) for a in data.get("attachments", [])],
             sealed_payload_hash=data.get("sealed_payload_hash", ""),
+            acceptance_evidence=EmailAcceptanceEvidence.from_dict(ev_data) if ev_data else None,
         )
 
 

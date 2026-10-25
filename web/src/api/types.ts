@@ -130,6 +130,9 @@ export type TargetSchemaField = Schemas['TargetSchemaFieldSchema'];
 export type TargetSchemaQuestion = Schemas['TargetSchemaQuestionSchema'];
 export type TargetUploadSlot = Schemas['TargetSchemaUploadSlotSchema'];
 export type TargetSubmitControlSpec = Schemas['TargetSubmitControlSpecSchema'];
+export type EmailPayloadManifest = Schemas['EmailPayloadManifestResponse'];
+export type EmailAttachmentManifest = Schemas['EmailAttachmentManifestResponse'];
+export type EmailAcceptanceEvidence = Schemas['EmailAcceptanceEvidenceResponse'];
 
 // ----------------------------------------------------------------------------
 // Governed External Execution (Phase 5.3.3)
@@ -143,6 +146,14 @@ export type ExecuteActionRequest = Schemas['ExecuteActionRequest'];
 export type ExecuteActionResponse = Schemas['ExecuteActionResponse'];
 export type ExecutionErrorCategory = Schemas['ExecutionErrorCategory'];
 export type ExecutionProviderKind = Schemas['ExecutionProviderKind'];
+
+// ----------------------------------------------------------------------------
+// Google OAuth & Credential Status (Phase 5.3.3.1)
+// ----------------------------------------------------------------------------
+export type GoogleAuthStatus = Schemas['GoogleAuthStatusResponse'];
+export type GoogleAuthAuthorize = Schemas['GoogleAuthAuthorizeResponse'];
+export type GoogleAuthCallback = Schemas['GoogleAuthCallbackResponse'];
+export type GoogleAuthDisconnect = Schemas['GoogleAuthDisconnectResponse'];
 
 
 // ----------------------------------------------------------------------------

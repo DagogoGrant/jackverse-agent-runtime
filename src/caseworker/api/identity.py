@@ -8,7 +8,49 @@ from typing import Protocol
 
 from fastapi import HTTPException, Request, status
 
+import hmac
+import hashlib
+import time
+
 _SAFE_USER_ID_REGEX = re.compile(r"^[a-zA-Z0-9_\-\.]{1,128}$")
+
+
+def generate_operator_token(operator_id: str, secret: str, ttl_seconds: int = 86400) -> str:
+    """Generate a signed, time-limited operator bearer token."""
+    if not secret or len(secret) < 32:
+        raise ValueError("Operator secret must be at least 32 characters.")
+    clean_id = operator_id.strip()
+    if not _SAFE_USER_ID_REGEX.match(clean_id):
+        raise ValueError(f"Invalid operator_id format: {operator_id!r}")
+    exp = int(time.time()) + ttl_seconds
+    msg = f"{clean_id}:{exp}".encode("utf-8")
+    sig = hmac.new(secret.encode("utf-8"), msg, hashlib.sha256).hexdigest()
+    return f"op.{clean_id}.{exp}.{sig}"
+
+
+def verify_operator_token(token: str, secret: str) -> str | None:
+    """Verify an operator token and return operator_id if valid and unexpired."""
+    if not token or not secret or len(secret) < 32:
+        return None
+    # Direct secret match
+    if hmac.compare_digest(token.strip(), secret.strip()):
+        return "operator"
+
+    # Signed token format op.<operator_id>.<expires>.<sig>
+    parts = token.strip().split(".")
+    if len(parts) == 4 and parts[0] == "op":
+        op_id, exp_str, sig = parts[1], parts[2], parts[3]
+        try:
+            exp = int(exp_str)
+            if exp < int(time.time()):
+                return None  # Expired
+            msg = f"{op_id}:{exp}".encode("utf-8")
+            expected_sig = hmac.new(secret.encode("utf-8"), msg, hashlib.sha256).hexdigest()
+            if hmac.compare_digest(sig, expected_sig) and _SAFE_USER_ID_REGEX.match(op_id):
+                return op_id
+        except (ValueError, TypeError):
+            return None
+    return None
 
 
 @dataclass(frozen=True)
@@ -18,6 +60,7 @@ class Principal:
     user_id: str
     roles: tuple[str, ...] = ("user",)
     is_authenticated: bool = True
+    auth_method: str = "dev_header"  # "operator_token", "dev_header", "production_token"
 
     def __post_init__(self) -> None:
         if not self.user_id or not _SAFE_USER_ID_REGEX.match(self.user_id):
@@ -25,6 +68,10 @@ class Principal:
 
     def has_role(self, role: str) -> bool:
         return role in self.roles
+
+    @property
+    def is_operator(self) -> bool:
+        return self.has_role("operator") and self.auth_method in ("operator_token", "production_token")
 
 
 class IdentityProvider(Protocol):
@@ -35,10 +82,12 @@ class IdentityProvider(Protocol):
 
 
 class FailClosedIdentityProvider:
-    """Production identity provider that fails closed when dev auth is disabled."""
+    """Production identity provider that verifies operator tokens or fails closed."""
+
+    def __init__(self, operator_secret: str = "") -> None:
+        self.operator_secret = operator_secret
 
     async def get_principal(self, request: Request) -> Principal:
-        # In production without external IdP configured, fail closed
         auth_header = request.headers.get("Authorization")
         if not auth_header:
             raise HTTPException(
@@ -46,7 +95,6 @@ class FailClosedIdentityProvider:
                 detail="Missing Authorization header.",
                 headers={"WWW-Authenticate": "Bearer"},
             )
-        # Bearer token verification hook for external JWT/OIDC
         if not auth_header.startswith("Bearer "):
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
@@ -60,7 +108,17 @@ class FailClosedIdentityProvider:
                 detail="Empty Bearer token.",
                 headers={"WWW-Authenticate": "Bearer"},
             )
-        # If not dev mode and no production token validator configured yet:
+
+        if self.operator_secret and len(self.operator_secret) >= 32:
+            op_id = verify_operator_token(token, self.operator_secret)
+            if op_id:
+                return Principal(
+                    user_id=op_id,
+                    roles=("operator", "user"),
+                    is_authenticated=True,
+                    auth_method="operator_token",
+                )
+
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Production token validation failed or unconfigured.",
@@ -69,25 +127,39 @@ class FailClosedIdentityProvider:
 
 
 class DevelopmentIdentityProvider:
-    """Development identity provider enabled ONLY when CASEWORKER_DEV_AUTH=true."""
+    """Development identity provider supporting operator tokens and X-JackVerse-User dev headers."""
 
-    def __init__(self, dev_auth_enabled: bool) -> None:
+    def __init__(self, dev_auth_enabled: bool, operator_secret: str = "") -> None:
         self.dev_auth_enabled = dev_auth_enabled
+        self.operator_secret = operator_secret
 
     async def get_principal(self, request: Request) -> Principal:
+        # 1. Check for genuine operator bearer token first
+        auth_header = request.headers.get("Authorization", "")
+        if auth_header.startswith("Bearer "):
+            token = auth_header[7:].strip()
+            if self.operator_secret and len(self.operator_secret) >= 32:
+                op_id = verify_operator_token(token, self.operator_secret)
+                if op_id:
+                    return Principal(
+                        user_id=op_id,
+                        roles=("operator", "user"),
+                        is_authenticated=True,
+                        auth_method="operator_token",
+                    )
+
         if not self.dev_auth_enabled:
-            # When disabled, completely ignore X-JackVerse-User and fail closed
+            # When dev auth disabled and no operator token verified, fail closed
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Authentication required. CASEWORKER_DEV_AUTH is disabled.",
                 headers={"WWW-Authenticate": "Bearer"},
             )
 
-        # Check for X-JackVerse-User header
+        # 2. Check for X-JackVerse-User header (dev mode only)
         user_header = request.headers.get("X-JackVerse-User")
         if not user_header or not user_header.strip():
             # Check Bearer dev:<user_id> fallback
-            auth_header = request.headers.get("Authorization", "")
             if auth_header.startswith("Bearer dev:"):
                 user_header = auth_header[11:].strip()
 
@@ -108,4 +180,4 @@ class DevelopmentIdentityProvider:
         roles_header = request.headers.get("X-JackVerse-Roles", "user")
         roles = tuple(r.strip() for r in roles_header.split(",") if r.strip())
 
-        return Principal(user_id=user_id, roles=roles)
+        return Principal(user_id=user_id, roles=roles, is_authenticated=True, auth_method="dev_header")

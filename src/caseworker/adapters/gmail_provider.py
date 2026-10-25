@@ -26,18 +26,28 @@ from caseworker.domain.provider_adapter import (
     ProviderSubmissionResult,
     StagingOutcome,
 )
-from caseworker.domain.types import compute_sha256_bytes
+from datetime import datetime, timedelta, timezone
+from caseworker.domain.errors import ProviderAuthError
+from caseworker.adapters.crypto.token_cipher import TokenCipher
+from caseworker.domain.types import compute_sha256_bytes, now_utc
+from caseworker.persistence.sqlite import OAuthCredentialRecord, SQLiteCaseworkerStorage
 
 GMAIL_SEND_URL = "https://gmail.googleapis.com/gmail/v1/users/me/messages/send"
-GMAIL_USERINFO_URL = "https://www.googleapis.com/oauth2/v2/userinfo"
+GMAIL_USERINFO_URL = "https://www.googleapis.com/oauth2/v3/userinfo"
+GMAIL_REVOKE_URL = "https://oauth2.googleapis.com/revoke"
 
 
 class OAuthCredentialProvider(ABC):
     """Abstract interface for managing OAuth2 credentials and identity verification."""
 
     @abstractmethod
+    def is_connected(self, user_id: str) -> bool:
+        """Return True if an OAuth account connection exists for this user."""
+        ...
+
+    @abstractmethod
     def get_access_token(self, user_id: str) -> str:
-        """Return an active OAuth2 access token for the given user."""
+        """Return an active OAuth2 access token for the given user, refreshing if needed."""
         ...
 
     @abstractmethod
@@ -53,11 +63,174 @@ class StaticOAuthCredentialProvider(OAuthCredentialProvider):
         self._access_token = access_token
         self._authenticated_email = authenticated_email
 
+    def is_connected(self, user_id: str) -> bool:
+        return bool(self._access_token and self._authenticated_email)
+
     def get_access_token(self, user_id: str) -> str:
+        if not self._access_token:
+            raise ProviderAuthError("No static OAuth access token configured.")
         return self._access_token
 
     def get_authenticated_email(self, user_id: str) -> str:
+        if not self._authenticated_email:
+            raise ProviderAuthError("No static authenticated email configured.")
         return self._authenticated_email
+
+
+class DatabaseOAuthCredentialProvider(OAuthCredentialProvider):
+    """Encrypted database-backed OAuth credential provider supporting automatic token refresh."""
+
+    def __init__(
+        self,
+        storage: SQLiteCaseworkerStorage,
+        cipher: TokenCipher,
+        client_id: str = "",
+        client_secret: str = "",
+        token_uri: str = "https://oauth2.googleapis.com/token",
+        http_client: httpx.Client | None = None,
+    ) -> None:
+        self.storage = storage
+        self.cipher = cipher
+        self.client_id = client_id
+        self.client_secret = client_secret
+        self.token_uri = token_uri
+        self.http_client = http_client
+
+    def is_connected(self, user_id: str) -> bool:
+        with self.storage.unit_of_work() as uow:
+            rec = uow.oauth_credentials.get_by_user_and_provider(user_id, "gmail")
+            return rec is not None
+
+    def get_authenticated_email(self, user_id: str) -> str:
+        with self.storage.unit_of_work() as uow:
+            rec = uow.oauth_credentials.get_by_user_and_provider(user_id, "gmail")
+            if not rec:
+                raise ProviderAuthError(f"No Google OAuth connection found for user '{user_id}'.")
+            return rec.authenticated_email
+
+    def get_access_token(self, user_id: str) -> str:
+        with self.storage.unit_of_work() as uow:
+            rec = uow.oauth_credentials.get_by_user_and_provider(user_id, "gmail")
+            if not rec:
+                raise ProviderAuthError(f"No Google OAuth connection found for user '{user_id}'.")
+
+            # Check if token is expired or within 60 seconds of expiry
+            is_expired = False
+            try:
+                exp_dt = datetime.fromisoformat(rec.token_expiry.replace("Z", "+00:00"))
+                if exp_dt.tzinfo is None:
+                    exp_dt = exp_dt.replace(tzinfo=timezone.utc)
+                if (exp_dt - datetime.now(timezone.utc)).total_seconds() < 60:
+                    is_expired = True
+            except Exception:
+                is_expired = True
+
+            if not is_expired:
+                return self.cipher.decrypt(rec.access_token_enc)
+
+            # Access token expired: refresh token required
+            if not rec.refresh_token_enc:
+                raise ProviderAuthError("Google OAuth access token expired and no refresh token is stored. Please reconnect.")
+
+            refresh_token = self.cipher.decrypt(rec.refresh_token_enc)
+            new_access_token, new_refresh_token, new_expiry, granted_scopes = self._refresh_token(refresh_token)
+
+            # Preserve existing refresh token if Google omitted replacement
+            saved_refresh_enc = (
+                self.cipher.encrypt(new_refresh_token)
+                if new_refresh_token
+                else rec.refresh_token_enc
+            )
+
+            rec.access_token_enc = self.cipher.encrypt(new_access_token)
+            rec.refresh_token_enc = saved_refresh_enc
+            rec.token_expiry = new_expiry
+            if granted_scopes:
+                rec.scopes = granted_scopes
+            rec.updated_at = now_utc().isoformat().replace("+00:00", "Z")
+
+            uow.oauth_credentials.save(rec)
+            uow.commit()
+
+            return new_access_token
+
+    def _refresh_token(self, refresh_token: str) -> tuple[str, str | None, str, list[str]]:
+        client = self.http_client or httpx.Client(timeout=15.0)
+        close_client = self.http_client is None
+        try:
+            resp = client.post(
+                self.token_uri,
+                data={
+                    "client_id": self.client_id,
+                    "client_secret": self.client_secret,
+                    "refresh_token": refresh_token,
+                    "grant_type": "refresh_token",
+                },
+                headers={"Accept": "application/json"},
+            )
+        except Exception as exc:
+            raise ProviderAuthError(f"Failed to communicate with Google token endpoint during refresh: {exc}")
+        finally:
+            if close_client:
+                client.close()
+
+        if resp.status_code != 200:
+            raise ProviderAuthError(f"Google token refresh failed (HTTP {resp.status_code}): {resp.text[:200]}")
+
+        try:
+            data = resp.json()
+        except Exception:
+            raise ProviderAuthError("Google token refresh returned non-JSON response body.")
+
+        new_access = data.get("access_token")
+        if not new_access:
+            raise ProviderAuthError("Google token refresh response missing 'access_token'.")
+
+        new_refresh = data.get("refresh_token")  # May be None
+        expires_in = int(data.get("expires_in", 3600))
+        new_expiry_dt = datetime.now(timezone.utc) + timedelta(seconds=expires_in)
+        new_expiry_iso = new_expiry_dt.isoformat().replace("+00:00", "Z")
+        scopes = [s for s in data.get("scope", "").split(" ") if s]
+
+        return new_access, new_refresh, new_expiry_iso, scopes
+
+    def revoke_and_disconnect(self, user_id: str) -> tuple[bool, str | None]:
+        """Revoke tokens at Google (best-effort) and delete credentials from storage."""
+        with self.storage.unit_of_work() as uow:
+            rec = uow.oauth_credentials.get_by_user_and_provider(user_id, "gmail")
+            token_to_revoke = None
+            if rec:
+                try:
+                    token_to_revoke = self.cipher.decrypt(rec.access_token_enc)
+                except Exception:
+                    pass
+            # Always delete local record
+            uow.oauth_credentials.delete_by_user_and_provider(user_id, "gmail")
+            uow.commit()
+
+        if not token_to_revoke:
+            return True, None
+
+        remote_revoked = False
+        remote_error = None
+        client = self.http_client or httpx.Client(timeout=10.0)
+        close_client = self.http_client is None
+        try:
+            resp = client.post(
+                GMAIL_REVOKE_URL,
+                params={"token": token_to_revoke},
+                headers={"Content-Type": "application/x-www-form-urlencoded"},
+            )
+            remote_revoked = resp.status_code == 200
+            if resp.status_code != 200:
+                remote_error = f"HTTP {resp.status_code}: {resp.text[:100]}"
+        except Exception as exc:
+            remote_error = str(exc)
+        finally:
+            if close_client:
+                client.close()
+
+        return remote_revoked, remote_error
 
 
 class GmailApplicationExecutionProvider(ExecutionProviderAdapter):
@@ -350,13 +523,44 @@ class GmailApplicationExecutionProvider(ExecutionProviderAdapter):
             try:
                 body = resp.json()
             except Exception:
-                body = {}
-            gmail_msg_id = body.get("id") or ""
-            gmail_thread_id = body.get("threadId") or ""
+                return ProviderSubmissionResult(
+                    status=ExecutionReceiptStatus.AMBIGUOUS_SUBMISSION,
+                    external_confirmation_id=None,
+                    error_category=ExecutionErrorCategory.UNKNOWN,
+                    error_message="Gmail API returned HTTP 200 with non-JSON or malformed response body. Irreversible state ambiguous.",
+                    raw_response_snippet=snippet,
+                    provider_metadata={
+                        "http_status": 200,
+                        "duration_ms": duration_ms,
+                        "provider_status": "GMAIL_API_MALFORMED_RESPONSE",
+                        "provider_kind": ExecutionProviderKind.GMAIL_API.value,
+                        "is_simulated": False,
+                    },
+                )
+
+            raw_id = body.get("id")
+            if not isinstance(raw_id, str) or not raw_id.strip():
+                return ProviderSubmissionResult(
+                    status=ExecutionReceiptStatus.AMBIGUOUS_SUBMISSION,
+                    external_confirmation_id=None,
+                    error_category=ExecutionErrorCategory.UNKNOWN,
+                    error_message="Gmail API returned HTTP 200 without a valid message ID in response body. Irreversible state ambiguous; manual operator reconciliation required.",
+                    raw_response_snippet=snippet,
+                    provider_metadata={
+                        "http_status": 200,
+                        "duration_ms": duration_ms,
+                        "provider_status": "GMAIL_API_MISSING_MESSAGE_ID",
+                        "provider_kind": ExecutionProviderKind.GMAIL_API.value,
+                        "is_simulated": False,
+                    },
+                )
+
+            gmail_msg_id = raw_id.strip()
+            gmail_thread_id = str(body.get("threadId") or "").strip()
 
             return ProviderSubmissionResult(
                 status=ExecutionReceiptStatus.VERIFIED_SUCCESS,
-                external_confirmation_id=gmail_msg_id or plan.email_manifest.message_id,
+                external_confirmation_id=gmail_msg_id,
                 raw_response_snippet=snippet,
                 provider_metadata={
                     "http_status": 200,

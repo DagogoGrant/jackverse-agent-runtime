@@ -32,10 +32,12 @@ from caseworker.domain.email_mime import (
     serialize_mime_message,
     validate_email_header_field,
 )
+from caseworker.domain.ssrf_validator import validate_evidence_source_uri
 from caseworker.domain.execution_plan import (
     EXEC_ACTION_PLANNER_VERSION,
     EXEC_PLAN_SCHEMA_VERSION,
     FORBIDDEN_FIELD_PATTERN,
+    EmailAcceptanceEvidence,
     EmailAttachmentManifest,
     EmailPayloadManifest,
     ExecutionDestination,
@@ -213,14 +215,11 @@ class ExecutionPlanCompiler:
                 )
             )
 
-        # Affirmative employer acceptance verification for email applications (Amendment C)
+        # Affirmative employer acceptance verification for email applications (Audit Hardening)
+        email_acceptance_evidence: EmailAcceptanceEvidence | None = None
         if dest_type_val == ExecutionDestinationType.EMAIL.value:
-            is_email_accepted = (
-                opportunity.metadata.get("application_channel") == "email"
-                or opportunity.metadata.get("accepts_email_applications") is True
-                or bool(opportunity.metadata.get("application_email_evidence"))
-            )
-            if not is_email_accepted:
+            evidence_data = opportunity.metadata.get("email_acceptance_evidence") or opportunity.metadata.get("application_email_evidence")
+            if not isinstance(evidence_data, dict):
                 findings.append(
                     ExecutionPlanFinding(
                         check_name="email_application_acceptance_verification",
@@ -228,8 +227,8 @@ class ExecutionPlanCompiler:
                         severity="error",
                         code="EMAIL_APPLICATION_NOT_ACCEPTED",
                         message=(
-                            "The opportunity does not provide affirmative evidence that applications by email are accepted. "
-                            "An email address alone is not sufficient without verified employer acceptance."
+                            "The opportunity does not provide grounded, trustworthy evidence that applications by email are accepted. "
+                            "An email address alone or unverified metadata flag is not sufficient without verified employer acceptance provenance."
                         ),
                         details={
                             "opportunity_id": opportunity.opportunity_id,
@@ -237,6 +236,53 @@ class ExecutionPlanCompiler:
                         },
                     )
                 )
+            else:
+                clean_dest_email = (
+                    canonical_url[7:].strip().lower()
+                    if canonical_url.lower().startswith("mailto:")
+                    else canonical_url.strip().lower()
+                )
+                try:
+                    source_uri = str(evidence_data.get("source_uri", "")).strip()
+                    safe_uri = validate_evidence_source_uri(source_uri)
+                    instr = str(evidence_data.get("instructions_text", "")).strip()
+                    recip = str(evidence_data.get("verified_recipient_email", "")).strip().lower()
+                    src = str(evidence_data.get("evidence_source", "")).strip()
+                    org_dom = str(evidence_data.get("employer_domain", "")).strip().lower()
+                    v_by = str(evidence_data.get("verified_by", "")).strip()
+                    v_at = str(evidence_data.get("verified_at", "")).strip() or now_utc().isoformat().replace("+00:00", "Z")
+
+                    # Authority validation: verified_by must be a trusted authority string (e.g. operator:* or system:*)
+                    if not (v_by.startswith("operator:") or v_by.startswith("system:")):
+                        raise ValueError(f"Verifier identity '{v_by}' is not derived from a trusted application authority.")
+
+                    if not instr:
+                        raise ValueError("Evidence instructions_text cannot be empty.")
+                    if clean_dest_email not in instr.lower() and recip != clean_dest_email:
+                        raise ValueError(f"Evidence instructions do not reference destination email '{clean_dest_email}'.")
+                    if recip != clean_dest_email:
+                        raise ValueError(f"verified_recipient_email '{recip}' does not match destination '{clean_dest_email}'.")
+
+                    email_acceptance_evidence = EmailAcceptanceEvidence(
+                        evidence_source=src or "official_job_posting",
+                        source_uri=safe_uri,
+                        instructions_text=instr,
+                        verified_recipient_email=recip,
+                        employer_domain=org_dom or destination.normalized_hostname or "unknown",
+                        verified_by=v_by,
+                        verified_at=v_at,
+                    )
+                except Exception as ev_err:
+                    findings.append(
+                        ExecutionPlanFinding(
+                            check_name="email_application_acceptance_verification",
+                            passed=False,
+                            severity="error",
+                            code="EMAIL_APPLICATION_NOT_ACCEPTED",
+                            message=f"Employer email acceptance evidence validation failed: {ev_err}",
+                            details={"error": str(ev_err)},
+                        )
+                    )
 
         # 2. Check Target Interaction Schema & Destination Type Alignment
         if target_schema is None:
@@ -802,8 +848,8 @@ class ExecutionPlanCompiler:
                 dt = dt.replace(tzinfo=timezone.utc)
             date_rfc2822 = email.utils.format_datetime(dt, usegmt=True)
 
-            host = destination.normalized_hostname or "jackverse.local"
-            message_id = f"<plan-{plan_id}@{host}>"
+            sender_domain = from_email.split("@")[1].strip().lower() if "@" in from_email else "jackverse.local"
+            message_id = f"<plan-{plan_id}@{sender_domain}>"
             mime_boundary = f"==_JackVerse_MIME_Part_{plan_id}_=="
 
             att_manifests = [
@@ -827,6 +873,7 @@ class ExecutionPlanCompiler:
                 mime_boundary=mime_boundary,
                 attachments=att_manifests,
                 sealed_payload_hash="",
+                acceptance_evidence=email_acceptance_evidence,
             )
 
             # Check if any errors exist prior to sealing
@@ -845,6 +892,7 @@ class ExecutionPlanCompiler:
                         mime_boundary=mime_boundary,
                         attachments=att_manifests,
                         sealed_payload_hash=sealed_hash,
+                        acceptance_evidence=email_acceptance_evidence,
                     )
                 except Exception as exc:
                     findings.append(

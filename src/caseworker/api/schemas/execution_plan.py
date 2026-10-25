@@ -174,6 +174,38 @@ class ExecutionPlanFindingResponse(BaseModel):
     details: dict[str, Any] = Field(default_factory=dict)
 
 
+class EmailAttachmentManifestResponse(BaseModel):
+    asset_id: str
+    filename: str
+    mime_type: str
+    content_sha256: str
+    byte_size: int
+
+
+class EmailAcceptanceEvidenceResponse(BaseModel):
+    evidence_source: str
+    source_uri: str
+    instructions_text: str
+    verified_recipient_email: str
+    employer_domain: str
+    verified_by: str
+    verified_at: str
+    evidence_snapshot_hash: str
+    evidence_digest: str
+
+
+class EmailPayloadManifestResponse(BaseModel):
+    to_email: str
+    from_email: str
+    subject: str
+    body_text: str
+    message_id: str
+    date_header: str
+    sealed_payload_hash: str
+    attachments: list[EmailAttachmentManifestResponse] = Field(default_factory=list)
+    acceptance_evidence: EmailAcceptanceEvidenceResponse | None = None
+
+
 class ExternalExecutionPlanResponse(BaseModel):
     plan_id: str
     case_id: str
@@ -190,6 +222,7 @@ class ExternalExecutionPlanResponse(BaseModel):
     upload_mappings: list[ExecutionUploadAssetResponse]
     screening_responses: list[ExecutionScreeningResponseDTO]
     final_submit_control: TargetSubmitControlSpecSchema | None = None
+    email_manifest: EmailPayloadManifestResponse | None = None
     findings: list[ExecutionPlanFindingResponse]
     planning_findings: list[ExecutionPlanFindingResponse] = Field(default_factory=list)
     execution_input_hash: str

@@ -32,6 +32,8 @@ import type {
   ExecutionReceipt,
   ExecutionAttempt,
   ExecutionAttemptList,
+  GoogleAuthStatus,
+  GoogleAuthDisconnect,
 } from '../api/types';
 
 // Invalidate on dev user switch
@@ -1268,3 +1270,34 @@ export function useEvents(afterPosition?: number) {
     },
   });
 }
+
+// ----------------------------------------------------------------------------
+// Google OAuth & Credential Status (Phase 5.3.3.1)
+// ----------------------------------------------------------------------------
+
+export function useGoogleAuthStatus() {
+  return useQuery({
+    queryKey: ['auth', 'google', 'status'],
+    queryFn: async () => {
+      const res = await apiRequest<GoogleAuthStatus>('/auth/google/status');
+      return res.data;
+    },
+    staleTime: 30000,
+  });
+}
+
+export function useDisconnectGoogleAuth() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest<GoogleAuthDisconnect>('/auth/google/disconnect', {
+        method: 'POST',
+      });
+      return res.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['auth', 'google', 'status'] });
+    },
+  });
+}
+

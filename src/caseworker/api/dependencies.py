@@ -5,6 +5,8 @@ from __future__ import annotations
 from typing import Annotated
 from fastapi import Depends, HTTPException, Query, Request, status
 
+from caseworker.adapters.crypto.token_cipher import TokenCipher
+from caseworker.adapters.gmail_provider import DatabaseOAuthCredentialProvider
 from caseworker.api.config import APIConfig
 from caseworker.api.identity import (
     DevelopmentIdentityProvider,
@@ -49,7 +51,7 @@ async def get_principal(
     config: Annotated[APIConfig, Depends(get_config)],
 ) -> Principal:
     """Extract authenticated Principal using fail-closed development or production provider."""
-    provider = DevelopmentIdentityProvider(config.dev_auth)
+    provider = DevelopmentIdentityProvider(config.dev_auth, config.operator_secret)
     return await provider.get_principal(request)
 
 
@@ -116,8 +118,19 @@ def get_governed_execution_service(
     storage: Annotated[SQLiteCaseworkerStorage, Depends(get_storage)],
     config: Annotated[APIConfig, Depends(get_config)],
 ) -> GovernedExecutionService:
+    credential_provider = None
+    if config.encryption_key and len(config.encryption_key.strip()) >= 32:
+        cipher = TokenCipher(config.encryption_key)
+        credential_provider = DatabaseOAuthCredentialProvider(
+            storage=storage,
+            cipher=cipher,
+            client_id=config.gmail_client_id,
+            client_secret=config.gmail_client_secret,
+        )
+
     return GovernedExecutionService(
         storage=storage,
+        credential_provider=credential_provider,
         allow_simulation=config.simulation_enabled,
         real_execution_enabled=config.real_execution_enabled,
         gmail_execution_enabled=config.gmail_execution_enabled,

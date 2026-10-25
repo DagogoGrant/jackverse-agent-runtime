@@ -185,6 +185,7 @@ class GovernedExecutionService:
         user_id: str,
         action_id: str,
         provider: ExecutionProviderAdapter | None = None,
+        principal_auth_method: str = "operator_token",
     ) -> tuple[ExecutionAttempt, ExecutionReceipt | None]:
         """Execute an approved transmission action through the two-barrier governed pipeline."""
         active_provider = provider
@@ -544,6 +545,38 @@ class GovernedExecutionService:
                         "Simulated execution provider is restricted to trusted, isolated demonstration or test environments. "
                         "In live production environments, real-world execution requires an authorized genuine provider adapter.",
                         details={"failure_kind": "simulation_not_permitted"},
+                    )
+
+            if active_provider.provider_kind == ExecutionProviderKind.GMAIL_API:
+                if not self.real_execution_enabled or not self.gmail_execution_enabled:
+                    raise ApprovalValidationError(
+                        "Gmail execution is currently disabled in configuration (CASEWORKER_REAL_EXECUTION_ENABLED=false or CASEWORKER_GMAIL_EXECUTION_ENABLED=false). Real external transmission cannot proceed.",
+                        details={"failure_kind": "provider_disabled"},
+                    )
+                if self.credential_provider is None or not self.credential_provider.is_connected(user_id):
+                    raise ApprovalValidationError(
+                        "OAuth credentials not found or unauthenticated for user. Please connect Google account before executing transmission.",
+                        details={"failure_kind": "provider_auth_error"},
+                    )
+                if principal_auth_method == "dev_header":
+                    raise ApprovalValidationError(
+                        "Real execution requires verified operator authentication; development identity headers are not permitted for live external transmission.",
+                        details={"failure_kind": "operator_auth_required"},
+                    )
+                try:
+                    auth_email = self.credential_provider.get_authenticated_email(user_id)
+                    expected_from = (plan.email_manifest.from_email if plan.email_manifest else "").strip().lower()
+                    if not auth_email or (expected_from and auth_email.strip().lower() != expected_from):
+                        raise ApprovalValidationError(
+                            f"Authenticated Google account '{auth_email}' does not match plan sender email '{expected_from}'.",
+                            details={"failure_kind": "provider_auth_error"},
+                        )
+                except ApprovalValidationError:
+                    raise
+                except Exception as exc:
+                    raise ApprovalValidationError(
+                        f"Failed to verify Google account credentials for user: {exc}",
+                        details={"failure_kind": "provider_auth_error"},
                     )
 
             # Step 2: Barrier A — Live Pre-Staging Revalidation

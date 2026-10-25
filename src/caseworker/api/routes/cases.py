@@ -34,6 +34,9 @@ from caseworker.api.schemas.case import (
 from caseworker.api.schemas.common import PaginatedResponse
 from caseworker.api.schemas.execution_plan import (
     CreateExecutionPlanRequest,
+    EmailAcceptanceEvidenceResponse,
+    EmailAttachmentManifestResponse,
+    EmailPayloadManifestResponse,
     ExecutionDestinationSchema,
     ExecutionFieldMappingResponse,
     ExecutionPlanFindingResponse,
@@ -864,6 +867,44 @@ def _to_execution_plan_response(plan: ExternalExecutionPlan) -> ExternalExecutio
         for f in plan.findings
     ]
 
+    email_manifest_dto = None
+    if plan.email_manifest:
+        m = plan.email_manifest
+        ev_dto = None
+        if m.acceptance_evidence:
+            ev = m.acceptance_evidence
+            ev_dto = EmailAcceptanceEvidenceResponse(
+                evidence_source=ev.evidence_source,
+                source_uri=ev.source_uri,
+                instructions_text=ev.instructions_text,
+                verified_recipient_email=ev.verified_recipient_email,
+                employer_domain=ev.employer_domain,
+                verified_by=ev.verified_by,
+                verified_at=ev.verified_at,
+                evidence_snapshot_hash=ev.evidence_snapshot_hash,
+                evidence_digest=ev.evidence_digest,
+            )
+        email_manifest_dto = EmailPayloadManifestResponse(
+            to_email=m.to_email,
+            from_email=m.from_email,
+            subject=m.subject,
+            body_text=m.body_text,
+            message_id=m.message_id,
+            date_header=m.date_header,
+            sealed_payload_hash=m.sealed_payload_hash,
+            attachments=[
+                EmailAttachmentManifestResponse(
+                    asset_id=a.asset_id,
+                    filename=a.filename,
+                    mime_type=a.mime_type,
+                    content_sha256=a.content_sha256,
+                    byte_size=a.byte_size,
+                )
+                for a in m.attachments
+            ],
+            acceptance_evidence=ev_dto,
+        )
+
     return ExternalExecutionPlanResponse(
         plan_id=plan.plan_id,
         case_id=plan.case_id,
@@ -916,6 +957,7 @@ def _to_execution_plan_response(plan: ExternalExecutionPlan) -> ExternalExecutio
             for s in plan.screening_responses
         ],
         final_submit_control=submit_control_dto,
+        email_manifest=email_manifest_dto,
         findings=findings_dtos,
         planning_findings=findings_dtos,
         execution_input_hash=plan.execution_input_hash,

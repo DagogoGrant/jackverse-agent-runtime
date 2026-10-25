@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import sqlite3
 
-LATEST_SCHEMA_VERSION = 11
+LATEST_SCHEMA_VERSION = 12
 
 MIGRATION_V1_DDL = """
 CREATE TABLE IF NOT EXISTS missions (
@@ -427,6 +427,38 @@ CREATE INDEX IF NOT EXISTS idx_exec_receipts_plan ON execution_receipts(plan_id)
 CREATE UNIQUE INDEX IF NOT EXISTS idx_exec_receipts_hash ON execution_receipts(receipt_hash);
 """
 
+MIGRATION_V12_TABLES_DDL = """
+CREATE TABLE IF NOT EXISTS user_oauth_credentials (
+    user_id TEXT NOT NULL,
+    provider TEXT NOT NULL,
+    google_sub TEXT NOT NULL,
+    access_token_enc TEXT NOT NULL,
+    refresh_token_enc TEXT,
+    token_expiry TEXT NOT NULL,
+    authenticated_email TEXT NOT NULL,
+    scopes TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    PRIMARY KEY (user_id, provider)
+);
+
+CREATE INDEX IF NOT EXISTS idx_user_oauth_creds_user ON user_oauth_credentials(user_id);
+CREATE INDEX IF NOT EXISTS idx_user_oauth_creds_sub ON user_oauth_credentials(google_sub);
+
+CREATE TABLE IF NOT EXISTS oauth_states (
+    state TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    provider TEXT NOT NULL,
+    code_verifier TEXT NOT NULL,
+    redirect_uri TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    expires_at TEXT NOT NULL,
+    used_at TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_oauth_states_user ON oauth_states(user_id);
+"""
+
 
 class SQLiteMigrator:
     """Manages transactional database schema upgrades for Caseworker persistence."""
@@ -619,6 +651,12 @@ class SQLiteMigrator:
                     conn.execute("ALTER TABLE external_execution_plans ADD COLUMN email_manifest_json TEXT;")
             conn.execute("PRAGMA user_version = 11;")
             current_version = 11
+
+        # Migrate 11 -> 12 (Phase 5.3.3.1 Hardening: Encrypted OAuth Credentials & PKCE OAuth States)
+        if current_version < 12:
+            conn.executescript(MIGRATION_V12_TABLES_DDL)
+            conn.execute("PRAGMA user_version = 12;")
+            current_version = 12
 
         return current_version
 

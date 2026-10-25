@@ -14,7 +14,7 @@ class TestSQLiteMigration(unittest.TestCase):
         cur = conn.cursor()
         cur.execute("PRAGMA user_version;")
         version = cur.fetchone()[0]
-        self.assertEqual(version, 11)
+        self.assertEqual(version, 12)
 
         # Verify all tables exist
         cur.execute("SELECT name FROM sqlite_master WHERE type='table';")
@@ -37,6 +37,8 @@ class TestSQLiteMigration(unittest.TestCase):
             "execution_leases",
             "execution_attempts",
             "execution_receipts",
+            "user_oauth_credentials",
+            "oauth_states",
         }
         for table in expected_tables:
             self.assertIn(table, tables, f"Expected table '{table}' missing after migration.")
@@ -635,9 +637,9 @@ class TestSQLiteMigration(unittest.TestCase):
         conn.executescript(MIGRATION_V8_TABLES_DDL)
         conn.execute("PRAGMA user_version = 8;")
 
-        # Migrate to latest (v11)
+        # Migrate to latest (v12)
         new_version = SQLiteMigrator.migrate(conn)
-        self.assertEqual(new_version, 11)
+        self.assertEqual(new_version, 12)
 
         cur = conn.cursor()
         cur.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='external_execution_plans';")
@@ -678,9 +680,9 @@ class TestSQLiteMigration(unittest.TestCase):
         conn.executescript(MIGRATION_V9_TABLES_DDL)
         conn.execute("PRAGMA user_version = 9;")
 
-        # Run migration 9 -> 11
+        # Run migration 9 -> 12
         new_version = SQLiteMigrator.migrate(conn)
-        self.assertEqual(new_version, 11)
+        self.assertEqual(new_version, 12)
 
         cur = conn.cursor()
         for tbl in ("execution_leases", "execution_attempts", "execution_receipts"):
@@ -717,9 +719,9 @@ class TestSQLiteMigration(unittest.TestCase):
         conn.executescript(MIGRATION_V10_TABLES_DDL)
         conn.execute("PRAGMA user_version = 10;")
 
-        # Run migration 10 -> 11
+        # Run migration 10 -> 12
         new_version = SQLiteMigrator.migrate(conn)
-        self.assertEqual(new_version, 11)
+        self.assertEqual(new_version, 12)
 
         cur = conn.cursor()
         cur.execute("PRAGMA table_info(external_execution_plans);")
@@ -727,6 +729,49 @@ class TestSQLiteMigration(unittest.TestCase):
         self.assertIn("email_manifest_json", columns)
         conn.close()
 
+    def test_migration_from_v11_to_v12_creates_oauth_tables(self) -> None:
+        """Verify explicit migration from v11 to v12 adds user_oauth_credentials and oauth_states."""
+        conn = sqlite3.connect(":memory:")
+        from caseworker.persistence.migration import (
+            MIGRATION_V1_DDL,
+            MIGRATION_V2_TABLES_DDL,
+            MIGRATION_V6_TABLES_DDL,
+            MIGRATION_V7_TABLES_DDL,
+            MIGRATION_V8_TABLES_DDL,
+            MIGRATION_V9_TABLES_DDL,
+            MIGRATION_V10_TABLES_DDL,
+        )
+        conn.executescript(MIGRATION_V1_DDL)
+        conn.executescript(MIGRATION_V2_TABLES_DDL)
+        conn.executescript(MIGRATION_V6_TABLES_DDL)
+        conn.executescript(MIGRATION_V7_TABLES_DDL)
+        conn.executescript(MIGRATION_V8_TABLES_DDL)
+        conn.executescript(MIGRATION_V9_TABLES_DDL)
+        conn.executescript(MIGRATION_V10_TABLES_DDL)
+        conn.execute("PRAGMA user_version = 11;")
+
+        # Run migration 11 -> 12
+        new_version = SQLiteMigrator.migrate(conn)
+        self.assertEqual(new_version, 12)
+
+        cur = conn.cursor()
+        for tbl in ("user_oauth_credentials", "oauth_states"):
+            cur.execute(f"SELECT name FROM sqlite_master WHERE type='table' AND name='{tbl}';")
+            self.assertIsNotNone(cur.fetchone(), f"Table '{tbl}' must exist after v12 migration")
+
+        # Verify columns on user_oauth_credentials
+        cur.execute("PRAGMA table_info(user_oauth_credentials);")
+        creds_cols = {row[1] for row in cur.fetchall()}
+        for col in ("user_id", "provider", "google_sub", "access_token_enc", "refresh_token_enc", "token_expiry", "authenticated_email", "scopes"):
+            self.assertIn(col, creds_cols)
+
+        # Verify columns on oauth_states
+        cur.execute("PRAGMA table_info(oauth_states);")
+        state_cols = {row[1] for row in cur.fetchall()}
+        for col in ("state", "user_id", "provider", "code_verifier", "redirect_uri", "expires_at", "used_at"):
+            self.assertIn(col, state_cols)
+
+        conn.close()
 
 
 if __name__ == "__main__":
