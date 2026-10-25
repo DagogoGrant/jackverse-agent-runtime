@@ -16,6 +16,7 @@ JackVerse Caseworker pipeline using the existing domain model:
 from __future__ import annotations
 
 import argparse
+import asyncio
 import hashlib
 import json
 import os
@@ -23,6 +24,9 @@ import sys
 import uuid
 from datetime import datetime, timezone
 from typing import Any
+
+from fastapi import HTTPException
+from starlette.requests import Request
 
 # Ensure project root src is on sys.path
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -102,6 +106,27 @@ from caseworker.services.governed_execution_service import (
     SimulatedExecutionProvider,
 )
 from caseworker.services.package_service import PackageService
+
+
+def _validate_db_path(db_path: str) -> None:
+    """Enforce strict database isolation: only :memory: or a non-existent disposable file is permitted."""
+    if db_path == ":memory:":
+        return
+
+    abs_path = os.path.abspath(db_path)
+    forbidden_names = {"caseworker.db", "jackverse.db", "production.db", "app.db"}
+    base_name = os.path.basename(abs_path).lower()
+    if base_name in forbidden_names or ".caseworker" in abs_path:
+        raise ValueError(
+            f"Preflight safety violation: Refusing to use persistent database '{base_name}'. "
+            f"Preflight requires ':memory:' or a new disposable test database to prevent state corruption."
+        )
+
+    if os.path.exists(abs_path) and os.path.getsize(abs_path) > 0:
+        raise ValueError(
+            f"Preflight safety violation: Target database '{abs_path}' already exists and contains data. "
+            f"Preflight must use ':memory:' or a non-existent disposable path."
+        )
 
 
 def _setup_pipeline(
@@ -429,18 +454,52 @@ def run_controlled_preflight(
     verified_op = verify_operator_token(token, operator_secret)
     id_provider = FailClosedIdentityProvider(operator_secret=operator_secret)
 
-    # Negative test: dev- prefixed token must fail closed in production
-    dev_token = generate_operator_token(operator_id=f"dev-{operator_id}", secret=operator_secret, ttl_seconds=3600)
-    dev_rejected = False
+    # Positive test: Valid production operator bearer token via get_principal()
+    req_valid = Request({
+        "type": "http",
+        "method": "GET",
+        "headers": [(b"authorization", f"Bearer {token}".encode("ascii"))],
+    })
+    loop = asyncio.new_event_loop()
     try:
-        id_provider.authenticate(f"Bearer {dev_token}")
+        principal_valid = loop.run_until_complete(id_provider.get_principal(req_valid))
+    finally:
+        loop.close()
+
+    valid_token_accepted = (
+        principal_valid.user_id == operator_id
+        and principal_valid.auth_method == "operator_token"
+        and principal_valid.is_authenticated
+    )
+
+    # Negative test: dev- prefixed token must fail closed in production with HTTP 401
+    dev_token = generate_operator_token(operator_id=f"dev-{operator_id}", secret=operator_secret, ttl_seconds=3600)
+    req_dev = Request({
+        "type": "http",
+        "method": "GET",
+        "headers": [(b"authorization", f"Bearer {dev_token}".encode("ascii"))],
+    })
+    dev_rejected = False
+    rejection_status = None
+    loop = asyncio.new_event_loop()
+    try:
+        loop.run_until_complete(id_provider.get_principal(req_dev))
+    except HTTPException as exc:
+        rejection_status = exc.status_code
+        # Strictly verify HTTP 401 and specific forbidden developer token detail message
+        if exc.status_code == 401 and "Developer operator tokens are strictly forbidden in production mode" in str(exc.detail):
+            dev_rejected = True
     except Exception:
-        dev_rejected = True
+        # Unexpected errors (like AttributeError) must NOT be counted as rejection
+        dev_rejected = False
+    finally:
+        loop.close()
 
     results["checks"]["operator_authority"] = {
         "operator_id": verified_op,
-        "token_verified": verified_op == operator_id,
+        "token_verified": verified_op == operator_id and valid_token_accepted,
         "dev_bypass_closed_in_production": dev_rejected,
+        "dev_rejection_http_status": rejection_status,
     }
 
     # 4. Implemented API Route Inventory & OpenAPI Route Verification
@@ -479,6 +538,7 @@ def run_controlled_preflight(
     }
 
     # 5. Storage & Domain Pipeline Setup (Isolated Database)
+    _validate_db_path(db_path)
     storage = SQLiteCaseworkerStorage(db_path=db_path)
     user_id = operator_id
     case_id = f"case-test-{uuid.uuid4().hex[:8]}"
@@ -837,6 +897,33 @@ def run_controlled_preflight(
         },
     ]
 
+    # 9. Compute Overall Verdict
+    mandatory_offline_checks = [
+        results["checks"]["safety_flags"]["no_send_boundary_intact"],
+        results["checks"]["cryptography"]["roundtrip_verified"],
+        results["checks"]["cryptography"]["min_entropy_enforced"],
+        results["checks"]["operator_authority"]["token_verified"],
+        results["checks"]["operator_authority"]["dev_bypass_closed_in_production"],
+        results["checks"]["route_inventory"]["required_routes_verified"],
+        results["checks"]["route_inventory"]["nonexistent_routes_rejected"],
+        results["checks"]["dry_run_validation"]["barrier_a_pre_staging_valid"],
+        results["checks"]["dry_run_validation"]["barrier_b_read_only_rehearsal_valid"],
+        results["checks"]["dry_run_validation"]["mime_hash_verified"],
+    ]
+    if "idempotency_verification" in results["checks"]:
+        mandatory_offline_checks.extend([
+            results["checks"]["idempotency_verification"]["zero_duplicate_transmissions_guaranteed"],
+            results["checks"]["idempotency_verification"]["automatic_retry_blocked_on_ambiguity"],
+        ])
+
+    offline_all_passed = all(mandatory_offline_checks)
+    results["verdict"] = {
+        "offline_pipeline_passed": offline_all_passed,
+        "no_send_boundary_intact": results["checks"]["safety_flags"]["no_send_boundary_intact"],
+        "live_readiness_status": "NOT CONFIGURED",
+        "ready_for_live_send": False,
+    }
+
     return results
 
 
@@ -865,7 +952,9 @@ def print_preflight_report(results: dict[str, Any]) -> None:
     oa = results["checks"]["operator_authority"]
     print(f"  Operator Identity:                  {oa['operator_id']}")
     print(f"  Token Verification:                 {'PASS' if oa['token_verified'] else 'FAIL'}")
-    print(f"  Dev Operator Token Rejected:        {'PASS (Fail-Closed)' if oa['dev_bypass_closed_in_production'] else 'FAIL'}")
+    print(f"  Dev Operator Token Rejected:        {'PASS (Fail-Closed HTTP 401)' if oa['dev_bypass_closed_in_production'] else 'FAIL'}")
+    if "dev_rejection_http_status" in oa:
+        print(f"  Dev Token Rejection Status Code:    {oa['dev_rejection_http_status']}")
 
     print("\n[4] DRY-RUN VALIDATION (BARRIER A & B REHEARSAL)")
     drv = results["checks"]["dry_run_validation"]
@@ -925,9 +1014,27 @@ def print_preflight_report(results: dict[str, Any]) -> None:
             print(f"  {p['name']:<46} | {p['status']:<16} | {p['scope']}")
 
     print("\n" + "=" * 78)
-    print("READINESS SUMMARY: DRY_RUN_VALIDATION PASSED (OFFLINE PIPELINE VERIFIED)")
-    print("LIVE READINESS: NOT CONFIGURED (AWAITING TLS/GCP SETUP & EXPLICIT SEND APPROVAL)")
-    print("NO EMAIL HAS BEEN SENT. SYSTEM HALTED AT HUMAN APPROVAL CHECKPOINT.")
+    if results.get("verdict", {}).get("offline_pipeline_passed", False):
+        print("READINESS SUMMARY: DRY_RUN_VALIDATION PASSED (OFFLINE PIPELINE VERIFIED)")
+        print("LIVE READINESS: NOT CONFIGURED (AWAITING TLS/GCP SETUP & EXPLICIT SEND APPROVAL)")
+        print("NO EMAIL HAS BEEN SENT. SYSTEM HALTED AT HUMAN APPROVAL CHECKPOINT.")
+    else:
+        print("READINESS SUMMARY: DRY_RUN_VALIDATION FAILED")
+        print("CRITICAL: One or more mandatory offline safety or integrity checks failed!")
+        if not results.get("checks", {}).get("safety_flags", {}).get("no_send_boundary_intact", True):
+            print("  - SAFETY FLAG VIOLATION: Live execution flags are ENABLED during preflight.")
+        if not results.get("checks", {}).get("operator_authority", {}).get("dev_bypass_closed_in_production", True):
+            print("  - AUTHENTICATION VIOLATION: Developer bypass token was not rejected.")
+        if not results.get("checks", {}).get("operator_authority", {}).get("token_verified", True):
+            print("  - AUTHENTICATION VIOLATION: Valid operator token failed verification.")
+        if not results.get("checks", {}).get("cryptography", {}).get("roundtrip_verified", True):
+            print("  - CRYPTOGRAPHY VIOLATION: TokenCipher roundtrip failed.")
+        if not results.get("checks", {}).get("route_inventory", {}).get("required_routes_verified", True):
+            print("  - ROUTE INVENTORY VIOLATION: One or more required API routes are missing.")
+        if not results.get("checks", {}).get("dry_run_validation", {}).get("barrier_a_pre_staging_valid", True):
+            print("  - BARRIER A VIOLATION: Pre-staging revalidation failed.")
+        if not results.get("checks", {}).get("dry_run_validation", {}).get("barrier_b_read_only_rehearsal_valid", True):
+            print("  - BARRIER B VIOLATION: Last-reversible-point rehearsal failed.")
     print("=" * 78)
 
 
@@ -940,6 +1047,7 @@ if __name__ == "__main__":
     parser.add_argument("--json", action="store_true", help="Output machine-readable JSON")
     args = parser.parse_args()
 
+    _validate_db_path(args.db_path)
     res = run_controlled_preflight(
         sender_email=args.sender,
         recipient_email=args.recipient,
@@ -950,3 +1058,6 @@ if __name__ == "__main__":
         print(json.dumps(res, indent=2))
     else:
         print_preflight_report(res)
+
+    if not res.get("verdict", {}).get("offline_pipeline_passed", False):
+        sys.exit(1)

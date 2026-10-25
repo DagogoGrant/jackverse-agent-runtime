@@ -123,6 +123,7 @@ services:
       context: ./web
     ports:
       - "127.0.0.1:${CASEWORKER_WEB_PORT:-3001}:80"
+      - "127.0.0.1:${CASEWORKER_WEB_HTTPS_PORT:-3443}:443"
     depends_on:
       - caseworker-api
     networks:

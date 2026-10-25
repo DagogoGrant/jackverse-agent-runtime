@@ -5,6 +5,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
 from scripts.controlled_test_preflight import run_controlled_preflight
 
 
@@ -78,6 +80,42 @@ def test_preflight_dry_run_validation_passes() -> None:
     assert prereqs["Real Gmail External Dispatch Permission"] == "NOT CONFIGURED"
 
 
+    # Verdict
+    assert res["verdict"]["offline_pipeline_passed"] is True
+    assert res["checks"]["operator_authority"]["dev_rejection_http_status"] == 401
+
+
+def test_preflight_blocks_existing_database_path(tmp_path: Path) -> None:
+    """Verify that preflight refuses to use an existing persistent database file."""
+    import pytest
+    from scripts.controlled_test_preflight import _validate_db_path
+
+    # Existing non-empty file
+    db_file = tmp_path / "existing_data.db"
+    db_file.write_text("some-data")
+
+    with pytest.raises(ValueError, match="already exists and contains data"):
+        _validate_db_path(str(db_file))
+
+    # Forbidden filename
+    with pytest.raises(ValueError, match="Refusing to use persistent database"):
+        _validate_db_path("/tmp/caseworker.db")
+
+
+def test_preflight_fails_when_real_execution_enabled(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Verify that enabling real execution flags causes preflight verdict to fail."""
+    monkeypatch.setenv("CASEWORKER_REAL_EXECUTION_ENABLED", "true")
+    res = run_controlled_preflight(
+        sender_email="operator-sender@example.com",
+        recipient_email="operator-controlled-test@example.com",
+        operator_id="test_operator",
+        db_path=":memory:",
+        demonstrate_mocks=False,
+    )
+    assert res["verdict"]["offline_pipeline_passed"] is False
+    assert res["checks"]["safety_flags"]["no_send_boundary_intact"] is False
+
+
 def test_preflight_cli_runs_successfully() -> None:
     """Verify scripts/controlled_test_preflight.py executes cleanly as CLI with --json output."""
     project_root = Path(__file__).resolve().parents[3]
@@ -93,5 +131,7 @@ def test_preflight_cli_runs_successfully() -> None:
 
     data = json.loads(proc.stdout)
     assert data["dry_run_validation"] is True
+    assert data["verdict"]["offline_pipeline_passed"] is True
     assert data["checks"]["safety_flags"]["no_send_boundary_intact"] is True
     assert data["checks"]["route_inventory"]["required_routes_verified"] is True
+    assert data["checks"]["operator_authority"]["dev_rejection_http_status"] == 401

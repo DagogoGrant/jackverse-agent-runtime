@@ -24,8 +24,16 @@ COPY . .
 # Compile TypeScript and Vite static bundle
 RUN npm run build
 
-# Stage 2: Production Nginx server
+# Stage 2: Production Nginx server with TLS support
 FROM nginx:alpine
+
+# Generate default self-signed TLS certificate for localhost development/testing
+RUN apk add --no-cache openssl && \
+    mkdir -p /etc/nginx/ssl && \
+    openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
+    -keyout /etc/nginx/ssl/localhost.key \
+    -out /etc/nginx/ssl/localhost.crt \
+    -subj "/CN=localhost"
 
 # Copy nginx SPA routing configuration
 RUN rm /etc/nginx/conf.d/default.conf
@@ -34,6 +42,6 @@ COPY nginx.conf /etc/nginx/conf.d/default.conf
 # Copy build artifacts to nginx public root
 COPY --from=builder /app/dist /usr/share/nginx/html
 
-EXPOSE 80
+EXPOSE 80 443
 
 CMD ["nginx", "-g", "daemon off;"]
