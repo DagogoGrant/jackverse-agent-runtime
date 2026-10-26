@@ -406,14 +406,14 @@ async def google_auth_callback(
 <html>
 <head>
   <meta charset="utf-8">
-  <meta http-equiv="refresh" content="2;url=/cases">
+  <meta http-equiv="refresh" content="2;url=/missions">
   <title>JackVerse OAuth Connected</title>
 </head>
 <body style="font-family: sans-serif; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; background: #0f172a; color: #f8fafc;">
   <div style="text-align: center; max-width: 400px; padding: 2rem; border: 1px solid #334155; border-radius: 8px; background: #1e293b;">
     <h2 style="margin-top: 0; color: #10b981;">Account Connected</h2>
     <p>Google account <strong>{escaped_email}</strong> has been linked.</p>
-    <p style="color: #94a3b8; font-size: 0.875rem;">Redirecting to your cases...</p>
+    <p style="color: #94a3b8; font-size: 0.875rem;">Redirecting to your missions...</p>
   </div>
 </body>
 </html>"""

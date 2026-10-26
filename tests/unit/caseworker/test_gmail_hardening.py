@@ -1369,6 +1369,8 @@ class TestGmailHardeningRegressions(unittest.TestCase):
         self.assertNotIn("<script>", resp.text.lower())
         self.assertNotIn("postMessage", resp.text)
         self.assertIn('http-equiv="refresh"', resp.text)
+        self.assertIn('content="2;url=/missions"', resp.text)
+        self.assertNotIn('url=/cases', resp.text)
 
     def test_case_26_oauth_credentials_not_in_url_params(self) -> None:
         """Case 26: OAuth tokens are sent in request body and headers, never in URL query strings."""
