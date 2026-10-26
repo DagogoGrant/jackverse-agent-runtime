@@ -4,6 +4,7 @@ import { isDevAuthEnabled, getDevUser, setDevUser } from '../../api/client';
 import { AgentGlyph } from '../ui/AgentGlyph';
 import { ThemeSwitch } from '../ui/ThemeSwitch';
 import { AmbientCanvas } from '../ui/AmbientCanvas';
+import { OperatorSessionControl } from '../ui/OperatorSessionControl';
 import { useDevUserSync, useApprovals } from '../../hooks/useCaseworker';
 
 interface ShellProps {
@@ -77,6 +78,9 @@ export const Shell: React.FC<ShellProps> = ({ children }) => {
           <div className="flex items-center gap-2 sm:gap-3 md:gap-5">
             {/* Authored Theme Switcher */}
             <ThemeSwitch />
+
+            {/* Operator Session Bootstrap Control (Phase 5.3.3.1) */}
+            <OperatorSessionControl />
 
             {/* Diagnostic Dev Switcher - ONLY when VITE_JACKVERSE_DEV_AUTH is true */}
             {devAuth && (

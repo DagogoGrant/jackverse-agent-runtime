@@ -1316,6 +1316,7 @@ export function useDisconnectGoogleAuth() {
 }
 
 export function useCreateOperatorSession() {
+  const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async (req: OperatorSessionRequest) => {
       const res = await apiRequest<OperatorSessionResponse>('/auth/operator/session', {
@@ -1324,10 +1325,14 @@ export function useCreateOperatorSession() {
       });
       return res.data;
     },
+    onSuccess: () => {
+      queryClient.invalidateQueries();
+    },
   });
 }
 
 export function useCreateDevOperatorSession() {
+  const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async (operatorId: string = 'dev-operator') => {
       const res = await apiRequest<OperatorSessionResponse>(
@@ -1338,16 +1343,23 @@ export function useCreateDevOperatorSession() {
       );
       return res.data;
     },
+    onSuccess: () => {
+      queryClient.invalidateQueries();
+    },
   });
 }
 
 export function useDeleteOperatorSession() {
+  const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async () => {
       const res = await apiRequest<{ success: boolean }>('/auth/operator/session', {
         method: 'DELETE',
       });
       return res.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries();
     },
   });
 }

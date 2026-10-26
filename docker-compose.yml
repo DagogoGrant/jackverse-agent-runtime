@@ -109,9 +109,15 @@ services:
     command: ["uvicorn", "caseworker.api:create_app", "--factory", "--host", "0.0.0.0", "--port", "8080", "--workers", "1"]
     ports:
       - "127.0.0.1:${CASEWORKER_API_PORT:-8088}:8080"
+    env_file:
+      - path: .env.caseworker-api.local
+        required: false
     environment:
       - CASEWORKER_DB_PATH=/app/.caseworker/caseworker.db
       - CASEWORKER_DEV_AUTH=false
+      - CASEWORKER_REAL_EXECUTION_ENABLED=false
+      - CASEWORKER_GMAIL_EXECUTION_ENABLED=false
+      - CASEWORKER_GMAIL_REDIRECT_URI=${CASEWORKER_GMAIL_REDIRECT_URI:-https://localhost:3443/api/v1/auth/google/callback}
       - PYTHONPATH=/app/src
     volumes:
       - caseworker_data:/app/.caseworker
@@ -126,6 +132,8 @@ services:
       - "127.0.0.1:${CASEWORKER_WEB_HTTPS_PORT:-3443}:443"
     depends_on:
       - caseworker-api
+    volumes:
+      - ./certs:/etc/nginx/ssl:ro
     networks:
       - agent-net
 

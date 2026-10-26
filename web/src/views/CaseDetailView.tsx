@@ -152,7 +152,12 @@ export const CaseDetailView: React.FC = () => {
         window.location.href = res.authorization_url;
       }
     } catch (err: unknown) {
-      setGoogleAuthError(err instanceof Error ? err.message : 'Failed to initiate Google authorization.');
+      const msg = err instanceof Error ? err.message : 'Failed to initiate Google authorization.';
+      if (msg.includes('Missing Authorization') || msg.includes('Authentication required') || msg.includes('operator session') || msg.includes('401')) {
+        setGoogleAuthError("Operator authentication required. Please click 'OPERATOR SESSION' in the top bar to authenticate your browser session before connecting Google.");
+      } else {
+        setGoogleAuthError(msg);
+      }
     }
   };
 

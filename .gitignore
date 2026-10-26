@@ -120,6 +120,7 @@ celerybeat.pid
 .env
 .env.*
 !.env.example
+!.env.caseworker-api.example
 .venv
 .venv-*/
 env/
@@ -129,6 +130,12 @@ venv-repro312/
 ENV/
 env.bak/
 venv.bak/
+
+# Local development TLS certificates and keys (never commit private keys)
+certs/
+*.key
+*.crt
+*.pem
 
 # Runtime workspace artifacts
 workspace/*
