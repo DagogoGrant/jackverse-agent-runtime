@@ -1,17 +1,21 @@
 #!/usr/bin/env python3
-"""JackVerse Phase 5.3.3.2 — Controlled Gmail Transmission Test Preparation: Stage A.
+"""JackVerse Phase 5.3.3.2 — Controlled Gmail Transmission Test Preparation: Stage A (Amended).
 
 Prepares a genuine, governed end-to-end Gmail transmission acceptance test using an
 INTERNAL_TEST opportunity and operator-controlled destination mailbox in the live database.
 
-STAGE A SCOPE:
-- Verifies real Google OAuth connection & gmail.send scope for operator-1.
-- Verifies both live execution flags remain strictly disabled.
-- Creates or retrieves the INTERNAL_TEST Opportunity and Case for operator-1.
-- Creates harmless synthetic artifacts containing the exact prompt test message.
-- Seals and freezes the PreparationPackage using PackageService.
-- Leaves the package content Approval in status PENDING.
-- STOPS before package approval. No execution plan is compiled and no email is sent.
+STAGE A AMENDMENTS:
+- Enforces strict self-addressed recipient restriction (must match connected Google OAuth email).
+- Repairs evidence provenance:
+  - Registers authentic ContextSource for Google OAuth account connection.
+  - Updates operator email fact to SOURCE_VERIFIED (derived from OAuth credential).
+  - Updates fictional name fact to UNVERIFIED (strictly synthetic placeholder).
+  - Re-grounds operator authorization claim in the authenticated OAuth email fact.
+- Preserves existing case and package history via supported supersession:
+  - Supersedes existing package pkg_ddf4307bfabc and cancels approval 8490df05-...
+  - Verifies and freezes replacement package under new artifact set.
+  - Leaves replacement package content Approval in status PENDING.
+- STOPS before package approval. No execution plan is compiled and zero emails are sent.
 """
 
 from __future__ import annotations
@@ -43,6 +47,7 @@ from caseworker.domain.artifact_planner import PLANNER_VERSION
 from caseworker.domain.case import Case
 from caseworker.domain.claim import Claim, compute_support_snapshot_hash
 from caseworker.domain.context import ContextFact
+from caseworker.domain.source import ContextSource
 from caseworker.domain.enums import (
     ActionStatus,
     ActionType,
@@ -56,11 +61,13 @@ from caseworker.domain.enums import (
     OpportunityType,
     PreparationMaterialType,
     PreparationPackageStatus,
+    SensitivityLevel,
+    SourceType,
     VerificationStatus,
 )
 from caseworker.domain.opportunity import Opportunity
 from caseworker.domain.preparation_analyzer import PreparationAnalyzer
-from caseworker.domain.types import compute_sha256, compute_sha256_bytes, now_utc
+from caseworker.domain.types import compute_sha256, now_utc
 from caseworker.persistence.sqlite import SQLiteCaseworkerStorage
 from caseworker.services.package_service import PackageService
 
@@ -153,20 +160,29 @@ def prepare_stage_a(
     operator_id: str = "operator-1",
     recipient_email: str | None = None,
 ) -> dict[str, Any]:
-    """Execute Stage A: establish test identity, harmless artifacts, and freeze package with PENDING approval."""
+    """Execute Stage A with evidence provenance repair and package supersession."""
     safety_info = verify_runtime_safety(db_path, operator_id=operator_id)
     sender_email = safety_info["authenticated_email"]
-    target_recipient = recipient_email or sender_email
+
+    # Point 4: Restrict test recipient strictly to the connected Google account
+    if recipient_email and recipient_email.strip().lower() != sender_email.strip().lower():
+        raise RuntimeError(
+            f"RECIPIENT RESTRICTION VIOLATION: Controlled test must remain self-addressed to connected operator mailbox '{sender_email}' (got '{recipient_email}')."
+        )
+    target_recipient = sender_email
 
     storage = SQLiteCaseworkerStorage(db_path=db_path)
     package_service = PackageService(storage)
 
-    opp_id = f"opp-controlled-test-5332"
-    case_id = f"case-controlled-test-5332"
-    art_set_id = f"set-controlled-test-5332"
+    opp_id = "opp-controlled-test-5332"
+    case_id = "case-controlled-test-5332"
+    v1_art_set_id = "set-controlled-test-5332"
+    v2_art_set_id = "set-controlled-test-5332-v2"
+
+    superseded_packages_info: list[dict[str, Any]] = []
 
     with storage.unit_of_work() as uow:
-        # 1. Existing or new Case (saved before Opportunity due to converted_case_id FK)
+        # 1. Existing or new Case
         case = uow.cases.get_by_id(case_id)
         if case is None:
             case = Case(
@@ -204,7 +220,23 @@ def prepare_stage_a(
             )
             uow.opportunities.save(opp)
 
-        # 3. Context Facts
+        # 3. Provenance Repair: ContextSource for Google OAuth
+        src_id = f"src-oauth-{operator_id}"
+        source = uow.sources.get_by_id(src_id)
+        if source is None:
+            source = ContextSource(
+                source_id=src_id,
+                user_id=operator_id,
+                title="Google OAuth Account Connection",
+                source_type=SourceType.PROFILE_IMPORT,
+                source_reference="google_oauth:user_oauth_credentials:operator-1:gmail",
+                metadata={"provider": "gmail", "authenticated_email": sender_email},
+                sensitivity=SensitivityLevel.PERSONAL,
+            )
+            uow.sources.save(source)
+
+        # 4. Provenance Repair: Context Facts
+        # 4a. Email Fact: SOURCE_VERIFIED (derived from genuine OAuth credential)
         fact_email_id = f"fact-email-{operator_id}"
         fact_email = uow.context.get_by_id(fact_email_id)
         if fact_email is None:
@@ -214,11 +246,24 @@ def prepare_stage_a(
                 namespace="identity",
                 key="email",
                 value=sender_email,
-                verification_status=VerificationStatus.USER_VERIFIED,
+                source_type=SourceType.PROFILE_IMPORT,
+                source_reference="google_oauth:user_oauth_credentials:operator-1:gmail",
+                source_id=src_id,
+                verification_status=VerificationStatus.SOURCE_VERIFIED,
                 allowed_purposes=["job_application", "case_preparation", "test_verification"],
             )
             uow.context.save(fact_email)
+        else:
+            # Repair existing fact: ensure SOURCE_VERIFIED, correct source
+            fact_email.source_type = SourceType.PROFILE_IMPORT
+            fact_email.source_reference = "google_oauth:user_oauth_credentials:operator-1:gmail"
+            fact_email.source_id = src_id
+            fact_email.verification_status = VerificationStatus.SOURCE_VERIFIED
+            fact_email.allowed_purposes = ["job_application", "case_preparation", "test_verification"]
+            fact_email.version += 1
+            uow.context.save(fact_email)
 
+        # 4b. Name Fact: UNVERIFIED (strictly synthetic placeholder; no fabricated human verification)
         fact_name_id = f"fact-name-{operator_id}"
         fact_name = uow.context.get_by_id(fact_name_id)
         if fact_name is None:
@@ -228,54 +273,110 @@ def prepare_stage_a(
                 namespace="identity",
                 key="full_name",
                 value="Candidate Test Subject",
-                verification_status=VerificationStatus.USER_VERIFIED,
-                allowed_purposes=["job_application", "case_preparation", "test_verification"],
+                source_type=SourceType.AGENT_INFERENCE,
+                verification_status=VerificationStatus.UNVERIFIED,
+                allowed_purposes=["test_verification"],
             )
             uow.context.save(fact_name)
+        else:
+            # Repair existing fact: downgrade from USER_VERIFIED to UNVERIFIED
+            fact_name.source_type = SourceType.AGENT_INFERENCE
+            fact_name.verification_status = VerificationStatus.UNVERIFIED
+            fact_name.allowed_purposes = ["test_verification"]
+            fact_name.version += 1
+            uow.context.save(fact_name)
 
-        # 4. Preparation Report
+        # 5. Preparation Report (analyzed with active verified fact_email)
         analyzer = PreparationAnalyzer()
-        report = uow.preparation_reports.get_latest_for_case(case_id)
-        if report is None:
-            report = analyzer.analyze(
-                case=case,
-                opportunity=opp,
-                granted_facts=[fact_email, fact_name],
-                denied_descriptors=[],
-            )
-            uow.preparation_reports.save(report)
+        report = analyzer.analyze(
+            case=case,
+            opportunity=opp,
+            granted_facts=[fact_email],
+            denied_descriptors=[],
+        )
+        uow.preparation_reports.save(report)
 
-        # 5. Grounded Claim
-        supp_hash = compute_support_snapshot_hash([fact_name])
+        # 6. Provenance Repair: Re-ground Claim in fact_email
         claim_id = f"claim-test-{operator_id}"
+        supp_hash = compute_support_snapshot_hash([fact_email])
         claim = uow.claims.get_by_id(claim_id)
         if claim is None:
             claim = Claim(
                 claim_id=claim_id,
                 user_id=operator_id,
                 purpose="test_verification",
-                text="Authorized operator conducting controlled Gmail integration test.",
+                text="Authorized operator conducting controlled Gmail integration test using authenticated Google account.",
                 status=ClaimStatus.SUPPORTED,
-                supporting_fact_ids=[fact_name.fact_id],
+                supporting_fact_ids=[fact_email.fact_id],
                 case_id=case_id,
-                source_report_id=report.report_id,
                 source_claim_intent_id="intent-test-1",
                 assertion_schema="test_authorization",
-                assertion_json=f'{{"kind": "test_auth", "fact_ids": ["{fact_name.fact_id}"]}}',
+                assertion_json=f'{{"kind": "oauth_attestation", "email_fact_id": "{fact_email.fact_id}"}}',
                 support_snapshot_hash=supp_hash,
+                source_report_id=report.report_id,
                 version=1,
             )
             uow.claims.save(claim)
+        else:
+            claim.text = "Authorized operator conducting controlled Gmail integration test using authenticated Google account."
+            claim.supporting_fact_ids = [fact_email.fact_id]
+            claim.status = ClaimStatus.SUPPORTED
+            claim.assertion_json = f'{{"kind": "oauth_attestation", "email_fact_id": "{fact_email.fact_id}"}}'
+            claim.support_snapshot_hash = supp_hash
+            claim.source_report_id = report.report_id
+            claim.version += 1
+            uow.claims.save(claim)
 
-        # 6. Harmless Prepared Artifacts
-        # 6a. Cover Letter (contains exact prompt body)
-        cl_grounding = compute_artifact_grounding_hash(claims=[], direct_facts=[fact_name])
-        art_cl_id = f"art-cl-{case_id}"
+        # 7. Package Supersession: Supersede v1 package & cancel its pending approval
+        v1_packages = uow.preparation_packages.list_by_set(v1_art_set_id)
+        for v1_pkg in v1_packages:
+            if v1_pkg.status == PreparationPackageStatus.FROZEN:
+                v1_pkg.status = PreparationPackageStatus.SUPERSEDED
+                v1_pkg.reason = "Superseded by package re-verification with corrected evidence provenance"
+                v1_pkg.updated_at = now_utc()
+                v1_pkg.version += 1
+                uow.preparation_packages.save(v1_pkg)
+
+                # Cancel associated action and approval
+                act_key = f"pkg_act:{v1_pkg.package_fingerprint}"
+                old_act = uow.actions.get_by_idempotency_key(case_id, act_key)
+                old_app_id = None
+                if old_act:
+                    old_app = uow.approvals.get_by_action_id(old_act.action_id)
+                    if old_app and old_app.status == ApprovalStatus.PENDING:
+                        old_app.status = ApprovalStatus.CANCELLED
+                        old_app.reason = "Superseded by package re-verification with corrected evidence provenance"
+                        old_app.version += 1
+                        uow.approvals.save(old_app)
+                        old_app_id = old_app.approval_id
+
+                    old_act.status = ActionStatus.CANCELLED
+                    old_act.version += 1
+                    uow.actions.save(old_act)
+
+                superseded_packages_info.append({
+                    "package_id": v1_pkg.package_id,
+                    "previous_status": "frozen",
+                    "new_status": "superseded",
+                    "package_fingerprint": v1_pkg.package_fingerprint,
+                    "cancelled_approval_id": old_app_id,
+                })
+
+        # Reset Case status to PLANNING to permit new verification
+        if case.status != CaseStatus.PLANNING:
+            case.status = CaseStatus.PLANNING
+            case.version += 1
+            uow.cases.save(case)
+
+        # 8. Create Corrected Artifact Set (v2) Grounded in Authentic Provenance
+        # 8a. Cover Letter (grounded in fact_email)
+        cl_grounding = compute_artifact_grounding_hash(claims=[], direct_facts=[fact_email])
+        art_cl_id = f"art-cl-{case_id}-v2"
         existing_cl = uow.preparation_artifacts.get_by_id(art_cl_id)
         if existing_cl is None:
             art_cl = PreparedArtifact(
                 artifact_id=art_cl_id,
-                artifact_set_id=art_set_id,
+                artifact_set_id=v2_art_set_id,
                 case_id=case_id,
                 opportunity_id=opp_id,
                 user_id=operator_id,
@@ -290,7 +391,7 @@ def prepare_stage_a(
                         block_id="b-cl-body",
                         content=EXACT_PROPOSED_BODY,
                         grounding_type=ArtifactGroundingType.CONTEXT_FACT,
-                        fact_ids=[fact_name.fact_id],
+                        fact_ids=[fact_email.fact_id],
                     )
                 ],
             )
@@ -298,14 +399,14 @@ def prepare_stage_a(
         else:
             art_cl = existing_cl
 
-        # 6b. Harmless Synthetic CV
-        cv_grounding = compute_artifact_grounding_hash(claims=[claim], direct_facts=[fact_name])
-        art_cv_id = f"art-cv-{case_id}"
+        # 8b. Harmless Synthetic CV (grounded in claim and fact_email)
+        cv_grounding = compute_artifact_grounding_hash(claims=[claim], direct_facts=[fact_email])
+        art_cv_id = f"art-cv-{case_id}-v2"
         existing_cv = uow.preparation_artifacts.get_by_id(art_cv_id)
         if existing_cv is None:
             art_cv = PreparedArtifact(
                 artifact_id=art_cv_id,
-                artifact_set_id=art_set_id,
+                artifact_set_id=v2_art_set_id,
                 case_id=case_id,
                 opportunity_id=opp_id,
                 user_id=operator_id,
@@ -321,7 +422,7 @@ def prepare_stage_a(
                         block_type="header",
                         content="Test Verification Asset",
                         grounding_type=ArtifactGroundingType.CONTEXT_FACT,
-                        fact_ids=[fact_name.fact_id],
+                        fact_ids=[fact_email.fact_id],
                     ),
                     ArtifactBlock(
                         block_id="b-cv-body",
@@ -335,14 +436,14 @@ def prepare_stage_a(
         else:
             art_cv = existing_cv
 
-        # 6c. Screening Q&A
+        # 8c. Screening Q&A (grounded in claim)
         qa_grounding = compute_artifact_grounding_hash(claims=[claim], direct_facts=[])
-        art_qa_id = f"art-qa-{case_id}"
+        art_qa_id = f"art-qa-{case_id}-v2"
         existing_qa = uow.preparation_artifacts.get_by_id(art_qa_id)
         if existing_qa is None:
             art_qa = PreparedArtifact(
                 artifact_id=art_qa_id,
-                artifact_set_id=art_set_id,
+                artifact_set_id=v2_art_set_id,
                 case_id=case_id,
                 opportunity_id=opp_id,
                 user_id=operator_id,
@@ -371,11 +472,11 @@ def prepare_stage_a(
         else:
             art_qa = existing_qa
 
-    # 7. Check or Freeze PreparationPackage using PackageService
+    # 9. Verify and Freeze Replacement Package (v2)
     bundle = package_service.get_existing_package_bundle(
         user_id=operator_id,
         case_id=case_id,
-        artifact_set_id=art_set_id,
+        artifact_set_id=v2_art_set_id,
     )
     if bundle is not None:
         package, action, approval, findings, refreshed_case = bundle
@@ -383,14 +484,13 @@ def prepare_stage_a(
         package, action, approval, findings, refreshed_case = package_service.verify_and_prepare_package(
             user_id=operator_id,
             case_id=case_id,
-            artifact_set_id=art_set_id,
+            artifact_set_id=v2_art_set_id,
         )
 
-    # 8. VERIFY STAGE A INVARIANTS: STOP BEFORE HUMAN APPROVAL
-    if approval.status != ApprovalStatus.PENDING:
-        print(f"Note: Existing package approval status is {approval.status.value}")
+    # Invariant assertions
+    assert approval.status == ApprovalStatus.PENDING, f"Expected PENDING approval, got {approval.status.value}"
+    assert package.status == PreparationPackageStatus.FROZEN, f"Expected FROZEN package, got {package.status.value}"
 
-    # Compute artifact rendered hashes
     cv_rendered = art_cv.compute_rendered_payload()
     cv_hash = compute_sha256(cv_rendered)
     cl_rendered = art_cl.compute_rendered_payload()
@@ -415,9 +515,35 @@ def prepare_stage_a(
             "title": refreshed_case.title,
             "status": refreshed_case.status.value,
         },
+        "evidence_provenance": {
+            "registered_source_id": src_id,
+            "email_fact": {
+                "fact_id": fact_email.fact_id,
+                "value": fact_email.value,
+                "verification_status": fact_email.verification_status.value,
+                "source_type": fact_email.source_type.value,
+                "source_reference": fact_email.source_reference,
+            },
+            "name_fact": {
+                "fact_id": fact_name.fact_id,
+                "value": fact_name.value,
+                "verification_status": fact_name.verification_status.value,
+                "source_type": fact_name.source_type.value,
+                "note": "Explicitly unverified synthetic placeholder",
+            },
+            "claim": {
+                "claim_id": claim.claim_id,
+                "text": claim.text,
+                "status": claim.status.value,
+                "supporting_fact_ids": claim.supporting_fact_ids,
+                "note": "Re-grounded in Google OAuth source-verified email",
+            },
+        },
+        "superseded_history": superseded_packages_info,
         "preparation_package": {
             "package_id": package.package_id,
             "status": package.status.value,
+            "artifact_set_id": v2_art_set_id,
             "package_fingerprint": package.package_fingerprint,
             "findings_count": len(findings),
             "findings": findings,
@@ -451,14 +577,14 @@ def prepare_stage_a(
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="JackVerse Phase 5.3.3.2 Stage A Preparation")
+    parser = argparse.ArgumentParser(description="JackVerse Phase 5.3.3.2 Stage A Preparation (Amended)")
     parser.add_argument(
         "--db-path",
         default=os.getenv("CASEWORKER_DB_PATH", "/app/.caseworker/caseworker.db"),
         help="Path to Caseworker SQLite database",
     )
     parser.add_argument("--operator-id", default="operator-1", help="Operator ID")
-    parser.add_argument("--recipient-email", default=None, help="Recipient email (defaults to operator's email)")
+    parser.add_argument("--recipient-email", default=None, help="Recipient email (must match operator's email)")
     parser.add_argument("--json", action="store_true", help="Output JSON only")
     args = parser.parse_args()
 
@@ -477,7 +603,7 @@ def main() -> int:
         return 0
 
     print("=" * 80)
-    print("JACKVERSE PHASE 5.3.3.2 — STAGE A PREPARATION DOSSIER")
+    print("JACKVERSE PHASE 5.3.3.2 — STAGE A PREPARATION DOSSIER (AMENDED)")
     print(f"Timestamp: {dossier['timestamp']}")
     print(f"Status:    {dossier['status']}")
     print("=" * 80)
@@ -489,22 +615,29 @@ def main() -> int:
     print(f"  CASEWORKER_REAL_EXECUTION:       OFF (Disabled)")
     print(f"  CASEWORKER_GMAIL_EXECUTION:      OFF (Disabled)")
     print()
-    print("[2] CONTROLLED TEST IDENTITY")
-    print(f"  Opportunity ID:                  {dossier['opportunity']['opportunity_id']}")
-    print(f"  Case ID:                         {dossier['case']['case_id']}")
-    print(f"  Case Status:                     {dossier['case']['status']}")
-    print(f"  Target Recipient:                {dossier['recipient_email']}")
+    print("[2] EVIDENCE PROVENANCE (REPAIRED)")
+    print(f"  Registered OAuth Source:         {dossier['evidence_provenance']['registered_source_id']}")
+    print(f"  Email Fact Status:               {dossier['evidence_provenance']['email_fact']['verification_status']} (Source: {dossier['evidence_provenance']['email_fact']['source_reference']})")
+    print(f"  Name Fact Status:                {dossier['evidence_provenance']['name_fact']['verification_status']} ({dossier['evidence_provenance']['name_fact']['note']})")
+    print(f"  Claim Grounding:                 {dossier['evidence_provenance']['claim']['status']} (Grounded in {dossier['evidence_provenance']['claim']['supporting_fact_ids']})")
     print()
-    print("[3] PREPARATION PACKAGE & PENDING APPROVAL")
+    if dossier["superseded_history"]:
+        print("[3] PRESERVED AUDIT HISTORY (SUPERSEDED PACKAGES)")
+        for old in dossier["superseded_history"]:
+            print(f"  Superseded Package ID:           {old['package_id']} (Status: {old['new_status']})")
+            print(f"  Cancelled Approval ID:           {old['cancelled_approval_id']}")
+        print()
+    print("[4] REPLACEMENT PREPARATION PACKAGE & PENDING APPROVAL")
     print(f"  Package ID:                      {dossier['preparation_package']['package_id']}")
     print(f"  Package Status:                  {dossier['preparation_package']['status']}")
+    print(f"  Artifact Set ID:                 {dossier['preparation_package']['artifact_set_id']}")
     print(f"  Package Fingerprint:             {dossier['preparation_package']['package_fingerprint']}")
     print(f"  Action ID:                       {dossier['approval']['action_id']}")
     print(f"  Action Type:                     {dossier['approval']['action_type']}")
     print(f"  Approval ID:                     {dossier['approval']['approval_id']}")
     print(f"  Approval Status:                 {dossier['approval']['status']} (AWAITING OPERATOR DECISION)")
     print()
-    print("[4] PROPOSED MESSAGE CONTENT")
+    print("[5] PROPOSED MESSAGE CONTENT")
     print(f"  Subject:                         {dossier['proposed_message']['subject']}")
     print(f"  Stable Test Identifier:          {dossier['proposed_message']['test_identifier']}")
     print(f"  Body Hash (SHA-256):             {dossier['proposed_message']['body_sha256']}")
@@ -514,7 +647,7 @@ def main() -> int:
         print(f"    {line}")
     print("  " + "-" * 76)
     print()
-    print("[5] PROPOSED ATTACHMENT")
+    print("[6] PROPOSED ATTACHMENT")
     for att in dossier['proposed_attachments']:
         print(f"  Filename:    {att['filename']} ({att['byte_size']} bytes)")
         print(f"  SHA-256:     {att['content_sha256']}")
