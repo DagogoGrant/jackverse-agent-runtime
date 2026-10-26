@@ -505,10 +505,15 @@ def run_controlled_preflight(
     # 4. Implemented API Route Inventory & OpenAPI Route Verification
     api_app = create_app(storage=SQLiteCaseworkerStorage(":memory:"))
     actual_routes = {
-        f"{m} {r.path}"
-        for r in api_app.routes
-        for m in getattr(r, "methods", [])
+        f"{m.upper()} {path}"
+        for path, item in api_app.openapi().get("paths", {}).items()
+        for m in item.keys()
+        if m.upper() in ("GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS")
     }
+    for r in api_app.routes:
+        if getattr(r, "path", None):
+            for m in getattr(r, "methods", []):
+                actual_routes.add(f"{m} {r.path}")
 
     required_routes = [
         "GET /api/v1/auth/google/authorize",

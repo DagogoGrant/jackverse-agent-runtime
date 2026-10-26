@@ -29,8 +29,19 @@ def _check_db_credentials(db_path: str) -> tuple[bool, str, list[str]]:
     try:
         conn = sqlite3.connect(db_path, timeout=3.0)
         cursor = conn.cursor()
+        # Check user_oauth_credentials (actual table) or fallback to oauth_credentials
+        table_name = "user_oauth_credentials"
+        tables = [r[0] for r in cursor.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()]
+        if "user_oauth_credentials" in tables:
+            table_name = "user_oauth_credentials"
+        elif "oauth_credentials" in tables:
+            table_name = "oauth_credentials"
+        else:
+            conn.close()
+            return False, "", []
+
         cursor.execute(
-            "SELECT authenticated_email, scopes FROM oauth_credentials WHERE provider = 'gmail' ORDER BY updated_at DESC LIMIT 1"
+            f"SELECT authenticated_email, scopes FROM {table_name} WHERE provider = 'gmail' ORDER BY updated_at DESC LIMIT 1"
         )
         row = cursor.fetchone()
         conn.close()
