@@ -121,6 +121,7 @@ services:
       - PYTHONPATH=/app/src
     volumes:
       - caseworker_data:/app/.caseworker
+      - ./scripts:/app/scripts:ro
     networks:
       - agent-net
 
