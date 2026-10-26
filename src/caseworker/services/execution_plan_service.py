@@ -87,7 +87,7 @@ class ExecutionPlanService:
             case = uow.cases.get_by_id(case_id)
             if case is None or case.user_id != user_id:
                 return None
-            if case.status != CaseStatus.ACTION_REQUIRED or case.case_type != CaseType.JOB_APPLICATION:
+            if case.status not in (CaseStatus.ACTION_REQUIRED, CaseStatus.AWAITING_APPROVAL) or case.case_type != CaseType.JOB_APPLICATION:
                 return None
             opportunity = uow.opportunities.get_by_converted_case_id(case.case_id)
             if opportunity is None and case.opportunity_id:
@@ -169,8 +169,10 @@ class ExecutionPlanService:
 
             if case.status != CaseStatus.ACTION_REQUIRED:
                 raise InvalidStateTransitionError(
-                    f"Cannot compile execution plan for case '{case_id}' in status '{case.status.value}'. "
-                    f"Must be ACTION_REQUIRED."
+                    "Case",
+                    case.status.value,
+                    "external_execution_plan_creation",
+                    f"Cannot compile execution plan for case '{case_id}' in status '{case.status.value}'. Must be ACTION_REQUIRED.",
                 )
 
             if case.case_type != CaseType.JOB_APPLICATION:

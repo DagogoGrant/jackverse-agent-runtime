@@ -250,33 +250,44 @@ class ExecutionPlanCompiler:
                         else verified_email_acceptance.to_evidence()
                     )
 
-                    # Validate SSRF safety on source_uri
-                    safe_uri = validate_evidence_source_uri(ev.source_uri)
+                    if getattr(ev, "evidence_source", None) == "operator_self_test_v1":
+                        # Dedicated server-enforced internal self-test verification path
+                        from caseworker.domain.self_test_policy import ServerEnforcedSelfTestPolicy
+                        ServerEnforcedSelfTestPolicy.validate(
+                            case=case,
+                            opportunity=opportunity,
+                            package=package,
+                            evidence=ev,
+                            clean_dest_email=clean_dest_email,
+                        )
+                    else:
+                        # Validate SSRF safety on source_uri
+                        safe_uri = validate_evidence_source_uri(ev.source_uri)
 
-                    # Authority validation: verified_by must be a trusted authority string (operator:* or system:*)
-                    if not (ev.verified_by.startswith("operator:") or ev.verified_by.startswith("system:")):
-                        raise ValueError(f"Verifier identity '{ev.verified_by}' is not derived from a trusted application authority.")
+                        # Authority validation: verified_by must be a trusted authority string (operator:* or system:*)
+                        if not (ev.verified_by.startswith("operator:") or ev.verified_by.startswith("system:")):
+                            raise ValueError(f"Verifier identity '{ev.verified_by}' is not derived from a trusted application authority.")
 
-                    if not ev.instructions_text:
-                        raise ValueError("Evidence instructions_text cannot be empty.")
+                        if not ev.instructions_text:
+                            raise ValueError("Evidence instructions_text cannot be empty.")
 
-                    # Exact recipient check: verified_recipient_email must match destination email
-                    recip = ev.verified_recipient_email.strip().lower()
-                    if recip != clean_dest_email:
-                        raise ValueError(f"Verified recipient email '{recip}' does not match destination '{clean_dest_email}'.")
+                        # Exact recipient check: verified_recipient_email must match destination email
+                        recip = ev.verified_recipient_email.strip().lower()
+                        if recip != clean_dest_email:
+                            raise ValueError(f"Verified recipient email '{recip}' does not match destination '{clean_dest_email}'.")
 
-                    # Independent substantiation check: instructions_text must cite/substantiate the destination email
-                    if clean_dest_email not in ev.instructions_text.lower():
-                        raise ValueError(f"Evidence instructions do not cite or substantiate destination email '{clean_dest_email}'.")
+                        # Independent substantiation check: instructions_text must cite/substantiate the destination email
+                        if clean_dest_email not in ev.instructions_text.lower():
+                            raise ValueError(f"Evidence instructions do not cite or substantiate destination email '{clean_dest_email}'.")
 
-                    # Validate snapshot hash and evidence digest
-                    expected_snap = compute_sha256(ev.instructions_text.strip())
-                    if ev.evidence_snapshot_hash and ev.evidence_snapshot_hash.lower() != expected_snap.lower():
-                        raise ValueError("Evidence snapshot hash does not match instructions text.")
+                        # Validate snapshot hash and evidence digest
+                        expected_snap = compute_sha256(ev.instructions_text.strip())
+                        if ev.evidence_snapshot_hash and ev.evidence_snapshot_hash.lower() != expected_snap.lower():
+                            raise ValueError("Evidence snapshot hash does not match instructions text.")
 
-                    expected_digest = ev.compute_digest()
-                    if ev.evidence_digest and ev.evidence_digest.lower() != expected_digest.lower():
-                        raise ValueError("Evidence digest does not match verified parameters.")
+                        expected_digest = ev.compute_digest()
+                        if ev.evidence_digest and ev.evidence_digest.lower() != expected_digest.lower():
+                            raise ValueError("Evidence digest does not match verified parameters.")
 
                     email_acceptance_evidence = ev
                 except Exception as ev_err:
@@ -831,7 +842,11 @@ class ExecutionPlanCompiler:
             if to_email.lower().startswith("mailto:"):
                 to_email = to_email[7:].strip()
 
-            subject = str(destination.channel_metadata.get("email_subject") or "").strip()
+            subject = str(
+                destination.channel_metadata.get("email_subject")
+                or (opportunity.metadata.get("email_subject") if opportunity and opportunity.metadata else "")
+                or ""
+            ).strip()
             if not subject:
                 role = getattr(opportunity, "role", None) or getattr(case, "title", None) or "Role"
                 org = getattr(opportunity, "organization", None) or destination.organization or "Employer"

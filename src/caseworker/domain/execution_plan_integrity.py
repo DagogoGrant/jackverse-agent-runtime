@@ -178,6 +178,33 @@ class ExecutionPlanIntegrityValidator:
                 findings=staleness_reasons,
             )
 
+        # 5b. Email Acceptance & Self-Test Policy Revalidation
+        if plan.email_manifest and plan.email_manifest.acceptance_evidence:
+            ev = plan.email_manifest.acceptance_evidence
+            if getattr(ev, "evidence_source", None) == "operator_self_test_v1":
+                from caseworker.domain.self_test_policy import ServerEnforcedSelfTestPolicy
+                opportunity = uow.opportunities.get_by_id(plan.opportunity_id)
+                clean_dest = (
+                    plan.destination.canonical_url[7:].strip().lower()
+                    if plan.destination.canonical_url.lower().startswith("mailto:")
+                    else plan.destination.canonical_url.strip().lower()
+                )
+                try:
+                    ServerEnforcedSelfTestPolicy.validate(
+                        case=case,
+                        opportunity=opportunity,
+                        package=package,
+                        evidence=ev,
+                        clean_dest_email=clean_dest,
+                    )
+                except Exception as exc:
+                    return ExecutionPlanIntegrityValidationResult(
+                        is_valid=False,
+                        failure_kind=ExecutionPlanIntegrityFailureKind.PLAN_INVALID,
+                        reason=f"Self-test policy revalidation failed: {exc}",
+                        findings=["SELF_TEST_POLICY_VIOLATION"],
+                    )
+
         # 6. Action-to-Plan Cryptographic Binding Revalidation
         if action is not None:
             act_params = action.parameters or {}
