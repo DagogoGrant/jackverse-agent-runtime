@@ -1288,6 +1288,7 @@ export function useGoogleAuthStatus() {
       return res.data;
     },
     staleTime: 30000,
+    retry: false,
   });
 }
 

@@ -79,6 +79,7 @@ export async function apiRequest<T>(
   }
 
   const response = await fetch(url, {
+    credentials: options.credentials || 'same-origin',
     ...options,
     headers,
   });

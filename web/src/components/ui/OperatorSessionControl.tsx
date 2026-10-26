@@ -19,9 +19,10 @@ export const OperatorSessionControl: React.FC = () => {
   const [tokenInput, setTokenInput] = useState('');
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
+  const [authenticatedOperatorId, setAuthenticatedOperatorId] = useState<string | null>(null);
 
-  // Authenticated if googleAuth endpoint returned 200 (even if Google itself is not connected)
-  const isAuthenticated = !isError && !isLoading && googleAuth !== undefined;
+  // Authenticated if operator session was created or googleAuth endpoint returned 200
+  const isAuthenticated = Boolean(authenticatedOperatorId) || (!isError && !isLoading && googleAuth !== undefined);
   const isGoogleConnected = Boolean(googleAuth?.connected);
   const authenticatedEmail = googleAuth?.authenticated_email || null;
   const scopes = googleAuth?.scopes || [];
@@ -55,6 +56,7 @@ export const OperatorSessionControl: React.FC = () => {
     try {
       const res = await createOperatorSession.mutateAsync({ operator_token: cleanToken });
       setTokenInput(''); // Immediately clear credentials from memory
+      setAuthenticatedOperatorId(res.operator_id ?? null);
       setSuccessMsg(`Session established for operator '${res.operator_id}'.`);
       await refetch();
     } catch (err: unknown) {
@@ -67,6 +69,7 @@ export const OperatorSessionControl: React.FC = () => {
     setSuccessMsg(null);
     try {
       await deleteOperatorSession.mutateAsync();
+      setAuthenticatedOperatorId(null);
       await refetch();
       setSuccessMsg('Operator session terminated.');
     } catch (err: unknown) {
@@ -172,6 +175,21 @@ export const OperatorSessionControl: React.FC = () => {
             {!isAuthenticated ? (
               /* Unauthenticated: Operator Session Bootstrap Form */
               <form onSubmit={handleAuthenticate} className="space-y-4">
+                {typeof window !== 'undefined' && window.location.protocol === 'http:' && (
+                  <div className="p-2.5 border border-amber-500/40 bg-amber-950/20 text-amber-300 text-xs font-machine leading-relaxed space-y-2">
+                    <div>
+                      ⚠️ <strong>HTTPS Required:</strong> You are accessing JackVerse over insecure HTTP (port 3001). Production operator authentication requires HTTPS at <code className="text-amber-200">https://localhost:3443</code>.
+                    </div>
+                    <div>
+                      <a
+                        href={`https://${window.location.hostname}:3443${window.location.pathname}${window.location.search}`}
+                        className="inline-block px-2.5 py-1 bg-amber-500 text-black font-bold uppercase text-[10px] tracking-wider hover:bg-amber-400 cursor-pointer"
+                      >
+                        Switch to https://localhost:3443
+                      </a>
+                    </div>
+                  </div>
+                )}
                 <p className="text-xs text-jv-muted font-interface leading-relaxed">
                   Authenticate this browser session via <code className="bg-jv-surface px-1 py-0.5 text-jv-ink">POST /api/v1/auth/operator/session</code>.
                   Sets an HTTP-only secure session cookie at <code className="bg-jv-surface px-1 py-0.5 text-jv-ink">https://localhost:3443</code>.
