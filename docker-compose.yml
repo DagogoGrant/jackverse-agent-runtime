@@ -122,6 +122,7 @@ services:
     volumes:
       - caseworker_data:/app/.caseworker
       - ./scripts:/app/scripts:ro
+      - ./src:/app/src
     networks:
       - agent-net
 
