@@ -376,7 +376,10 @@ async def google_auth_callback(
         )
 
     # Encrypt tokens with TokenCipher
-    cipher = TokenCipher(config.encryption_key)
+    cipher = TokenCipher(
+        primary_key=config.encryption_key,
+        rotation_fallback_keys=config.encryption_fallback_keys,
+    )
     access_token_enc = cipher.encrypt(access_token)
     refresh_token_enc = cipher.encrypt(refresh_token) if refresh_token else None
 
@@ -437,7 +440,10 @@ async def disconnect_google(
     config: Annotated[APIConfig, Depends(get_config)],
 ) -> GoogleAuthDisconnectResponse:
     """Disconnect Google OAuth credentials, revoking remote tokens best-effort and deleting local storage."""
-    cipher = TokenCipher(config.encryption_key)
+    cipher = TokenCipher(
+        primary_key=config.encryption_key,
+        rotation_fallback_keys=config.encryption_fallback_keys,
+    )
     provider = DatabaseOAuthCredentialProvider(
         storage=storage,
         cipher=cipher,

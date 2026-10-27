@@ -1,0 +1,14 @@
+# JackVerse Stage C Controlled Execution Override
+# Operator-authorized dispatch window ONLY.
+#
+# To open dispatch window:
+#   docker compose -f docker-compose.yml -f docker-compose.stage-c-dispatch.yml up -d caseworker-api
+#
+# To close dispatch window (immediate disarm):
+#   docker compose up -d caseworker-api
+
+services:
+  caseworker-api:
+    environment:
+      - CASEWORKER_REAL_EXECUTION_ENABLED=true
+      - CASEWORKER_GMAIL_EXECUTION_ENABLED=true

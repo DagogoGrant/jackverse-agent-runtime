@@ -140,6 +140,9 @@ certs/
 # Runtime workspace artifacts
 workspace/*
 !workspace/.gitkeep
+backups/
+*.bak*
+*.tmp
 
 # Spyder project settings
 .spyderproject

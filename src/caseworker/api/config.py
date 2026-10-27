@@ -40,6 +40,13 @@ class APIConfig:
     encryption_key: str = field(
         default_factory=lambda: os.getenv("CASEWORKER_ENCRYPTION_KEY", "")
     )
+    encryption_fallback_keys: list[str] = field(
+        default_factory=lambda: [
+            k.strip()
+            for k in os.getenv("CASEWORKER_ENCRYPTION_FALLBACK_KEYS", "").split(",")
+            if k.strip()
+        ]
+    )
     operator_secret: str = field(
         default_factory=lambda: os.getenv("CASEWORKER_OPERATOR_SECRET", "")
     )

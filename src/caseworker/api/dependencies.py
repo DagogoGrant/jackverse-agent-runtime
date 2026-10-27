@@ -120,7 +120,10 @@ def get_governed_execution_service(
 ) -> GovernedExecutionService:
     credential_provider = None
     if config.encryption_key and len(config.encryption_key.strip()) >= 32:
-        cipher = TokenCipher(config.encryption_key)
+        cipher = TokenCipher(
+            primary_key=config.encryption_key,
+            rotation_fallback_keys=config.encryption_fallback_keys,
+        )
         credential_provider = DatabaseOAuthCredentialProvider(
             storage=storage,
             cipher=cipher,
