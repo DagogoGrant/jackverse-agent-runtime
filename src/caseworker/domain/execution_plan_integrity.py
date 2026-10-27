@@ -189,6 +189,8 @@ class ExecutionPlanIntegrityValidator:
                     if plan.destination.canonical_url.lower().startswith("mailto:")
                     else plan.destination.canonical_url.strip().lower()
                 )
+                oauth_cred = uow.oauth_credentials.get_by_user_and_provider(user_id, "gmail")
+                sender_email = plan.email_manifest.from_email if plan.email_manifest else None
                 try:
                     ServerEnforcedSelfTestPolicy.validate(
                         case=case,
@@ -196,6 +198,8 @@ class ExecutionPlanIntegrityValidator:
                         package=package,
                         evidence=ev,
                         clean_dest_email=clean_dest,
+                        oauth_credential=oauth_cred,
+                        sender_email=sender_email,
                     )
                 except Exception as exc:
                     return ExecutionPlanIntegrityValidationResult(

@@ -892,7 +892,7 @@ def _to_execution_plan_response(plan: ExternalExecutionPlan) -> ExternalExecutio
             subject=m.subject,
             body_text=m.body_text,
             message_id=m.message_id,
-            date_header=m.date_header,
+            date_header=getattr(m, "date_rfc2822", getattr(m, "date_header", "")),
             sealed_payload_hash=m.sealed_payload_hash,
             attachments=[
                 EmailAttachmentManifestResponse(

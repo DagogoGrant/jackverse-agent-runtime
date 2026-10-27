@@ -301,6 +301,7 @@ class ExecutionPlanService:
 
             # 6. Compile Plan
             verified_acceptance = uow.verified_email_acceptance.get_active_by_opportunity(opportunity.opportunity_id)
+            oauth_cred = uow.oauth_credentials.get_by_user_and_provider(user_id, "gmail")
             compiled_plan = ExecutionPlanCompiler.compile_plan(
                 case=case,
                 opportunity=opportunity,
@@ -314,6 +315,7 @@ class ExecutionPlanService:
                 channel_metadata=channel_metadata,
                 final_submit_control=final_submit_control,
                 verified_email_acceptance=verified_acceptance,
+                oauth_credential=oauth_cred,
             )
 
             # 7. Check Idempotency by Fingerprint

@@ -88,6 +88,7 @@ class ExecutionPlanCompiler:
         final_submit_control: TargetSubmitControlSpec | None = None,
         field_bindings: list[TargetFieldBinding] | None = None,
         verified_email_acceptance: VerifiedEmailAcceptanceRecord | EmailAcceptanceEvidence | None = None,
+        oauth_credential: Any = None,
     ) -> ExternalExecutionPlan:
         """Compile an ExternalExecutionPlan deterministically.
 
@@ -259,6 +260,7 @@ class ExecutionPlanCompiler:
                             package=package,
                             evidence=ev,
                             clean_dest_email=clean_dest_email,
+                            oauth_credential=oauth_credential,
                         )
                     else:
                         # Validate SSRF safety on source_uri

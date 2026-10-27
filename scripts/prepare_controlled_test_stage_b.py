@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""JackVerse Phase 5.3.3.2 — Governed Gmail Transmission Acceptance Preparation: Stage B.
+"""JackVerse Phase 5.3.3.2 — Governed Gmail Transmission Acceptance Preparation: Stage B (Amended).
 
 Compiles an authoritative ExternalExecutionPlan and requests human transmission authorization
 for the approved Stage A package under server-enforced internal self-test policy constraints:
@@ -7,6 +7,9 @@ for the approved Stage A package under server-enforced internal self-test policy
   Operator operator-1, Package pkg_d17af0209e42 (fingerprint 1ebfd0bbaf5c371b089d6a412fb8fc0115b9c37bab834fb7845d9f92846dea53),
   and verified recipient dagogograntjack@gmail.com.
 - SSRF validator remains unchanged; self-test provenance uses dedicated ServerEnforcedSelfTestPolicy.
+- Authentic system attestation: system:oauth_mailbox_attestation:operator-1 backed independently by
+  stored Google OAuth credentials.
+- Atomic, repeat-safe supersession of previous plans and pending authorizations.
 - Dedicated TargetInteractionSchema requires applicant_email (bound to verified OAuth email fact)
   and omits synthetic full_name to avoid Vault access policy denial.
 - Compiles ExternalExecutionPlan in status READY_FOR_AUTHORIZATION.
@@ -18,6 +21,7 @@ for the approved Stage A package under server-enforced internal self-test policy
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import sqlite3
@@ -64,6 +68,7 @@ from caseworker.domain.execution_plan import (
     TargetSubmitControlSpec,
     VerifiedEmailAcceptanceRecord,
 )
+from caseworker.domain.execution_plan_integrity import ExecutionPlanIntegrityValidator
 from caseworker.domain.package_integrity import PreparationPackageIntegrityValidator
 from caseworker.domain.self_test_policy import (
     CONTROLLED_TEST_CASE_ID,
@@ -75,6 +80,7 @@ from caseworker.domain.self_test_policy import (
     SELF_TEST_EMPLOYER_DOMAIN,
     SELF_TEST_EVIDENCE_SOURCE,
     SELF_TEST_SOURCE_URI_PREFIX,
+    SELF_TEST_SYSTEM_VERIFIER,
     ServerEnforcedSelfTestPolicy,
 )
 from caseworker.domain.types import compute_sha256, now_utc
@@ -171,8 +177,21 @@ def prepare_stage_b(
     storage = SQLiteCaseworkerStorage(db_path)
     plan_service = ExecutionPlanService(storage)
 
+    old_superseded_records: dict[str, Any] = {
+        "superseded_evidence_ids": [],
+        "superseded_plan_ids": [],
+        "cancelled_action_ids": [],
+        "cancelled_approval_ids": [],
+    }
+
+    # Step A: Validate Entities, Reconcile Evidence & Cleanly Supersede Stale Plans/Approvals
     with storage.unit_of_work() as uow:
-        # 2. Case & Opportunity verification
+        # Retrieve authenticated OAuth credential
+        oauth_cred = uow.oauth_credentials.get_by_user_and_provider(operator_id, "gmail")
+        if oauth_cred is None:
+            raise RuntimeError(f"Connected Google OAuth credentials not found for user '{operator_id}'.")
+
+        # Case & Opportunity verification (Amendment 1: check converted_case_id)
         case = uow.cases.get_by_id(CONTROLLED_TEST_CASE_ID)
         if case is None:
             raise EntityNotFoundError("Case", CONTROLLED_TEST_CASE_ID)
@@ -184,8 +203,14 @@ def prepare_stage_b(
         opp = uow.opportunities.get_by_id(CONTROLLED_TEST_OPP_ID)
         if opp is None:
             raise EntityNotFoundError("Opportunity", CONTROLLED_TEST_OPP_ID)
+        if opp.converted_case_id != case.case_id:
+            raise DomainValidationError(
+                f"Opportunity converted_case_id '{opp.converted_case_id}' does not match Case '{case.case_id}'."
+            )
+        if opp.user_id != operator_id:
+            raise DomainValidationError(f"Opportunity owner '{opp.user_id}' does not match '{operator_id}'.")
 
-        # 3. Target Approved Preparation Package verification
+        # Target Approved Preparation Package verification
         pkg = uow.preparation_packages.get_by_id(CONTROLLED_TEST_PACKAGE_ID)
         if pkg is None:
             raise EntityNotFoundError("PreparationPackage", CONTROLLED_TEST_PACKAGE_ID)
@@ -207,14 +232,24 @@ def prepare_stage_b(
         if not pkg_integrity.is_valid:
             raise DomainValidationError(f"Approved package failed integrity revalidation: {pkg_integrity.reason}")
 
-        # 4. Verified Email Acceptance Record (Self-Test Policy)
+        # Verified Email Acceptance Record (Amendment 2: exact system verifier identity)
         existing_va = uow.verified_email_acceptance.get_active_by_opportunity(opp.opportunity_id)
+        needs_new_evidence = False
+
         if existing_va is None:
-            instructions = f"Controlled internal test transmission to {CONTROLLED_TEST_EMAIL}"
+            needs_new_evidence = True
+        elif existing_va.verified_by != SELF_TEST_SYSTEM_VERIFIER:
+            # Supersede old evidence record that carried fabricated operator attestation
+            uow.verified_email_acceptance.supersede_active(opp.opportunity_id, now_utc().isoformat())
+            old_superseded_records["superseded_evidence_ids"].append(existing_va.evidence_id)
+            needs_new_evidence = True
+
+        if needs_new_evidence:
+            instructions = f"System-verified operator self-addressed test destination matching connected Google OAuth mailbox {CONTROLLED_TEST_EMAIL}"
             snap_hash = compute_sha256(instructions.strip())
             ev_source_uri = f"{SELF_TEST_SOURCE_URI_PREFIX}{operator_id}"
             verified_at = now_utc().isoformat()
-            verified_by = f"operator:{operator_id}"
+            verified_by = SELF_TEST_SYSTEM_VERIFIER
 
             temp_evidence = EmailAcceptanceEvidence(
                 evidence_source=SELF_TEST_EVIDENCE_SOURCE,
@@ -227,8 +262,9 @@ def prepare_stage_b(
                 verified_at=verified_at,
             )
 
+            new_ev_version = (existing_va.evidence_version + 1) if existing_va else 1
             va_record = VerifiedEmailAcceptanceRecord(
-                evidence_id=f"ev_self_test_{opp.opportunity_id}",
+                evidence_id=f"ev_self_test_{opp.opportunity_id}_v{new_ev_version}",
                 opportunity_id=opp.opportunity_id,
                 user_id=operator_id,
                 evidence_source=SELF_TEST_EVIDENCE_SOURCE,
@@ -240,25 +276,92 @@ def prepare_stage_b(
                 evidence_digest=temp_evidence.evidence_digest,
                 verified_by=verified_by,
                 verified_at=verified_at,
-                evidence_version=1,
+                evidence_version=new_ev_version,
                 is_active=True,
             )
             uow.verified_email_acceptance.save(va_record)
-            uow.commit()
             verified_acceptance = va_record
         else:
-            # Revalidate existing record against server policy invariants
-            ev = existing_va.to_evidence()
-            ServerEnforcedSelfTestPolicy.validate(
-                case=case,
-                opportunity=opp,
-                package=pkg,
-                evidence=ev,
-                clean_dest_email=CONTROLLED_TEST_EMAIL,
-            )
             verified_acceptance = existing_va
 
-    # 5. Define Dedicated TargetInteractionSchema
+        # Revalidate evidence against server-enforced policy invariants
+        ServerEnforcedSelfTestPolicy.validate(
+            case=case,
+            opportunity=opp,
+            package=pkg,
+            evidence=verified_acceptance.to_evidence(),
+            clean_dest_email=CONTROLLED_TEST_EMAIL,
+            oauth_credential=oauth_cred,
+        )
+
+        # Check for existing valid replacement plan and authorization (Amendment 3: repeat-safe / idempotency)
+        existing_valid_plan = None
+        existing_valid_action = None
+        existing_valid_approval = None
+
+        candidate_plans = uow.execution_plans.list_for_case(case.case_id)
+        for cp in candidate_plans:
+            if (
+                cp.status == ExternalExecutionPlanStatus.READY_FOR_AUTHORIZATION
+                and cp.package_id == CONTROLLED_TEST_PACKAGE_ID
+                and cp.email_manifest is not None
+                and cp.email_manifest.acceptance_evidence is not None
+                and cp.email_manifest.acceptance_evidence.evidence_digest == verified_acceptance.evidence_digest
+            ):
+                case_actions = uow.actions.list_by_case(case.case_id)
+                for act in case_actions:
+                    act_type = act.action_type.value if hasattr(act.action_type, "value") else str(act.action_type)
+                    if (
+                        act_type == ActionType.SUBMIT_FORM.value
+                        and act.parameters.get("execution_plan_fingerprint") == cp.execution_plan_fingerprint
+                    ):
+                        app = uow.approvals.get_by_action_id(act.action_id)
+                        if act.status == ActionStatus.AWAITING_APPROVAL and app and app.status == ApprovalStatus.PENDING:
+                            existing_valid_plan = cp
+                            existing_valid_action = act
+                            existing_valid_approval = app
+                            break
+                        if act.status == ActionStatus.APPROVED and app and app.status == ApprovalStatus.APPROVED:
+                            existing_valid_plan = cp
+                            existing_valid_action = act
+                            existing_valid_approval = app
+                            break
+                if existing_valid_plan is not None:
+                    break
+
+        if existing_valid_plan is None:
+            # Atomic Supersession of Prior Active Plans & Authorizations (Amendment 3)
+            for old_p in candidate_plans:
+                if old_p.status == ExternalExecutionPlanStatus.READY_FOR_AUTHORIZATION:
+                    old_p.mark_superseded("Superseded due to Stage B self-test evidence provenance correction")
+                    uow.execution_plans.save(old_p)
+                    old_superseded_records["superseded_plan_ids"].append(old_p.plan_id)
+
+            case_actions = uow.actions.list_by_case(case.case_id)
+            for act in case_actions:
+                act_type = act.action_type.value if hasattr(act.action_type, "value") else str(act.action_type)
+                if act_type == ActionType.SUBMIT_FORM.value and act.status == ActionStatus.AWAITING_APPROVAL:
+                    act.transition_to(ActionStatus.CANCELLED)
+                    uow.actions.save(act)
+                    old_superseded_records["cancelled_action_ids"].append(act.action_id)
+
+                    app = uow.approvals.get_by_action_id(act.action_id)
+                    if app and app.status == ApprovalStatus.PENDING:
+                        app.cancel("Cancelled due to Stage B self-test evidence provenance correction")
+                        uow.approvals.save(app)
+                        old_superseded_records["cancelled_approval_ids"].append(app.approval_id)
+
+            # Return Case to ACTION_REQUIRED to compile replacement plan
+            if case.status == CaseStatus.AWAITING_APPROVAL:
+                case.transition_to(
+                    CaseStatus.ACTION_REQUIRED,
+                    reason="Transition to ACTION_REQUIRED to compile replacement execution plan",
+                )
+                uow.cases.save(case)
+
+        uow.commit()
+
+    # Step B: Define Dedicated TargetInteractionSchema
     target_schema = TargetInteractionSchema(
         schema_id=f"schema_controlled_test_{CONTROLLED_TEST_CASE_ID[-4:]}",
         destination_type=ExecutionDestinationType.EMAIL.value,
@@ -301,22 +404,10 @@ def prepare_stage_b(
         "email_subject": "[JACKVERSE INTERNAL TEST] Governed Gmail Transmission Verification"
     }
 
-    # 6. Check existing or compile ExternalExecutionPlan
-    plan: ExternalExecutionPlan | None = None
-    action: Action | None = None
-    approval: Approval | None = None
-
-    if case.status == CaseStatus.AWAITING_APPROVAL:
-        latest_plan = plan_service.get_latest_execution_plan(operator_id, CONTROLLED_TEST_CASE_ID)
-        if latest_plan and latest_plan.package_id == CONTROLLED_TEST_PACKAGE_ID:
-            existing_auth = plan_service.find_existing_transmission_authorization(
-                user_id=operator_id,
-                case_id=CONTROLLED_TEST_CASE_ID,
-                plan_id=latest_plan.plan_id,
-            )
-            if existing_auth is not None:
-                plan = latest_plan
-                action, approval = existing_auth
+    # Step C: Compile or Retrieve Replacement Plan & Request Authorization
+    plan: ExternalExecutionPlan | None = existing_valid_plan
+    action: Action | None = existing_valid_action
+    approval: Approval | None = existing_valid_approval
 
     if plan is None:
         plan = plan_service.create_execution_plan(
@@ -357,7 +448,7 @@ def prepare_stage_b(
     if att.byte_size != 131:
         raise DomainValidationError(f"Attachment byte size mismatch: {att.byte_size} (expected 131)")
 
-    # 7. Request Human Transmission Authorization (if not already requested)
+    # Step D: Request Human Transmission Authorization
     if action is None or approval is None:
         action, approval = plan_service.request_transmission_authorization(
             user_id=operator_id,
@@ -373,16 +464,60 @@ def prepare_stage_b(
     if action.parameters.get("execution_plan_fingerprint") != plan.execution_plan_fingerprint:
         raise DomainValidationError("Action execution_plan_fingerprint does not match plan fingerprint.")
 
-    # 8. Verify Zero Outbound Dispatches & Zero Receipts in Database
+    # Step E: Canonical Integrity Revalidation against persisted plan and authorization
     with storage.unit_of_work() as uow:
+        fresh_case = uow.cases.get_by_id(CONTROLLED_TEST_CASE_ID)
+        if fresh_case is None:
+            raise EntityNotFoundError("Case", CONTROLLED_TEST_CASE_ID)
+        integrity_result = ExecutionPlanIntegrityValidator.validate(
+            uow=uow,
+            case=fresh_case,
+            plan=plan,
+            user_id=operator_id,
+            expected_plan_status=ExternalExecutionPlanStatus.READY_FOR_AUTHORIZATION,
+            action=action,
+            approval=approval,
+        )
+        if not integrity_result.is_valid:
+            raise DomainValidationError(
+                f"Compiled execution plan failed canonical integrity revalidation: {integrity_result.reason}"
+            )
+
+        # Attachment Fidelity Check against approved Stage A CV artifact
+        cv_art = uow.preparation_artifacts.get_by_id("art-cv-case-controlled-test-5332-v2")
+        if cv_art is None:
+            raise EntityNotFoundError("PreparationArtifact", "art-cv-case-controlled-test-5332-v2")
+
+        cv_raw_bytes = cv_art.render_markdown().encode("utf-8")
+        cv_actual_sha256 = hashlib.sha256(cv_raw_bytes).hexdigest()
+        cv_actual_len = len(cv_raw_bytes)
+
+        if cv_actual_sha256 != "43057a3551057a31e6cc00494ce435943b2a1e25f4f61a23a253ac58326a3573":
+            raise DomainValidationError(f"Approved artifact SHA-256 altered! Got {cv_actual_sha256}")
+        if cv_actual_len != 131:
+            raise DomainValidationError(f"Approved artifact byte length altered! Got {cv_actual_len}")
+
+        attachment_exact_match = (
+            att.content_sha256 == cv_actual_sha256
+            and att.byte_size == cv_actual_len
+            and att.filename == "cv_operator-1.txt"
+        )
+        if not attachment_exact_match:
+            raise DomainValidationError("Attachment fidelity verification failed: transmitted bytes differ from approved artifact.")
+
+        # Zero Outbound Dispatches & Zero Receipts in Database
         fresh_case = uow.cases.get_by_id(CONTROLLED_TEST_CASE_ID)
         case_status_val = fresh_case.status.value if fresh_case else "unknown"
         cur = uow.conn.cursor()
         cur.execute("SELECT count(*) FROM execution_receipts WHERE case_id = ?", (CONTROLLED_TEST_CASE_ID,))
         receipt_count = cur.fetchone()[0]
+        cur.execute("SELECT count(*) FROM execution_attempts WHERE case_id = ?", (CONTROLLED_TEST_CASE_ID,))
+        attempt_count = cur.fetchone()[0]
 
     if receipt_count > 0:
         raise RuntimeError(f"SAFETY VIOLATION: Execution receipts found ({receipt_count})! Transmission must not execute.")
+    if attempt_count > 0:
+        raise RuntimeError(f"SAFETY VIOLATION: Execution attempts found ({attempt_count})! Transmission must not execute.")
 
     dossier = {
         "timestamp": now_utc().isoformat(),
@@ -391,6 +526,7 @@ def prepare_stage_b(
         "operator_id": operator_id,
         "sender_email": connected_email,
         "recipient_email": recipient_email,
+        "superseded_history": old_superseded_records,
         "safety_checks": {
             "real_execution_enabled": safety["real_execution_enabled"],
             "gmail_execution_enabled": safety["gmail_execution_enabled"],
@@ -401,7 +537,7 @@ def prepare_stage_b(
             "evidence_source": SELF_TEST_EVIDENCE_SOURCE,
             "source_uri": f"{SELF_TEST_SOURCE_URI_PREFIX}{operator_id}",
             "employer_domain": SELF_TEST_EMPLOYER_DOMAIN,
-            "verified_by": f"operator:{operator_id}",
+            "verified_by": SELF_TEST_SYSTEM_VERIFIER,
             "verified_recipient_email": CONTROLLED_TEST_EMAIL,
             "target_schema_id": target_schema.schema_id,
             "full_name_omitted": True,
@@ -420,6 +556,14 @@ def prepare_stage_b(
             "upload_assets": [u.to_dict() for u in plan.upload_mappings],
             "findings_count": len(plan.findings),
             "unresolved_errors": [f.message for f in plan.findings if not f.passed],
+            "canonical_integrity_valid": integrity_result.is_valid,
+        },
+        "attachment_fidelity": {
+            "approved_artifact_id": "art-cv-case-controlled-test-5332-v2",
+            "transmitted_filename": att.filename,
+            "content_sha256": att.content_sha256,
+            "byte_size": att.byte_size,
+            "bytes_match_approved_artifact": attachment_exact_match,
         },
         "email_manifest": {
             "to_email": manifest.to_email,
@@ -430,7 +574,7 @@ def prepare_stage_b(
             "mime_boundary": manifest.mime_boundary,
             "sealed_payload_hash": manifest.sealed_payload_hash,
             "body_sha256": compute_sha256(manifest.body_text),
-            "body_preview": manifest.body_text[:120] + "...",
+            "complete_body": manifest.body_text,
             "attachments": [
                 {
                     "filename": a.filename,
@@ -453,15 +597,15 @@ def prepare_stage_b(
             "case_status": case_status_val,
         },
         "real_gmail_transmissions": 0,
-        "execution_attempts": 0,
-        "execution_receipts": 0,
+        "execution_attempts": attempt_count,
+        "execution_receipts": receipt_count,
         "human_send_authorization": "NOT_GRANTED",
     }
     return dossier
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="JackVerse Phase 5.3.3.2 Stage B Preparation")
+    parser = argparse.ArgumentParser(description="JackVerse Phase 5.3.3.2 Stage B Preparation (Amended)")
     parser.add_argument(
         "--db-path",
         default=os.getenv("CASEWORKER_DB_PATH", "/app/.caseworker/caseworker.db"),
@@ -489,7 +633,7 @@ def main() -> int:
         return 0
 
     print("=" * 80)
-    print("JACKVERSE PHASE 5.3.3.2 — STAGE B TRANSMISSION PREPARATION REPORT")
+    print("JACKVERSE PHASE 5.3.3.2 — STAGE B TRANSMISSION PREPARATION REPORT (AMENDED)")
     print(f"Timestamp: {dossier['timestamp']}")
     print(f"Status:    {dossier['status']}")
     print("=" * 80)
@@ -503,26 +647,42 @@ def main() -> int:
     print(f"  CASEWORKER_GMAIL_EXECUTION:      OFF (Disabled)")
     print(f"  NO-SEND Boundary Intact:         CONFIRMED")
     print()
-    print("[2] SERVER-ENFORCED SELF-TEST POLICY")
+    print("[2] SERVER-ENFORCED SELF-TEST POLICY (AMENDED)")
     print(f"  Evidence Source:                 {dossier['self_test_policy']['evidence_source']}")
     print(f"  Source URI:                      {dossier['self_test_policy']['source_uri']}")
     print(f"  Employer Domain:                 {dossier['self_test_policy']['employer_domain']}")
+    print(f"  Exact System Verifier:           {dossier['self_test_policy']['verified_by']}")
     print(f"  Verified Recipient:              {dossier['self_test_policy']['verified_recipient_email']}")
     print(f"  Target Schema ID:                {dossier['self_test_policy']['target_schema_id']}")
     print(f"  Full Name Omitted:               CONFIRMED (Zero Vault Denial on Synthetic Name)")
     print(f"  Applicant Email Bound:           CONFIRMED (Strictly bound to OAuth email fact)")
     print()
-    print("[3] COMPILED EXTERNAL EXECUTION PLAN")
+    print("[3] ATOMIC SUPERSESSION OF PRIOR ARTIFACTS")
+    sup = dossier["superseded_history"]
+    print(f"  Superseded Evidence IDs:         {sup['superseded_evidence_ids'] or 'None (Clean/Replay)'}")
+    print(f"  Superseded Plan IDs:             {sup['superseded_plan_ids'] or 'None (Clean/Replay)'}")
+    print(f"  Cancelled Action IDs:            {sup['cancelled_action_ids'] or 'None (Clean/Replay)'}")
+    print(f"  Cancelled Approval IDs:          {sup['cancelled_approval_ids'] or 'None (Clean/Replay)'}")
+    print()
+    print("[4] COMPILED REPLACEMENT EXECUTION PLAN")
     print(f"  Plan ID:                         {dossier['execution_plan']['plan_id']}")
     print(f"  Plan Status:                     {dossier['execution_plan']['status']}")
     print(f"  Plan Fingerprint:                {dossier['execution_plan']['execution_plan_fingerprint']}")
     print(f"  Target Schema Hash:              {dossier['execution_plan']['target_schema_hash']}")
     print(f"  Execution Input Hash:            {dossier['execution_plan']['execution_input_hash']}")
-    print(f"  Destination Type:                {dossier['execution_plan']['destination_type']}")
+    print(f"  Canonical Integrity Valid:       {dossier['execution_plan']['canonical_integrity_valid']}")
     print(f"  Destination Canonical URL:       {dossier['execution_plan']['canonical_url']}")
     print(f"  Unresolved Findings / Errors:    {len(dossier['execution_plan']['unresolved_errors'])}")
     print()
-    print("[4] IMMUTABLE EMAIL PAYLOAD MANIFEST")
+    print("[5] ATTACHMENT FIDELITY VERIFICATION")
+    att_fid = dossier["attachment_fidelity"]
+    print(f"  Approved Artifact ID:            {att_fid['approved_artifact_id']}")
+    print(f"  Transmitted Filename:            {att_fid['transmitted_filename']}")
+    print(f"  Content SHA-256:                 {att_fid['content_sha256']}")
+    print(f"  Byte Size:                       {att_fid['byte_size']} bytes")
+    print(f"  Exact Byte Match with Approved:  {att_fid['bytes_match_approved_artifact']}")
+    print()
+    print("[6] IMMUTABLE EMAIL PAYLOAD MANIFEST")
     print(f"  From:                            {dossier['email_manifest']['from_email']}")
     print(f"  To:                              {dossier['email_manifest']['to_email']}")
     print(f"  Subject:                         {dossier['email_manifest']['subject']}")
@@ -531,11 +691,14 @@ def main() -> int:
     print(f"  MIME Boundary:                   {dossier['email_manifest']['mime_boundary']}")
     print(f"  Sealed Payload SHA-256:          {dossier['email_manifest']['sealed_payload_hash']}")
     print(f"  Body Hash (SHA-256):             {dossier['email_manifest']['body_sha256']}")
-    print(f"  Attachments (1):")
-    for att in dossier['email_manifest']['attachments']:
-        print(f"    - {att['filename']} ({att['byte_size']} bytes, mime: {att['mime_type']}, sha256: {att['content_sha256'][:16]}...)")
     print()
-    print("[5] TRANSMISSION AUTHORIZATION REQUEST")
+    print("  Complete Email Body:")
+    print("  " + "-" * 76)
+    for line in dossier['email_manifest']['complete_body'].splitlines():
+        print(f"  | {line}")
+    print("  " + "-" * 76)
+    print()
+    print("[7] TRANSMISSION AUTHORIZATION REQUEST")
     print(f"  Action ID:                       {dossier['transmission_authorization']['action_id']}")
     print(f"  Action Type:                     {dossier['transmission_authorization']['action_type']}")
     print(f"  Action Status:                   {dossier['transmission_authorization']['action_status']} (AWAITING OPERATOR DECISION)")
@@ -547,10 +710,10 @@ def main() -> int:
     print()
     print("=" * 80)
     print("MANDATORY STOP: STAGE B COMPLETE — HALTED FOR HUMAN TRANSMISSION AUTHORIZATION")
-    print("REAL GMAIL TRANSMISSIONS: 0")
-    print("EXECUTION ATTEMPTS: 0")
-    print("EXECUTION RECEIPTS: 0")
-    print("HUMAN SEND AUTHORIZATION: NOT GRANTED")
+    print(f"REAL GMAIL TRANSMISSIONS: {dossier['real_gmail_transmissions']}")
+    print(f"EXECUTION ATTEMPTS (DB):  {dossier['execution_attempts']}")
+    print(f"EXECUTION RECEIPTS (DB):  {dossier['execution_receipts']}")
+    print(f"HUMAN SEND AUTHORIZATION: {dossier['human_send_authorization']}")
     print("READY FOR HUMAN TRANSMISSION REVIEW")
     print("=" * 80)
     print()

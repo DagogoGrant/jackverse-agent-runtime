@@ -961,6 +961,11 @@ class EmailPayloadManifest:
     sealed_payload_hash: str = ""
     acceptance_evidence: EmailAcceptanceEvidence | None = None
 
+    @property
+    def date_header(self) -> str:
+        return self.date_rfc2822
+
+
     def compute_manifest_hash(self) -> str:
         """Deterministic canonical hash of the manifest inputs."""
         canonical_attachments = [
