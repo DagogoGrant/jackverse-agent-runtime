@@ -68,6 +68,12 @@ local_settings.py
 *.sqlite3
 *.sqlite3-journal
 .caseworker/
+backups/
+*.bak
+*.tmp
+.env.encryption_key_staged.tmp
+caseworker_maintenance.lock
+
 
 # Sphinx documentation
 doc/_build/

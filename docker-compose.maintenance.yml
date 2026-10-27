@@ -1,0 +1,24 @@
+# JackVerse Stage C Credential Maintenance Override
+#
+# Dedicated ephemeral container configuration for offline/quiesced credential maintenance.
+# This configuration is NEVER run as a persistent daemon service; it is invoked
+# one-time via 'docker compose ... run --rm caseworker-maintenance ...'.
+#
+# Security Hardening:
+# 1. network_mode: "none" strictly disables all external network interfaces and egress.
+# 2. Filesystem scoping: mounts only the named SQLite volume and the host repo directory
+#    specifically to allow atomic same-filesystem os.replace() of .env.caseworker-api.local
+#    and durable host persistence of pre-migration backup archives.
+
+services:
+  caseworker-maintenance:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    network_mode: "none"
+    command: ["sleep", "infinity"]
+    volumes:
+      - caseworker_data:/app/.caseworker
+      - .:/host_repo:rw
+    environment:
+      - PYTHONPATH=/app/src
