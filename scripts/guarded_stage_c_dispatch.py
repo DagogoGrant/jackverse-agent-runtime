@@ -1,15 +1,19 @@
 #!/usr/bin/env python3
 """JackVerse Phase 5.3.3.2 Stage C: Guarded Gmail Dispatch Script.
 
-Features & Safeguards (Amendments 4 and 5):
+Features & Safeguards (Amendments 4 and 5, Audit Corrections 3 and 4):
 - Fail-closed API preflight verifying complete chain of custody over trusted TLS:
   Case, Action, Approval, Plan, MIME hash, Attachment hash, Sender/Recipient identity.
 - Hard refusal if any execution attempt, receipt, unresolved lease, or ambiguous dispatch exists.
 - Uses exact ETag from latest GET /api/v1/actions/{action_id} API response unchanged.
 - Deliberate operator execution decision: requires operator bearer token AND explicit confirmation token.
-- Four-tier reporting structure distinguishing HTTP acceptance, Gmail provider acceptance, verified receipt, and mailbox delivery.
-- Scoped disarm semantics: disarms only caseworker-api on confirmed completion or pre-dispatch rejection.
-- Strictly refuses blind container termination or re-dispatch on ambiguous timeouts.
+- Correct classification of HTTP outcomes:
+  - Proven pre-dispatch rejections (401, 403, 404, 412, 428, and proven 409 failure_kinds).
+  - Confirmed completion with verified_success receipt (HTTP 200 with receipt status 'verified_success').
+  - Ambiguous outcomes (incomplete 200, ambiguous 409, 5xx server errors, timeouts) prevent auto-recreation.
+- Four-tier reporting structure consuming real Gmail metadata (gmail_message_id, gmail_thread_id, rfc822_message_id).
+- Scoped disarm semantics: disarms only caseworker-api on proven pre-dispatch rejection or confirmed completion.
+- Strictly refuses blind container termination or re-dispatch on ambiguous outcomes.
 """
 
 from __future__ import annotations
@@ -50,6 +54,27 @@ EXPECTED_ATTACHMENT_BYTE_SIZE = 131
 EXPECTED_ATTACHMENT_SHA256 = "43057a3551057a31e6cc00494ce435943b2a1e25f4f61a23a253ac58326a3573"
 
 REQUIRED_EXECUTION_DECISION_TOKEN = f"CONFIRM_STAGE_C_SEND_{CONTROLLED_ACTION_ID}"
+
+PROVEN_PRE_DISPATCH_FAILURE_KINDS = {
+    "real_execution_disabled",
+    "provider_disabled",
+    "action_not_approved",
+    "approval_not_approved",
+    "missing_approval",
+    "tampered_plan",
+    "recipient_tampered",
+    "simulation_not_permitted",
+    "insecure_configuration_rejected",
+    "operator_auth_required",
+    "provider_auth_error",
+    "invalid_case_status",
+    "invalid_plan_status",
+    "authorization_binding_invalid",
+    "payload_integrity_mismatch",
+    "entity_not_found",
+    "fencing_violation",
+    "plan_invalid",
+}
 
 
 def _load_env_secret(env_file_path: Path, key_name: str) -> str:
@@ -267,13 +292,26 @@ def perform_guarded_dispatch(
             latency = time.time() - start_time
             raw = resp.read().decode("utf-8")
             data = json.loads(raw) if raw else {}
-            return {
-                "outcome": "CONFIRMED_COMPLETION",
-                "http_code": resp.status,
-                "latency_seconds": latency,
-                "data": data,
-                "etag": resp.headers.get("ETag"),
-            }
+            receipt = data.get("receipt")
+
+            # A successful response MUST contain a verified_success receipt to prove completion
+            if isinstance(receipt, dict) and receipt.get("status") == "verified_success" and receipt.get("receipt_id"):
+                return {
+                    "outcome": "CONFIRMED_COMPLETION",
+                    "http_code": resp.status,
+                    "latency_seconds": latency,
+                    "data": data,
+                    "etag": resp.headers.get("ETag"),
+                }
+            else:
+                return {
+                    "outcome": "AMBIGUOUS_OUTCOME",
+                    "http_code": resp.status,
+                    "latency_seconds": latency,
+                    "data": data,
+                    "reason": "HTTP 200 returned but response lacked a verified_success execution receipt. Outcome uncertain.",
+                }
+
     except urllib.error.HTTPError as e:
         latency = time.time() - start_time
         raw_body = e.read().decode("utf-8", errors="replace")
@@ -281,12 +319,46 @@ def perform_guarded_dispatch(
             parsed = json.loads(raw_body)
         except Exception:
             parsed = {"raw": raw_body}
-        return {
-            "outcome": "CONFIRMED_PRE_DISPATCH_REJECTION",
-            "http_code": e.code,
-            "latency_seconds": latency,
-            "error_details": parsed,
-        }
+
+        # Proven pre-dispatch rejections
+        if e.code in (401, 403, 404, 412, 428):
+            return {
+                "outcome": "CONFIRMED_PRE_DISPATCH_REJECTION",
+                "http_code": e.code,
+                "latency_seconds": latency,
+                "error_details": parsed,
+                "reason": f"Proven pre-dispatch rejection (HTTP {e.code}).",
+            }
+        elif e.code == 409:
+            failure_kind = ""
+            if isinstance(parsed, dict):
+                failure_kind = parsed.get("failure_kind") or parsed.get("details", {}).get("failure_kind") or ""
+            if failure_kind in PROVEN_PRE_DISPATCH_FAILURE_KINDS:
+                return {
+                    "outcome": "CONFIRMED_PRE_DISPATCH_REJECTION",
+                    "http_code": e.code,
+                    "latency_seconds": latency,
+                    "error_details": parsed,
+                    "reason": f"Proven pre-dispatch rejection (HTTP 409, failure_kind='{failure_kind}').",
+                }
+            else:
+                return {
+                    "outcome": "AMBIGUOUS_OUTCOME",
+                    "http_code": e.code,
+                    "latency_seconds": latency,
+                    "error_details": parsed,
+                    "reason": f"HTTP 409 Conflict with ambiguous or in-flight failure kind '{failure_kind}'. DO NOT RETRY.",
+                }
+        else:
+            # HTTP 500, 502, 503, 504, or unexpected errors
+            return {
+                "outcome": "AMBIGUOUS_OUTCOME",
+                "http_code": e.code,
+                "latency_seconds": latency,
+                "error_details": parsed,
+                "reason": f"Unexpected HTTP {e.code} error: submission outcome cannot be proven pre-dispatch. DO NOT RETRY.",
+            }
+
     except urllib.error.URLError as e:
         latency = time.time() - start_time
         err_msg = str(e.reason).lower()
@@ -302,14 +374,16 @@ def perform_guarded_dispatch(
                 ),
             }
         return {
-            "outcome": "TRANSPORT_ERROR",
+            "outcome": "AMBIGUOUS_OUTCOME",
             "latency_seconds": latency,
             "error": str(e.reason),
+            "reason": f"Transport error during execution request: {e.reason}",
         }
     except Exception as e:
         return {
-            "outcome": "UNKNOWN_ERROR",
+            "outcome": "AMBIGUOUS_OUTCOME",
             "error": str(e),
+            "reason": f"Unexpected client execution error: {e}",
         }
 
 
@@ -346,8 +420,8 @@ def print_four_tier_report(
     """Format outcome into four distinct governance and operational tiers."""
     outcome = dispatch_result["outcome"]
     data = dispatch_result.get("data", {})
-    receipt = data.get("receipt", {})
-    provider_meta = receipt.get("safe_provider_metadata", {})
+    receipt = data.get("receipt", {}) if isinstance(data, dict) else {}
+    provider_meta = receipt.get("safe_provider_metadata", {}) if isinstance(receipt, dict) else {}
 
     print("\n================================================================================")
     print("JACKVERSE STAGE C TRANSMISSION REPORT — FOUR-TIER AUDIT")
@@ -360,19 +434,27 @@ def print_four_tier_report(
     print(f"Response ETag:        {dispatch_result.get('etag')}")
     print(f"Roundtrip Latency:    {dispatch_result.get('latency_seconds', 0.0):.3f}s")
     if outcome != "CONFIRMED_COMPLETION":
-        print(f"Error Details:        {json.dumps(dispatch_result.get('error_details'), indent=2)}")
+        print(f"Details / Reason:     {dispatch_result.get('reason') or dispatch_result.get('error') or json.dumps(dispatch_result.get('error_details'), indent=2)}")
         return
 
     # Tier 2: Gmail Provider Acceptance
-    provider_msg_id = provider_meta.get("provider_message_id")
-    provider_thread_id = provider_meta.get("provider_thread_id")
+    # Consume actual Gmail provider schema: gmail_message_id, gmail_thread_id, rfc822_message_id
+    gmail_msg_id = provider_meta.get("gmail_message_id") or receipt.get("external_reference_id")
+    gmail_thread_id = provider_meta.get("gmail_thread_id")
+    rfc822_msg_id = provider_meta.get("rfc822_message_id")
+    provider_status = provider_meta.get("provider_status")
+
     print("\n[TIER 2: GMAIL PROVIDER ACCEPTANCE]")
-    if provider_msg_id:
-        print(f"Google Message ID:    {provider_msg_id}")
-        print(f"Google Thread ID:     {provider_thread_id}")
+    if gmail_msg_id:
+        print(f"Gmail Message ID:     {gmail_msg_id}")
+        print(f"Gmail Thread ID:      {gmail_thread_id or 'None'}")
+        print(f"RFC 822 Message-ID:   {rfc822_msg_id or 'None'}")
+        print(f"Provider Status:      {provider_status or 'GMAIL_API_ACCEPTED'}")
         print("Provider Acceptance:  CONFIRMED (Accepted by Google Gmail API)")
     else:
-        print("Google Message ID:    None (no provider message ID returned)")
+        print("Gmail Message ID:     None (no provider message ID returned)")
+        print("Gmail Thread ID:      None")
+        print("RFC 822 Message-ID:   None")
         print("Provider Acceptance:  NOT DETECTED")
 
     # Tier 3: Verified Execution Receipt
@@ -380,7 +462,7 @@ def print_four_tier_report(
     print(f"Receipt ID:           {receipt.get('receipt_id')}")
     print(f"Receipt Status:       {receipt.get('status')}")
     print(f"Receipt Hash:         {receipt.get('receipt_hash')}")
-    print(f"RFC 2822 Message-ID:  {provider_meta.get('rfc2822_message_id') or manifest_message_id_helper(plan_info)}")
+    print(f"External Reference:   {receipt.get('external_reference_id') or gmail_msg_id or 'None'}")
     print(f"Case Transition:      {data.get('case_status')}")
 
     # Tier 4: Mailbox Delivery Observed by Operator
@@ -396,10 +478,6 @@ def print_four_tier_report(
     print("================================================================================")
 
 
-def manifest_message_id_helper(plan_info: dict) -> str:
-    return plan_info.get("email_manifest", {}).get("message_id", "none")
-
-
 def main() -> int:
     parser = argparse.ArgumentParser(description="JackVerse Stage C: Guarded Gmail Dispatch Utility")
     parser.add_argument("--api-base", default="https://localhost:3443", help="Base URL of Caseworker API / Reverse Proxy")
@@ -410,7 +488,7 @@ def main() -> int:
     parser.add_argument("--dry-run", action="store_true", default=True, help="Perform safe preflight audit only without executing (default: True)")
     parser.add_argument("--execute-authorized", action="store_true", default=False, help="Explicit flag required to initiate transmission")
     parser.add_argument("--operator-decision-token", type=str, default="", help="Explicit human operator decision confirmation token")
-    parser.add_argument("--auto-disarm", action="store_true", default=True, help="Automatically perform scoped disarm on completion or pre-dispatch rejection")
+    parser.add_argument("--auto-disarm", action="store_true", default=True, help="Automatically perform scoped disarm on proven pre-dispatch rejection or confirmed completion")
 
     args = parser.parse_args()
 
@@ -520,10 +598,11 @@ def main() -> int:
             print("================================================================================")
         return 0 if outcome == "CONFIRMED_COMPLETION" else 1
 
-    elif outcome == "AMBIGUOUS_TIMEOUT":
+    elif outcome in ("AMBIGUOUS_TIMEOUT", "AMBIGUOUS_OUTCOME"):
         print("\n================================================================================")
         print("[CRITICAL: AMBIGUOUS OUTCOME — DISARM DELAYED FOR OPERATOR RECONCILIATION]")
-        print("The request timed out or was interrupted while processing.")
+        print("The transmission outcome is ambiguous or unverified.")
+        print(f"Details: {result.get('reason') or result.get('error') or result.get('error_details')}")
         print("Automatic container recreation was REFUSED to avoid killing an in-flight worker.")
         print("Immediate reconciliation steps:")
         print(f"  1. Check recipient mailbox: {EXPECTED_DESTINATION_EMAIL}")

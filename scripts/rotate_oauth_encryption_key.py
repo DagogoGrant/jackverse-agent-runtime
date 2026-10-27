@@ -370,6 +370,21 @@ def get_migration_state(db_path: Path, env_file_path: Path, staging_file: Path) 
 
     m_id, m_state, m_old_fp, m_new_fp, b_db, b_env, b_man = db_state_row
 
+    # Reset or aborted states evaluate to NOT_STARTED if database decrypts with current configured key
+    if m_state in (STATE_NOT_STARTED, "ABORTED"):
+        if can_decrypt_all(current_env_key):
+            return {
+                "state": STATE_NOT_STARTED,
+                "migration_id": m_id,
+                "reason": "Migration state reset to NOT_STARTED; database decrypts with configured key.",
+            }
+        else:
+            return {
+                "state": STATE_RECOVERY_REQUIRED,
+                "migration_id": m_id,
+                "reason": f"Durable record indicates '{m_state}', but database credentials fail decryption with configured key.",
+            }
+
     if m_state == STATE_COMPLETED:
         if current_key_fp == m_new_fp and can_decrypt_all(current_env_key):
             return {
@@ -723,12 +738,44 @@ def recover_or_resume(db_path: Path, env_file_path: Path, backup_dir: Path) -> d
 
         elif current_state == STATE_STAGED:
             # Crash happened before DB commit: DB and env are both on old key
+            staged_data = state_info.get("staged_data", {})
+            migration_id = state_info.get("migration_id") or staged_data.get("MIGRATION_ID", "")
+            old_key = staged_data.get("OLD_KEY_FOR_ROLLBACK", "") or load_secret_from_env_file(env_file_path, "CASEWORKER_ENCRYPTION_KEY")
+
+            # Verify both credentials still decrypt using the old key
+            old_cipher = TokenCipher(primary_key=old_key)
+            conn = sqlite3.connect(f"file:{db_path.resolve()}?mode=rw", uri=True)
+            try:
+                cur = conn.cursor()
+                cur.execute("SELECT access_token_enc, refresh_token_enc FROM user_oauth_credentials")
+                rows = cur.fetchall()
+                for r in rows:
+                    if not old_cipher.decrypt(r[0]) or not old_cipher.decrypt(r[1]):
+                        raise RuntimeError("Tokens in database do not decrypt with old key during STAGED recovery!")
+
+                # Reset durable migration state row in database to NOT_STARTED (retaining audit history)
+                now_iso = datetime.datetime.now(datetime.timezone.utc).isoformat().replace("+00:00", "Z")
+                if migration_id:
+                    cur.execute(
+                        "UPDATE credential_migration_state SET state = ?, updated_at = ? WHERE migration_id = ?;",
+                        (STATE_NOT_STARTED, now_iso, migration_id),
+                    )
+                else:
+                    cur.execute(
+                        "UPDATE credential_migration_state SET state = ?, updated_at = ? WHERE state = ?;",
+                        (STATE_NOT_STARTED, now_iso, STATE_STAGED),
+                    )
+                conn.commit()
+            finally:
+                conn.close()
+
             if staging_file.is_file():
                 os.remove(staging_file)
                 _fsync_parent_dir(staging_file)
+
             return {
                 "status": "ABORTED_STAGING_CLEANED",
-                "message": "Database was uncommitted. Staging file safely cleaned. State reset to NOT_STARTED.",
+                "message": "Database was uncommitted. Verified old key decryption, reset state to NOT_STARTED, and cleaned staging file.",
             }
 
         elif current_state == STATE_DATABASE_UPDATED:
@@ -817,32 +864,98 @@ def restore_database_from_backup(
 ) -> None:
     """Safely restore target database and environment from a verified matching backup set."""
     if not backup_file.is_file():
-        raise FileNotFoundError(f"Backup file not found: {backup_file}")
+        raise FileNotFoundError(f"Database backup file not found: {backup_file}")
 
     if confirm_backup_name != backup_file.name:
         raise ValueError(
             f"Explicit confirmation mismatch: requested '{backup_file.name}', but --confirm-restore-backup='{confirm_backup_name}'"
         )
 
-    # 1. Maintenance isolation on target DB
+    # 1. Require matching manifest and environment backup to exist
+    manifest_file = backup_file.parent / backup_file.name.replace("caseworker_backup_", "recovery_manifest_").replace(".db", ".json")
+    env_backup_file = backup_file.parent / backup_file.name.replace("caseworker_backup_", "env_caseworker_api_local_").replace(".db", ".bak")
+
+    if not manifest_file.is_file():
+        raise FileNotFoundError(f"Matching recovery manifest file missing: {manifest_file}")
+    if not env_backup_file.is_file():
+        raise FileNotFoundError(f"Matching environment backup file missing: {env_backup_file}")
+
+    # 2. Parse and verify recovery manifest
+    try:
+        with open(manifest_file, "r", encoding="utf-8") as f:
+            manifest_data = json.load(f)
+    except Exception as e:
+        raise ValueError(f"Corrupt recovery manifest JSON in {manifest_file}: {e}") from e
+
+    if manifest_data.get("case_id") != CONTROLLED_CASE_ID:
+        raise ValueError(f"Manifest case_id mismatch: expected '{CONTROLLED_CASE_ID}', got '{manifest_data.get('case_id')}'")
+    if manifest_data.get("plan_id") != CONTROLLED_PLAN_ID:
+        raise ValueError(f"Manifest plan_id mismatch: expected '{CONTROLLED_PLAN_ID}', got '{manifest_data.get('plan_id')}'")
+    if manifest_data.get("plan_fingerprint") != CONTROLLED_PLAN_FINGERPRINT:
+        raise ValueError(f"Manifest plan_fingerprint mismatch: expected '{CONTROLLED_PLAN_FINGERPRINT}', got '{manifest_data.get('plan_fingerprint')}'")
+    if manifest_data.get("action_id") != CONTROLLED_ACTION_ID:
+        raise ValueError(f"Manifest action_id mismatch: expected '{CONTROLLED_ACTION_ID}', got '{manifest_data.get('action_id')}'")
+    if manifest_data.get("approval_id") != CONTROLLED_APPROVAL_ID:
+        raise ValueError(f"Manifest approval_id mismatch: expected '{CONTROLLED_APPROVAL_ID}', got '{manifest_data.get('approval_id')}'")
+
+    # Verify both backup hashes and sizes against the manifest
+    db_sha = _file_sha256(backup_file)
+    expected_db_sha = manifest_data.get("backup_db", {}).get("sha256")
+    expected_db_size = manifest_data.get("backup_db", {}).get("byte_size")
+    if db_sha != expected_db_sha or backup_file.stat().st_size != expected_db_size:
+        raise ValueError(
+            f"Database backup hash or size mismatch! Expected sha={expected_db_sha}, size={expected_db_size}; "
+            f"actual sha={db_sha}, size={backup_file.stat().st_size}"
+        )
+
+    env_sha = _file_sha256(env_backup_file)
+    expected_env_sha = manifest_data.get("backup_env", {}).get("sha256")
+    expected_env_size = manifest_data.get("backup_env", {}).get("byte_size")
+    if env_sha != expected_env_sha or env_backup_file.stat().st_size != expected_env_size:
+        raise ValueError(
+            f"Environment backup hash or size mismatch! Expected sha={expected_env_sha}, size={expected_env_size}; "
+            f"actual sha={env_sha}, size={env_backup_file.stat().st_size}"
+        )
+
+    # 3. Verify SQLite integrity and domain records of backup_file
+    bck_conn = sqlite3.connect(f"file:{backup_file.resolve()}?mode=ro", uri=True)
+    try:
+        cur = bck_conn.cursor()
+        cur.execute("PRAGMA integrity_check;")
+        if cur.fetchall() != [("ok",)]:
+            raise RuntimeError(f"Backup file failed SQLite integrity check: {backup_file}")
+
+        assert_governance_domain_invariants(bck_conn)
+
+        # 4. Verify that the backup environment key decrypts all backed-up OAuth credentials
+        bck_env_key = load_secret_from_env_file(env_backup_file, "CASEWORKER_ENCRYPTION_KEY")
+        if not bck_env_key or len(bck_env_key) < 32:
+            raise ValueError("Backup environment file contains missing or invalid CASEWORKER_ENCRYPTION_KEY.")
+        if _key_fingerprint(bck_env_key) != manifest_data.get("key_fingerprint"):
+            raise ValueError("Backup environment key fingerprint does not match manifest key fingerprint.")
+
+        bck_cipher = TokenCipher(primary_key=bck_env_key)
+        cur.execute("SELECT access_token_enc, refresh_token_enc FROM user_oauth_credentials")
+        bck_rows = cur.fetchall()
+        if not bck_rows:
+            raise RuntimeError("Backup database contains no OAuth credential records.")
+        for r in bck_rows:
+            try:
+                at_dec = bck_cipher.decrypt(r[0])
+                rt_dec = bck_cipher.decrypt(r[1])
+                if not at_dec or not rt_dec:
+                    raise RuntimeError("Backup environment key cannot decrypt backed-up OAuth credentials!")
+            except Exception as e:
+                raise RuntimeError(f"Backup environment key cannot decrypt backed-up OAuth credentials: {e}") from e
+    finally:
+        bck_conn.close()
+
+    # 5. Maintenance isolation on target DB
     lock_fd = acquire_exclusive_maintenance_lock(target_db_path)
     try:
         assert_maintenance_isolation(target_db_path)
 
-        # 2. Backup integrity check
-        bck_conn = sqlite3.connect(str(backup_file))
-        try:
-            cur = bck_conn.cursor()
-            cur.execute("PRAGMA integrity_check;")
-            if cur.fetchall() != [("ok",)]:
-                raise RuntimeError(f"Backup file failed SQLite integrity check: {backup_file}")
-
-            # Check that required domain records exist in backup
-            assert_governance_domain_invariants(bck_conn)
-        finally:
-            bck_conn.close()
-
-        # 3. Guard against erasing newer records in target DB
+        # 6. Guard against erasing newer records in target DB
         tgt_conn = sqlite3.connect(f"file:{target_db_path.resolve()}?mode=rw", uri=True)
         try:
             t_cur = tgt_conn.cursor()
@@ -862,12 +975,8 @@ def restore_database_from_backup(
         finally:
             tgt_conn.close()
 
-        # 4. Check corresponding env backup
-        manifest_cand = backup_file.parent / backup_file.name.replace("caseworker_backup_", "recovery_manifest_").replace(".db", ".json")
-        env_backup_cand = backup_file.parent / backup_file.name.replace("caseworker_backup_", "env_caseworker_api_local_").replace(".db", ".bak")
-
-        # 5. Restore database using SQLite Online Backup API
-        src_conn = sqlite3.connect(str(backup_file))
+        # 7. Perform restoration only after all validations pass
+        src_conn = sqlite3.connect(f"file:{backup_file.resolve()}?mode=ro", uri=True)
         dst_conn = sqlite3.connect(f"file:{target_db_path.resolve()}?mode=rw", uri=True)
         try:
             src_conn.backup(dst_conn)
@@ -875,13 +984,17 @@ def restore_database_from_backup(
             src_conn.close()
             dst_conn.close()
 
-        # 6. Restore environment file if matching backup exists
-        if env_backup_cand.is_file():
-            shutil.copy2(env_backup_cand, env_file_path)
-            os.chmod(env_file_path, 0o600)
-            _fsync_parent_dir(env_file_path)
+        # Atomically restore environment file
+        temp_env = env_file_path.with_suffix(".restore_tmp")
+        fd = os.open(str(temp_env), os.O_CREAT | os.O_WRONLY | os.O_TRUNC, 0o600)
+        with os.fdopen(fd, "w", encoding="utf-8") as out_f, open(env_backup_file, "r", encoding="utf-8") as in_f:
+            out_f.write(in_f.read())
+            out_f.flush()
+            os.fsync(out_f.fileno())
+        os.replace(temp_env, env_file_path)
+        _fsync_parent_dir(env_file_path)
 
-        # 7. Clean any lingering staging file
+        # Clean lingering staging file
         staging_file = env_file_path.parent / ".env.encryption_key_staged.tmp"
         if staging_file.is_file():
             os.remove(staging_file)

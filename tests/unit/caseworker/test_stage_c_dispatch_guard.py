@@ -6,6 +6,7 @@ import io
 import json
 from pathlib import Path
 import unittest
+import urllib.error
 from unittest.mock import MagicMock, patch
 from fastapi.testclient import TestClient
 
@@ -279,8 +280,9 @@ class TestStageCGuardedDispatch(unittest.TestCase):
         self.assertIn("[TIER 4: MAILBOX DELIVERY OBSERVED BY OPERATOR]", output)
 
         # Must report None rather than substituting mailto:dagogograntjack@gmail.com
-        self.assertIn("Google Message ID:    None (no provider message ID returned)", output)
-        self.assertNotIn("Google Message ID:    mailto:", output)
+        self.assertIn("Gmail Message ID:     None (no provider message ID returned)", output)
+        self.assertNotIn("Gmail Message ID:     mailto:", output)
+        self.assertNotIn("External Reference:   mailto:", output)
 
     @patch("scripts.guarded_stage_c_dispatch._api_get")
     def test_verify_complete_api_chain_of_custody_hard_refusal_on_attempts(self, mock_api_get) -> None:
@@ -377,3 +379,178 @@ class TestStageCGuardedDispatch(unittest.TestCase):
         with self.assertRaises(RuntimeError) as ctx:
             verify_complete_api_chain_of_custody("https://localhost:3443", Path("certs/localhost.crt"), "dummy-token")
         self.assertIn("HARD REFUSAL: Execution receipt already exists", str(ctx.exception))
+
+    def test_four_tier_reporting_with_real_gmail_schema(self) -> None:
+        """print_four_tier_report consumes real Gmail metadata fields (gmail_message_id, gmail_thread_id, rfc822_message_id, external_reference_id)."""
+        gmail_msg_id = "18c2a3f9e8d1b2c3"
+        gmail_thread_id = "18c2a3f9e8d1b2c3"
+        rfc822_msg_id = "<jv-test-msg-123@gmail.com>"
+        dispatch_result = {
+            "outcome": "CONFIRMED_COMPLETION",
+            "http_code": 200,
+            "latency_seconds": 0.354,
+            "etag": '"action:act_91966280c188:v3"',
+            "data": {
+                "case_status": "waiting_external",
+                "receipt": {
+                    "receipt_id": "rcpt-live-test-123",
+                    "status": "verified_success",
+                    "receipt_hash": "6b72a6b22591739c9480bf13e1f57913cf673e5bf02ab7bf6c25aaad825cb3b0",
+                    "destination_url": "mailto:dagogograntjack@gmail.com",
+                    "external_reference_id": gmail_msg_id,
+                    "safe_provider_metadata": {
+                        "http_status": 200,
+                        "duration_ms": 350,
+                        "provider_status": "GMAIL_API_ACCEPTED",
+                        "response_category": "success",
+                        "gmail_message_id": gmail_msg_id,
+                        "gmail_thread_id": gmail_thread_id,
+                        "rfc822_message_id": rfc822_msg_id,
+                        "sealed_payload_hash": EXPECTED_SEALED_MIME_HASH,
+                        "recipient_email": "dagogograntjack@gmail.com",
+                        "sender_email": "dagogograntjack@gmail.com",
+                        "subject": "[JACKVERSE INTERNAL TEST] Governed Gmail Transmission Verification",
+                        "provider_kind": "gmail_api",
+                        "is_simulated": False,
+                    },
+                },
+            },
+        }
+        plan_info = {
+            "email_manifest": {
+                "subject": "[JACKVERSE INTERNAL TEST] Governed Gmail Transmission Verification",
+                "message_id": rfc822_msg_id,
+            }
+        }
+
+        with patch("sys.stdout", new=io.StringIO()) as fake_out:
+            print_four_tier_report(dispatch_result, plan_info, "dagogograntjack@gmail.com")
+            output = fake_out.getvalue()
+
+        self.assertIn(f"Gmail Message ID:     {gmail_msg_id}", output)
+        self.assertIn(f"Gmail Thread ID:      {gmail_thread_id}", output)
+        self.assertIn(f"RFC 822 Message-ID:   {rfc822_msg_id}", output)
+        self.assertIn("Provider Status:      GMAIL_API_ACCEPTED", output)
+        self.assertIn("Provider Acceptance:  CONFIRMED (Accepted by Google Gmail API)", output)
+        self.assertIn("Receipt ID:           rcpt-live-test-123", output)
+        self.assertIn(f"External Reference:   {gmail_msg_id}", output)
+
+    @patch("scripts.guarded_stage_c_dispatch._create_ssl_context")
+    @patch("urllib.request.urlopen")
+    def test_perform_guarded_dispatch_confirmed_completion(self, mock_urlopen, mock_ssl) -> None:
+        """HTTP 200 with verified_success receipt returns CONFIRMED_COMPLETION."""
+        mock_resp = MagicMock()
+        mock_resp.status = 200
+        mock_resp.headers = {"ETag": '"action:act_91966280c188:v3"'}
+        payload = {
+            "case_status": "waiting_external",
+            "receipt": {
+                "receipt_id": "rcpt-1",
+                "status": "verified_success",
+            },
+        }
+        mock_resp.read.return_value = json.dumps(payload).encode("utf-8")
+        mock_urlopen.return_value.__enter__.return_value = mock_resp
+
+        res = perform_guarded_dispatch("https://localhost:3443", Path("dummy.crt"), "act_1", '"v1"', "tok")
+        self.assertEqual(res["outcome"], "CONFIRMED_COMPLETION")
+        self.assertEqual(res["http_code"], 200)
+
+    @patch("scripts.guarded_stage_c_dispatch._create_ssl_context")
+    @patch("urllib.request.urlopen")
+    def test_perform_guarded_dispatch_incomplete_http_200(self, mock_urlopen, mock_ssl) -> None:
+        """HTTP 200 lacking verified_success receipt returns AMBIGUOUS_OUTCOME."""
+        mock_resp = MagicMock()
+        mock_resp.status = 200
+        mock_resp.headers = {"ETag": '"action:act_91966280c188:v3"'}
+        payload = {
+            "case_status": "action_required",
+            "receipt": {
+                "receipt_id": "rcpt-1",
+                "status": "ambiguous_submission",
+            },
+        }
+        mock_resp.read.return_value = json.dumps(payload).encode("utf-8")
+        mock_urlopen.return_value.__enter__.return_value = mock_resp
+
+        res = perform_guarded_dispatch("https://localhost:3443", Path("dummy.crt"), "act_1", '"v1"', "tok")
+        self.assertEqual(res["outcome"], "AMBIGUOUS_OUTCOME")
+        self.assertEqual(res["http_code"], 200)
+
+    @patch("scripts.guarded_stage_c_dispatch._create_ssl_context")
+    @patch("urllib.request.urlopen")
+    def test_perform_guarded_dispatch_unexpected_http_500(self, mock_urlopen, mock_ssl) -> None:
+        """HTTP 500 returns AMBIGUOUS_OUTCOME and does not classify as pre-dispatch."""
+        err_body = json.dumps({"detail": "Database lock timeout"}).encode("utf-8")
+        mock_urlopen.side_effect = urllib.error.HTTPError(
+            url="https://localhost:3443",
+            code=500,
+            msg="Internal Server Error",
+            hdrs={},
+            fp=io.BytesIO(err_body),
+        )
+
+        res = perform_guarded_dispatch("https://localhost:3443", Path("dummy.crt"), "act_1", '"v1"', "tok")
+        self.assertEqual(res["outcome"], "AMBIGUOUS_OUTCOME")
+        self.assertEqual(res["http_code"], 500)
+
+    @patch("scripts.guarded_stage_c_dispatch._create_ssl_context")
+    @patch("urllib.request.urlopen")
+    def test_perform_guarded_dispatch_ambiguous_http_409(self, mock_urlopen, mock_ssl) -> None:
+        """HTTP 409 with in-flight or ambiguous failure_kind returns AMBIGUOUS_OUTCOME."""
+        ambiguous_kinds = ["manual_resolution_required", "execution_in_progress", "ambiguous_submission", "unknown_conflict"]
+        for kind in ambiguous_kinds:
+            err_body = json.dumps({"detail": f"Conflict: {kind}", "failure_kind": kind}).encode("utf-8")
+            mock_urlopen.side_effect = urllib.error.HTTPError(
+                url="https://localhost:3443",
+                code=409,
+                msg="Conflict",
+                hdrs={},
+                fp=io.BytesIO(err_body),
+            )
+            res = perform_guarded_dispatch("https://localhost:3443", Path("dummy.crt"), "act_1", '"v1"', "tok")
+            self.assertEqual(res["outcome"], "AMBIGUOUS_OUTCOME", f"Failed for failure_kind: {kind}")
+            self.assertEqual(res["http_code"], 409)
+
+    @patch("scripts.guarded_stage_c_dispatch._create_ssl_context")
+    @patch("urllib.request.urlopen")
+    def test_perform_guarded_dispatch_proven_pre_dispatch_rejections(self, mock_urlopen, mock_ssl) -> None:
+        """Proven pre-dispatch barrier rejections (401, 403, 404, 412, 428, and proven 409) return CONFIRMED_PRE_DISPATCH_REJECTION."""
+        # 1. HTTP 409 with proven pre-dispatch failure kinds
+        for kind in ["real_execution_disabled", "action_not_approved", "insecure_configuration_rejected"]:
+            err_body = json.dumps({"detail": f"Rejected: {kind}", "failure_kind": kind}).encode("utf-8")
+            mock_urlopen.side_effect = urllib.error.HTTPError(
+                url="https://localhost:3443",
+                code=409,
+                msg="Conflict",
+                hdrs={},
+                fp=io.BytesIO(err_body),
+            )
+            res = perform_guarded_dispatch("https://localhost:3443", Path("dummy.crt"), "act_1", '"v1"', "tok")
+            self.assertEqual(res["outcome"], "CONFIRMED_PRE_DISPATCH_REJECTION")
+            self.assertEqual(res["http_code"], 409)
+
+        # 2. HTTP 428 Precondition Required (e.g. missing If-Match)
+        mock_urlopen.side_effect = urllib.error.HTTPError(
+            url="https://localhost:3443",
+            code=428,
+            msg="Precondition Required",
+            hdrs={},
+            fp=io.BytesIO(b'{"detail":"If-Match required"}'),
+        )
+        res = perform_guarded_dispatch("https://localhost:3443", Path("dummy.crt"), "act_1", '"v1"', "tok")
+        self.assertEqual(res["outcome"], "CONFIRMED_PRE_DISPATCH_REJECTION")
+        self.assertEqual(res["http_code"], 428)
+
+        # 3. HTTP 412 Precondition Failed (e.g. stale ETag)
+        mock_urlopen.side_effect = urllib.error.HTTPError(
+            url="https://localhost:3443",
+            code=412,
+            msg="Precondition Failed",
+            hdrs={},
+            fp=io.BytesIO(b'{"detail":"Stale ETag"}'),
+        )
+        res = perform_guarded_dispatch("https://localhost:3443", Path("dummy.crt"), "act_1", '"v1"', "tok")
+        self.assertEqual(res["outcome"], "CONFIRMED_PRE_DISPATCH_REJECTION")
+        self.assertEqual(res["http_code"], 412)
+

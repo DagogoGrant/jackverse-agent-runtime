@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
 import os
 from pathlib import Path
 import secrets
@@ -36,6 +38,7 @@ from scripts.rotate_oauth_encryption_key import (
     update_secret_in_env_file,
     validate_db_path,
     _create_secure_file_exclusive,
+    _key_fingerprint,
 )
 
 
@@ -315,11 +318,36 @@ def test_fault_injection_checkpoint_1_crash_before_db_commit(test_env):
     assert cipher_old.decrypt(at_enc) == "ya29.initial_test_token"
     assert cipher_old.decrypt(rt_enc) == "1//initial_refresh_token"
 
-    # Resume cleans up aborted staging
+    # Resume cleans up aborted staging and resets durable state
     recovery_res = recover_or_resume(db_path, env_file, backup_dir)
     assert recovery_res["status"] == "ABORTED_STAGING_CLEANED"
     staged_key_file = env_file.parent / ".env.encryption_key_staged.tmp"
     assert not staged_key_file.exists()
+
+    # Fresh state inspection returns NOT_STARTED
+    fresh_state = get_migration_state(db_path, env_file, staged_key_file)
+    assert fresh_state["state"] == STATE_NOT_STARTED
+
+    # A subsequent migration succeeds
+    subsequent_res = execute_migration(db_path=db_path, env_file_path=env_file, backup_dir=backup_dir)
+    assert subsequent_res["status"] == "SUCCESS"
+    assert subsequent_res["migrated_records"] == 1
+
+    # Final state becomes COMPLETED
+    final_state = get_migration_state(db_path, env_file, staged_key_file)
+    assert final_state["state"] == STATE_COMPLETED
+
+    # Both OAuth tokens remain decryptable with the new rotated key
+    new_key = load_secret_from_env_file(env_file, "CASEWORKER_ENCRYPTION_KEY")
+    assert new_key != initial_key
+    cipher_new = TokenCipher(primary_key=new_key)
+    conn = sqlite3.connect(str(db_path))
+    cur = conn.cursor()
+    cur.execute("SELECT access_token_enc, refresh_token_enc FROM user_oauth_credentials WHERE user_id = ?", (CONTROLLED_USER_ID,))
+    new_at_enc, new_rt_enc = cur.fetchone()
+    conn.close()
+    assert cipher_new.decrypt(new_at_enc) == "ya29.initial_test_token"
+    assert cipher_new.decrypt(new_rt_enc) == "1//initial_refresh_token"
 
 
 def test_fault_injection_checkpoint_2_crash_after_db_commit_before_env_update(test_env):
@@ -440,3 +468,135 @@ def test_restore_database_from_backup_guardrails(test_env):
     cur.execute("SELECT count(*) FROM cases WHERE case_id = ?", (CONTROLLED_CASE_ID,))
     assert cur.fetchone()[0] == 1
     conn.close()
+
+
+def test_restore_refuses_missing_manifest(test_env):
+    """restore_database_from_backup refuses operation when matching manifest file is missing."""
+    db_path = test_env["db_path"]
+    env_file = test_env["env_file"]
+    backup_dir = test_env["backup_dir"]
+    initial_key = test_env["initial_key"]
+
+    b_db, b_env, b_man = create_verified_online_backup(
+        db_path=db_path,
+        backup_dir=backup_dir,
+        env_file_path=env_file,
+        current_key=initial_key,
+        migration_id="test-mig-manifest-missing",
+    )
+    b_man.unlink()
+
+    with pytest.raises(FileNotFoundError, match="Matching recovery manifest file missing"):
+        restore_database_from_backup(
+            backup_file=b_db,
+            target_db_path=db_path,
+            env_file_path=env_file,
+            confirm_backup_name=b_db.name,
+        )
+
+
+def test_restore_refuses_missing_env_backup(test_env):
+    """restore_database_from_backup refuses operation when matching environment backup is missing."""
+    db_path = test_env["db_path"]
+    env_file = test_env["env_file"]
+    backup_dir = test_env["backup_dir"]
+    initial_key = test_env["initial_key"]
+
+    b_db, b_env, b_man = create_verified_online_backup(
+        db_path=db_path,
+        backup_dir=backup_dir,
+        env_file_path=env_file,
+        current_key=initial_key,
+        migration_id="test-mig-env-missing",
+    )
+    b_env.unlink()
+
+    with pytest.raises(FileNotFoundError, match="Matching environment backup file missing"):
+        restore_database_from_backup(
+            backup_file=b_db,
+            target_db_path=db_path,
+            env_file_path=env_file,
+            confirm_backup_name=b_db.name,
+        )
+
+
+def test_restore_refuses_mismatched_sha256(test_env):
+    """restore_database_from_backup refuses operation when backup hashes do not match manifest."""
+    db_path = test_env["db_path"]
+    env_file = test_env["env_file"]
+    backup_dir = test_env["backup_dir"]
+    initial_key = test_env["initial_key"]
+
+    # 1. Tampered DB backup
+    b_db, b_env, b_man = create_verified_online_backup(
+        db_path=db_path,
+        backup_dir=backup_dir,
+        env_file_path=env_file,
+        current_key=initial_key,
+        migration_id="test-mig-hash-mismatch-1",
+    )
+    with open(b_db, "ab") as f:
+        f.write(b"tamper_bytes")
+
+    with pytest.raises(ValueError, match="Database backup hash or size mismatch"):
+        restore_database_from_backup(
+            backup_file=b_db,
+            target_db_path=db_path,
+            env_file_path=env_file,
+            confirm_backup_name=b_db.name,
+        )
+
+    # 2. Tampered Env backup
+    b_db2, b_env2, b_man2 = create_verified_online_backup(
+        db_path=db_path,
+        backup_dir=backup_dir,
+        env_file_path=env_file,
+        current_key=initial_key,
+        migration_id="test-mig-hash-mismatch-2",
+    )
+    with open(b_env2, "ab") as f:
+        f.write(b"\nEXTRA_TAMPER=1\n")
+
+    with pytest.raises(ValueError, match="Environment backup hash or size mismatch"):
+        restore_database_from_backup(
+            backup_file=b_db2,
+            target_db_path=db_path,
+            env_file_path=env_file,
+            confirm_backup_name=b_db2.name,
+        )
+
+
+def test_restore_refuses_undecryptable_backed_up_credentials(test_env):
+    """restore_database_from_backup refuses operation when backup environment key cannot decrypt backup DB tokens."""
+    db_path = test_env["db_path"]
+    env_file = test_env["env_file"]
+    backup_dir = test_env["backup_dir"]
+    initial_key = test_env["initial_key"]
+
+    b_db, b_env, b_man = create_verified_online_backup(
+        db_path=db_path,
+        backup_dir=backup_dir,
+        env_file_path=env_file,
+        current_key=initial_key,
+        migration_id="test-mig-undecryptable",
+    )
+
+    # Replace key in env backup with another random key and update manifest hash/size and key_fingerprint
+    wrong_key = secrets.token_urlsafe(48)
+    b_env.write_text(f"CASEWORKER_ENCRYPTION_KEY={wrong_key}\nCASEWORKER_ENCRYPTION_FALLBACK_KEYS=\n", encoding="utf-8")
+    new_env_sha = hashlib.sha256(b_env.read_bytes()).hexdigest()
+    with open(b_man, "r", encoding="utf-8") as f:
+        manifest_data = json.load(f)
+    manifest_data["backup_env"]["sha256"] = new_env_sha
+    manifest_data["backup_env"]["byte_size"] = b_env.stat().st_size
+    manifest_data["key_fingerprint"] = _key_fingerprint(wrong_key)
+    with open(b_man, "w", encoding="utf-8") as f:
+        json.dump(manifest_data, f, indent=2)
+
+    with pytest.raises(RuntimeError, match="Backup environment key cannot decrypt backed-up OAuth credentials"):
+        restore_database_from_backup(
+            backup_file=b_db,
+            target_db_path=db_path,
+            env_file_path=env_file,
+            confirm_backup_name=b_db.name,
+        )
