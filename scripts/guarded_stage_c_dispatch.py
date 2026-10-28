@@ -581,7 +581,31 @@ def main() -> int:
 
     # 7. Scoped Disarm Execution (Amendments 4 and 5)
     outcome = result["outcome"]
-    if outcome in ("CONFIRMED_COMPLETION", "CONFIRMED_PRE_DISPATCH_REJECTION"):
+    if outcome == "CONFIRMED_COMPLETION":
+        if args.auto_disarm:
+            print("\n--- EXECUTING SCOPED DISARM (RESTORE BASE DEPLOYMENT) ---")
+            disarm_res = scoped_disarm_caseworker_api()
+            print(f"Disarm Status:        {disarm_res.get('status')}")
+            print(f"Flags Disarmed:       {disarm_res.get('flags_disarmed')}")
+            if not disarm_res.get("flags_disarmed", False):
+                print("\n================================================================================")
+                print("[CRITICAL: SEND COMPLETED — DISARM FAILED — MANUAL INTERVENTION REQUIRED — DO NOT RETRY]")
+                print("The transmission succeeded and the verified execution receipt is recorded above.")
+                print("However, automatic container recreation or flag disarm verification failed.")
+                print("To manually disarm sending permissions, immediately run:")
+                print("    docker compose up -d --force-recreate caseworker-api")
+                print("DO NOT RETRY TRANSMISSION. An execution receipt has already been committed.")
+                print("================================================================================")
+                return 3
+        else:
+            print("\n================================================================================")
+            print("MANDATORY POST-DISPATCH DISARM STEP:")
+            print("Immediately restore base deployment to disarm execution flags:")
+            print("    docker compose up -d --force-recreate caseworker-api")
+            print("================================================================================")
+        return 0
+
+    elif outcome == "CONFIRMED_PRE_DISPATCH_REJECTION":
         if args.auto_disarm:
             print("\n--- EXECUTING SCOPED DISARM (RESTORE BASE DEPLOYMENT) ---")
             disarm_res = scoped_disarm_caseworker_api()
@@ -590,13 +614,7 @@ def main() -> int:
             if not disarm_res.get("flags_disarmed", False):
                 print("[WARNING] Automatic disarm verification failed. Verify flags manually:")
                 print("    docker compose up -d --force-recreate caseworker-api")
-        else:
-            print("\n================================================================================")
-            print("MANDATORY POST-DISPATCH DISARM STEP:")
-            print("Immediately restore base deployment to disarm execution flags:")
-            print("    docker compose up -d --force-recreate caseworker-api")
-            print("================================================================================")
-        return 0 if outcome == "CONFIRMED_COMPLETION" else 1
+        return 1
 
     elif outcome in ("AMBIGUOUS_TIMEOUT", "AMBIGUOUS_OUTCOME"):
         print("\n================================================================================")

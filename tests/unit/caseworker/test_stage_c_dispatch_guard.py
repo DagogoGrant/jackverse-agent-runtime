@@ -40,6 +40,7 @@ from scripts.guarded_stage_c_dispatch import (
     EXPECTED_DESTINATION_EMAIL,
     EXPECTED_SEALED_MIME_HASH,
     REQUIRED_EXECUTION_DECISION_TOKEN,
+    main,
     perform_guarded_dispatch,
     print_four_tier_report,
     verify_complete_api_chain_of_custody,
@@ -553,4 +554,111 @@ class TestStageCGuardedDispatch(unittest.TestCase):
         res = perform_guarded_dispatch("https://localhost:3443", Path("dummy.crt"), "act_1", '"v1"', "tok")
         self.assertEqual(res["outcome"], "CONFIRMED_PRE_DISPATCH_REJECTION")
         self.assertEqual(res["http_code"], 412)
+
+    @patch("scripts.guarded_stage_c_dispatch.scoped_disarm_caseworker_api")
+    @patch("scripts.guarded_stage_c_dispatch.perform_guarded_dispatch")
+    @patch("scripts.guarded_stage_c_dispatch.verify_complete_api_chain_of_custody")
+    @patch("scripts.guarded_stage_c_dispatch._load_env_secret")
+    def test_main_confirmed_completion_with_disarm_failure(
+        self, mock_load_secret, mock_audit, mock_dispatch, mock_disarm
+    ) -> None:
+        """When execution succeeds but automatic disarm fails, main() reports distinct error and exits code 3."""
+        mock_load_secret.return_value = "mock-operator-secret-12345-long-enough-32-chars"
+        mock_audit.return_value = {
+            "status": "PASS",
+            "action": {"action_id": CONTROLLED_ACTION_ID, "status": "approved", "version": 3, "parameters": {}},
+            "plan": {"plan_id": CONTROLLED_PLAN_ID, "status": "ready_for_authorization", "execution_plan_fingerprint": CONTROLLED_PLAN_FINGERPRINT, "email_manifest": {}},
+            "etag": '"action:act_91966280c188:v3"',
+        }
+        mock_dispatch.return_value = {
+            "outcome": "CONFIRMED_COMPLETION",
+            "http_code": 200,
+            "latency_seconds": 0.45,
+            "etag": '"action:act_91966280c188:v4"',
+            "data": {
+                "case_status": "waiting_external",
+                "receipt": {
+                    "receipt_id": "rcpt-test-disarm-failure",
+                    "status": "verified_success",
+                    "receipt_hash": "hash-receipt-123",
+                    "destination_url": f"mailto:{EXPECTED_DESTINATION_EMAIL}",
+                    "external_reference_id": "msg-123",
+                    "safe_provider_metadata": {
+                        "provider_status": "GMAIL_API_ACCEPTED",
+                        "gmail_message_id": "msg-123",
+                    },
+                },
+            },
+        }
+        mock_disarm.return_value = {"status": "error", "flags_disarmed": False, "error": "docker error"}
+
+        test_args = [
+            "guarded_stage_c_dispatch.py",
+            "--execute-authorized",
+            f"--operator-decision-token={REQUIRED_EXECUTION_DECISION_TOKEN}",
+            "--auto-disarm",
+        ]
+
+        with patch("sys.argv", test_args), patch("sys.stdout", new=io.StringIO()) as fake_out:
+            exit_code = main()
+            output = fake_out.getvalue()
+
+        self.assertEqual(exit_code, 3)
+        self.assertIn("SEND COMPLETED — DISARM FAILED — MANUAL INTERVENTION REQUIRED — DO NOT RETRY", output)
+        self.assertIn("rcpt-test-disarm-failure", output)
+        self.assertIn("verified_success", output)
+        self.assertIn("msg-123", output)
+
+    @patch("scripts.guarded_stage_c_dispatch.scoped_disarm_caseworker_api")
+    @patch("scripts.guarded_stage_c_dispatch.perform_guarded_dispatch")
+    @patch("scripts.guarded_stage_c_dispatch.verify_complete_api_chain_of_custody")
+    @patch("scripts.guarded_stage_c_dispatch._load_env_secret")
+    def test_main_confirmed_completion_with_disarm_success(
+        self, mock_load_secret, mock_audit, mock_dispatch, mock_disarm
+    ) -> None:
+        """When execution succeeds and automatic disarm succeeds, main() exits 0."""
+        mock_load_secret.return_value = "mock-operator-secret-12345-long-enough-32-chars"
+        mock_audit.return_value = {
+            "status": "PASS",
+            "action": {"action_id": CONTROLLED_ACTION_ID, "status": "approved", "version": 3, "parameters": {}},
+            "plan": {"plan_id": CONTROLLED_PLAN_ID, "status": "ready_for_authorization", "execution_plan_fingerprint": CONTROLLED_PLAN_FINGERPRINT, "email_manifest": {}},
+            "etag": '"action:act_91966280c188:v3"',
+        }
+        mock_dispatch.return_value = {
+            "outcome": "CONFIRMED_COMPLETION",
+            "http_code": 200,
+            "latency_seconds": 0.45,
+            "etag": '"action:act_91966280c188:v4"',
+            "data": {
+                "case_status": "waiting_external",
+                "receipt": {
+                    "receipt_id": "rcpt-test-disarm-success",
+                    "status": "verified_success",
+                    "receipt_hash": "hash-receipt-456",
+                    "destination_url": f"mailto:{EXPECTED_DESTINATION_EMAIL}",
+                    "external_reference_id": "msg-456",
+                    "safe_provider_metadata": {
+                        "provider_status": "GMAIL_API_ACCEPTED",
+                        "gmail_message_id": "msg-456",
+                    },
+                },
+            },
+        }
+        mock_disarm.return_value = {"status": "ok", "flags_disarmed": True}
+
+        test_args = [
+            "guarded_stage_c_dispatch.py",
+            "--execute-authorized",
+            f"--operator-decision-token={REQUIRED_EXECUTION_DECISION_TOKEN}",
+            "--auto-disarm",
+        ]
+
+        with patch("sys.argv", test_args), patch("sys.stdout", new=io.StringIO()) as fake_out:
+            exit_code = main()
+            output = fake_out.getvalue()
+
+        self.assertEqual(exit_code, 0)
+        self.assertNotIn("DISARM FAILED", output)
+        self.assertIn("rcpt-test-disarm-success", output)
+
 
